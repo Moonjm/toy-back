@@ -18,6 +18,7 @@ import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
@@ -101,6 +102,27 @@ class AdminUserController(
         @Valid @RequestBody request: AdminUserUpdateRequest,
     ): ResponseEntity<Void> {
         service.update(id, request)
+        return ResponseEntity.noContent().build()
+    }
+
+    @PatchMapping("/{id}/unlock")
+    @Operation(summary = "계정 잠금 해제")
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "204", description = "잠금 해제됨"),
+            ApiResponse(
+                responseCode = "404",
+                description = "찾을 수 없음",
+                content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],
+            ),
+        ],
+    )
+    @PreAuthorize("hasAuthority('ADMIN')")
+    fun unlock(
+        @Parameter(description = "사용자 ID", example = "1")
+        @PathVariable id: Long,
+    ): ResponseEntity<Void> {
+        service.unlock(id)
         return ResponseEntity.noContent().build()
     }
 

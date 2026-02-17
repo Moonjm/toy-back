@@ -55,9 +55,14 @@ class AuthService(
         val user =
             userRepository.findByUsername(username)
                 ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, username)
+        if (user.locked) {
+            throw CustomException(ErrorCode.ACCOUNT_LOCKED, username)
+        }
         if (!passwordEncoder.matches(password, user.passwordHash)) {
+            user.incrementFailedAttempts()
             throw CustomException(ErrorCode.INVALID_REQUEST, "password")
         }
+        user.resetFailedAttempts()
         val pair = issueTokens(user)
         cookieService.applyAuthCookies(
             response = response,

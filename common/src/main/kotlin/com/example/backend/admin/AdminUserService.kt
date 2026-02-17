@@ -45,6 +45,12 @@ class AdminUserService(
     }
 
     @Transactional
+    fun unlock(id: Long) {
+        val user = findUser(id)
+        user.unlock()
+    }
+
+    @Transactional
     fun delete(id: Long) {
         val user = findUser(id)
         refreshTokenRepository.deleteAllByUserId(id)

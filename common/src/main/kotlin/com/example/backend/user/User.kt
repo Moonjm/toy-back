@@ -25,7 +25,27 @@ class User(
     var gender: Gender? = null,
     @Column(name = "birth_date")
     var birthDate: LocalDate? = null,
+    @Column(nullable = false)
+    var failedLoginAttempts: Int = 0,
+    @Column(nullable = false)
+    var locked: Boolean = false,
 ) : BaseEntity() {
+    fun resetFailedAttempts() {
+        failedLoginAttempts = 0
+    }
+
+    fun incrementFailedAttempts() {
+        failedLoginAttempts++
+        if (failedLoginAttempts >= 5) {
+            locked = true
+        }
+    }
+
+    fun unlock() {
+        locked = false
+        failedLoginAttempts = 0
+    }
+
     fun updateCredentials(
         passwordHash: String,
         authority: Authority,
