@@ -24,10 +24,13 @@ dependencies {
     api("com.linecorp.kotlin-jdsl:jpql-dsl:3.5.5")
     api("com.linecorp.kotlin-jdsl:jpql-render:3.5.5")
     api("com.linecorp.kotlin-jdsl:spring-data-jpa-support:3.5.5")
+    api("software.amazon.awssdk:s3:2.31.1")
     runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
+    runtimeOnly("org.postgresql:postgresql")
     testFixturesImplementation("org.springframework:spring-test")
     testFixturesImplementation("io.kotest:kotest-runner-junit5:6.1.3")
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("io.kotest:kotest-runner-junit5:6.1.3")
     testImplementation("io.mockk:mockk:1.14.2")
 }
