@@ -66,8 +66,9 @@ class RelationshipService(
         permissionService.findTreeAndCheckPermission(treeId, user, FamilyTreeRole.EDITOR)
 
         val personAId = minOf(request.personId, request.spouseId)
+        val personBId = maxOf(request.personId, request.spouseId)
         val spouse =
-            spouseRepository.findByPersonAIdOrPersonBId(personAId, personAId)
+            spouseRepository.findByPersonAIdAndPersonBId(personAId, personBId)
                 ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, "spouse")
 
         spouseRepository.delete(spouse)

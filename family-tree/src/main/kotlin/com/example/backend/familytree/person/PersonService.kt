@@ -76,22 +76,13 @@ class PersonService(
 
         validateDateRange(request)
 
-        val newProfileImageId =
-            if (request.profileImageId != null) {
-                val oldImageId = person.profileImageId
-                val newImageId = fileService.attachFile(request.profileImageId, profilePrefix(treeId))
-                oldImageId?.let { fileService.delete(it) }
-                newImageId
-            } else {
-                person.profileImageId
-            }
+        request.profileImageId?.let { replaceProfileImage(person, it, treeId) }
 
         person.updateDetails(
             name = request.name,
             birthDate = request.birthDate,
             deathDate = request.deathDate,
             gender = request.gender,
-            profileImageId = newProfileImageId,
             memo = request.memo,
         )
     }
@@ -119,6 +110,17 @@ class PersonService(
         val persons = personRepository.findAllByFamilyTree(tree)
         fileService.deleteAll(persons.mapNotNull { it.profileImageId })
         personRepository.deleteAll(persons)
+    }
+
+    private fun replaceProfileImage(
+        person: Person,
+        newImageId: Long,
+        treeId: Long,
+    ) {
+        if (newImageId == person.profileImageId) return
+        val attachedId = fileService.attachFile(newImageId, profilePrefix(treeId))
+        person.profileImageId?.let { fileService.delete(it) }
+        person.updateProfileImage(attachedId)
     }
 
     private fun validateDateRange(request: PersonRequest) {

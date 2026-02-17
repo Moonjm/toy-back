@@ -36,14 +36,16 @@ class Person(
         birthDate: LocalDate?,
         deathDate: LocalDate?,
         gender: Gender?,
-        profileImageId: Long?,
         memo: String?,
     ) {
         this.name = name
         this.birthDate = birthDate
         this.deathDate = deathDate
         this.gender = gender
-        this.profileImageId = profileImageId
         this.memo = memo
+    }
+
+    fun updateProfileImage(profileImageId: Long?) {
+        this.profileImageId = profileImageId
     }
 }
