@@ -24,6 +24,9 @@ spring:
       max-file-size: 10MB
       max-request-size: 10MB
 
+cors:
+  allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://192.168.0.*:*}
+
 security:
   jwt:
     secret: ${JWT_SECRET:vj9g4oRmXLDYW9fuGHZdkpSgHALhTCi6LZoiSaVyCF4=}

@@ -29,7 +29,7 @@ for MODULE in "${MODULES[@]}"; do
   REMOTE_DIR="${REMOTE_BASE_DIR}/${MODULE}"
 
   echo "=== 1. Docker 이미지 빌드 (linux/arm64) ==="
-  docker build --platform linux/arm64 -f "${MODULE}/Dockerfile" -t "${IMAGE_NAME}:${IMAGE_TAG}" .
+  docker build --platform linux/arm64 --build-arg MODULE="${MODULE}" -t "${IMAGE_NAME}:${IMAGE_TAG}" .
 
   echo "=== 2. Docker 이미지 저장 ==="
   docker save -o "${IMAGE_FILE}" "${IMAGE_NAME}:${IMAGE_TAG}"
