@@ -12,6 +12,8 @@ class UserService(
     private val userRepository: UserRepository,
     private val passwordEncoder: PasswordEncoder,
 ) {
+    fun members(): List<UserResponse> = userRepository.findByAuthorityOrderByIdAsc(Authority.USER).map { it.toResponse() }
+
     fun me(username: String): UserResponse =
         userRepository.findByUsername(username)?.toResponse()
             ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, username)

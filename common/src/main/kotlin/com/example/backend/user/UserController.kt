@@ -23,6 +23,20 @@ import org.springframework.web.bind.annotation.RestController
 class UserController(
     private val service: UserService,
 ) {
+    @GetMapping
+    @Operation(summary = "일반 사용자 목록 조회")
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "성공"),
+            ApiResponse(
+                responseCode = "401",
+                description = "인증 필요",
+                content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],
+            ),
+        ],
+    )
+    fun members(): ResponseEntity<DataResponseBody<List<UserResponse>>> = ResponseEntity.ok(DataResponseBody(service.members()))
+
     @GetMapping("/me")
     @Operation(summary = "내 정보 조회")
     @ApiResponses(
