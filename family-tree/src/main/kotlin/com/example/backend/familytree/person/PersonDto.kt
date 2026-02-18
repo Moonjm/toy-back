@@ -14,6 +14,8 @@ data class PersonRequest(
     val name: String,
     @field:Schema(description = "생년월일", example = "1950-03-15")
     val birthDate: LocalDate? = null,
+    @field:Schema(description = "생년월일 역법", example = "SOLAR", allowableValues = ["SOLAR", "LUNAR"])
+    val birthDateType: CalendarType? = null,
     @field:Schema(description = "사망일", example = "2020-12-01")
     val deathDate: LocalDate? = null,
     @field:Schema(description = "성별", example = "MALE")
@@ -33,6 +35,8 @@ data class PersonResponse(
     val name: String,
     @field:Schema(description = "생년월일")
     val birthDate: LocalDate?,
+    @field:Schema(description = "생년월일 역법")
+    val birthDateType: CalendarType?,
     @field:Schema(description = "사망일")
     val deathDate: LocalDate?,
     @field:Schema(description = "성별")
@@ -48,6 +52,7 @@ fun Person.toResponse(profileImageUrl: String? = null): PersonResponse =
         id = requiredId,
         name = name,
         birthDate = birthDate,
+        birthDateType = birthDateType,
         deathDate = deathDate,
         gender = gender,
         profileImageUrl = profileImageUrl,

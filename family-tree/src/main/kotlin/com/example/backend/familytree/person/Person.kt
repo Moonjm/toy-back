@@ -21,6 +21,9 @@ class Person(
     var name: String,
     @Column(nullable = true)
     var birthDate: LocalDate? = null,
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = true, length = 10)
+    var birthDateType: CalendarType? = null,
     @Column(nullable = true)
     var deathDate: LocalDate? = null,
     @Enumerated(EnumType.STRING)
@@ -34,12 +37,14 @@ class Person(
     fun updateDetails(
         name: String,
         birthDate: LocalDate?,
+        birthDateType: CalendarType?,
         deathDate: LocalDate?,
         gender: Gender?,
         memo: String?,
     ) {
         this.name = name
         this.birthDate = birthDate
+        this.birthDateType = birthDateType
         this.deathDate = deathDate
         this.gender = gender
         this.memo = memo

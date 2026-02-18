@@ -51,6 +51,7 @@ class PersonService(
                     familyTree = tree,
                     name = request.name,
                     birthDate = request.birthDate,
+                    birthDateType = request.birthDateType,
                     deathDate = request.deathDate,
                     gender = request.gender,
                     profileImageId = profileImageId,
@@ -81,6 +82,7 @@ class PersonService(
         person.updateDetails(
             name = request.name,
             birthDate = request.birthDate,
+            birthDateType = request.birthDateType,
             deathDate = request.deathDate,
             gender = request.gender,
             memo = request.memo,
