@@ -76,7 +76,7 @@ class PersonService(
 
         validateDateRange(request)
 
-        request.profileImageId?.let { replaceProfileImage(person, it, treeId) }
+        updateProfileImage(person, request.profileImageId, treeId)
 
         person.updateDetails(
             name = request.name,
@@ -112,14 +112,14 @@ class PersonService(
         personRepository.deleteAll(persons)
     }
 
-    private fun replaceProfileImage(
+    private fun updateProfileImage(
         person: Person,
-        newImageId: Long,
+        newImageId: Long?,
         treeId: Long,
     ) {
         if (newImageId == person.profileImageId) return
-        val attachedId = fileService.attachFile(newImageId, profilePrefix(treeId))
         person.profileImageId?.let { fileService.delete(it) }
+        val attachedId = newImageId?.let { fileService.attachFile(it, profilePrefix(treeId)) }
         person.updateProfileImage(attachedId)
     }
 
