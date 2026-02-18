@@ -20,12 +20,14 @@ class ResponseCreatedAspect {
     ): ResponseEntity<Void> {
         val result = joinPoint.proceed() as ResponseEntity<*>
         val id = result.getBody()
+        val memberId = getArgument(joinPoint, "memberId") // 추가 추출
 
         return ResponseEntity
             .created(
                 URI.create(
                     responseCreated.path
-                        .replace("{id}", id?.toString() ?: ""),
+                        .replace("{id}", id?.toString() ?: "")
+                        .replace("{memberId}", memberId?.toString() ?: ""),
                 ),
             ).build()
     }
