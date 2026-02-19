@@ -16,5 +16,10 @@ interface SpouseRepository : JpaRepository<Spouse, Long> {
         personBId: Long,
     )
 
+    fun findByPersonAIdOrPersonBId(
+        personAId: Long,
+        personBId: Long,
+    ): List<Spouse>
+
     fun deleteAllByFamilyTree(familyTree: FamilyTree)
 }

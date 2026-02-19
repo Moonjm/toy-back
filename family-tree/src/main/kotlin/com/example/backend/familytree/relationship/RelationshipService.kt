@@ -53,6 +53,9 @@ class RelationshipService(
             spouseRepository.save(
                 Spouse(familyTree = tree, personAId = personAId, personBId = personBId),
             )
+
+        autoConnectChildrenForSpouse(tree, request.personId, request.spouseId)
+
         return spouse.requiredId
     }
 
@@ -109,6 +112,9 @@ class RelationshipService(
                     childId = request.childId,
                 ),
             )
+
+        autoConnectSpouseAsParent(tree, request.parentId, request.childId)
+
         return parentChild.requiredId
     }
 
@@ -138,6 +144,42 @@ class RelationshipService(
     fun deleteAllByPersonId(personId: Long) {
         spouseRepository.deleteByPersonAIdOrPersonBId(personId, personId)
         parentChildRepository.deleteAllByParentIdOrChildId(personId, personId)
+    }
+
+    private fun autoConnectChildrenForSpouse(
+        tree: FamilyTree,
+        personId: Long,
+        spouseId: Long,
+    ) {
+        val allParentChild = parentChildRepository.findAllByFamilyTree(tree)
+        val childrenOfPerson = allParentChild.filter { it.parentId == personId }.map { it.childId }
+        val childrenOfSpouse = allParentChild.filter { it.parentId == spouseId }.map { it.childId }
+
+        childrenOfPerson.forEach { connectParentIfEligible(tree, spouseId, it) }
+        childrenOfSpouse.forEach { connectParentIfEligible(tree, personId, it) }
+    }
+
+    private fun autoConnectSpouseAsParent(
+        tree: FamilyTree,
+        parentId: Long,
+        childId: Long,
+    ) {
+        val spouses = spouseRepository.findByPersonAIdOrPersonBId(parentId, parentId)
+        for (spouse in spouses) {
+            val spousePersonId = if (spouse.personAId == parentId) spouse.personBId else spouse.personAId
+            connectParentIfEligible(tree, spousePersonId, childId)
+        }
+    }
+
+    private fun connectParentIfEligible(
+        tree: FamilyTree,
+        parentId: Long,
+        childId: Long,
+    ) {
+        val alreadyParent = parentChildRepository.findByParentIdAndChildId(parentId, childId) != null
+        if (!alreadyParent && parentChildRepository.countByChildId(childId) < MAX_PARENTS) {
+            parentChildRepository.save(ParentChild(familyTree = tree, parentId = parentId, childId = childId))
+        }
     }
 
     private fun isDescendant(
