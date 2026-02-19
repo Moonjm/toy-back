@@ -8,7 +8,6 @@ import org.aspectj.lang.reflect.MethodSignature
 import org.springframework.http.ResponseEntity
 import org.springframework.stereotype.Component
 import java.net.URI
-import kotlin.collections.indexOf
 
 @Aspect
 @Component
@@ -19,17 +18,22 @@ class ResponseCreatedAspect {
         responseCreated: ResponseCreated,
     ): ResponseEntity<Void> {
         val result = joinPoint.proceed() as ResponseEntity<*>
-        val id = result.getBody()
-        val memberId = getArgument(joinPoint, "memberId") // 추가 추출
+        val body = result.body
 
-        return ResponseEntity
-            .created(
-                URI.create(
-                    responseCreated.path
-                        .replace("{id}", id?.toString() ?: "")
-                        .replace("{memberId}", memberId?.toString() ?: ""),
-                ),
-            ).build()
+        var path = responseCreated.path
+        val placeholders = PLACEHOLDER_REGEX.findAll(path).map { it.groupValues[1] }.toList()
+
+        for (name in placeholders) {
+            val arg = getArgument(joinPoint, name)
+            val value = arg?.toString() ?: body?.toString() ?: ""
+            path = path.replace("{$name}", value)
+        }
+
+        return ResponseEntity.created(URI.create(path)).build()
+    }
+
+    companion object {
+        private val PLACEHOLDER_REGEX = "\\{(\\w+)}".toRegex()
     }
 
     private fun getArgument(

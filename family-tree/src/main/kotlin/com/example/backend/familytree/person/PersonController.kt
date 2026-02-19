@@ -1,5 +1,6 @@
 package com.example.backend.familytree.person
 
+import com.example.backend.common.annotation.ResponseCreated
 import com.example.backend.common.response.ErrorResponseBody
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
@@ -26,6 +27,7 @@ class PersonController(
     private val personService: PersonService,
 ) {
     @PostMapping("/{id}/persons")
+    @ResponseCreated("/family-trees/{id}/persons/{personId}")
     @Operation(summary = "인물 추가")
     @ApiResponses(
         value = [
