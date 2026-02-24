@@ -11,7 +11,9 @@ COPY common/file/build.gradle.kts ./common/file/
 COPY apps/daily-record/build.gradle.kts ./apps/daily-record/
 COPY apps/family-tree/build.gradle.kts ./apps/family-tree/
 RUN chmod +x gradlew && ./gradlew :${MODULE}:dependencies --no-daemon
-COPY common ./common
+COPY common/core ./common/core
+COPY common/auth ./common/auth
+COPY common/file ./common/file
 COPY apps/${MODULE} ./apps/${MODULE}
 RUN ./gradlew :${MODULE}:bootJar --no-daemon
 
