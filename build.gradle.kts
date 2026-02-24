@@ -8,7 +8,7 @@ plugins {
 }
 
 subprojects {
-    group = "com.example"
+    group = "com.toy"
     version = "0.0.1-SNAPSHOT"
 
     apply(plugin = "io.spring.dependency-management")

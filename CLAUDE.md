@@ -171,6 +171,6 @@ JWT_REFRESH_DAYS=30
 ## Conventions
 
 - 커밋 메시지: `type(scope): 설명` (한글 사용)
-- 패키지: `com.example.backend.*`
+- 패키지: `com.toy.backend.*`
 - SecurityConfig에서 `/auth/**`, `/swagger-ui/**`, `/v3/api-docs/**`는 public
 - CORS: localhost, 192.168.0.*, https://daily.eunji.shop 허용
