@@ -1,11 +1,10 @@
 plugins {
-    val kotlinVersion = "2.3.0"
-    id("org.springframework.boot") version "4.0.2" apply false
-    id("io.spring.dependency-management") version "1.1.7" apply false
-    kotlin("jvm") version kotlinVersion apply false
-    kotlin("plugin.spring") version kotlinVersion apply false
-    kotlin("plugin.jpa") version kotlinVersion apply false
-    id("com.diffplug.spotless") version "8.2.1" apply false
+    alias(libs.plugins.spring.boot) apply false
+    alias(libs.plugins.spring.dependency.management) apply false
+    alias(libs.plugins.kotlin.jvm) apply false
+    alias(libs.plugins.kotlin.spring) apply false
+    alias(libs.plugins.kotlin.jpa) apply false
+    alias(libs.plugins.spotless) apply false
 }
 
 subprojects {
