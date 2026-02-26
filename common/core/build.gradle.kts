@@ -12,7 +12,6 @@ tasks.named<Jar>("jar") {
 
 dependencies {
     api(libs.spring.boot.starter.web)
-    api(libs.spring.boot.starter.webflux)
     api(libs.spring.boot.starter.data.jpa)
     api(libs.spring.boot.starter.validation)
     api(libs.springdoc.openapi)
