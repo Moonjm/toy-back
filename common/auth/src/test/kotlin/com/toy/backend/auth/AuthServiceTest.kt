@@ -121,6 +121,7 @@ class AuthServiceTest :
                 val request = dummyLoginRequest(password = "wrongpw")
                 every { userRepository.findByUsername("testuser") } returns user
                 every { passwordEncoder.matches("wrongpw", "hashedpw") } returns false
+                justRun { userRepository.incrementFailedAttemptsById(1L) }
 
                 Then("CustomException(INVALID_REQUEST) 발생") {
                     val ex = shouldThrow<CustomException> { authService.login(request, response) }
