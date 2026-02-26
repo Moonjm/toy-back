@@ -93,7 +93,7 @@ class CustomExceptionHandler {
 
         val fieldErrors = e.bindingResult.fieldErrors
         val errorMessage =
-            fieldErrors.joinToString { error: FieldError -> "$error.field: $error.defaultMessage" }
+            fieldErrors.joinToString { error: FieldError -> "${error.field}: ${error.defaultMessage}" }
 
         return ResponseEntity<ErrorResponseBody>(
             ErrorResponseBody(

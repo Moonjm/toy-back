@@ -59,7 +59,7 @@ class AuthService(
             throw CustomException(ErrorCode.ACCOUNT_LOCKED, username)
         }
         if (!passwordEncoder.matches(password, user.passwordHash)) {
-            user.incrementFailedAttempts()
+            userRepository.incrementFailedAttemptsById(user.requiredId)
             throw CustomException(ErrorCode.INVALID_REQUEST, "password")
         }
         user.resetFailedAttempts()
