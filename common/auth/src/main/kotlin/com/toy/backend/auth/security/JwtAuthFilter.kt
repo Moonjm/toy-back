@@ -1,5 +1,6 @@
 package com.toy.backend.auth.security
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -9,6 +10,8 @@ import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
+
+private val log = KotlinLogging.logger {}
 
 @Component
 class JwtAuthFilter(
@@ -41,6 +44,8 @@ class JwtAuthFilter(
                     }
                 SecurityContextHolder.getContext().authentication = auth
             }
+        }.onFailure { e ->
+            log.warn(e) { "JWT 인증 실패 [${request.requestURI}]" }
         }
         filterChain.doFilter(request, response)
     }
