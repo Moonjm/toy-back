@@ -35,7 +35,7 @@ class JwtAuthFilter(
         runCatching {
             val claims = jwtService.parseClaims(token)
             val username = claims.subject ?: return@runCatching
-            val authority = claims["authority"] as? String ?: return@runCatching
+            val authority = claims.getStringClaim("authority") ?: return@runCatching
             if (SecurityContextHolder.getContext().authentication == null) {
                 val authorities = listOf(SimpleGrantedAuthority(authority))
                 val auth =

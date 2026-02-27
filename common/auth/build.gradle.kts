@@ -13,9 +13,7 @@ tasks.named<Jar>("jar") {
 dependencies {
     api(project(":common-core"))
     api(libs.spring.boot.starter.security)
-    api(libs.jjwt.api)
-    runtimeOnly(libs.jjwt.impl)
-    runtimeOnly(libs.jjwt.jackson)
+    api("org.springframework.security:spring-security-oauth2-jose")
     testFixturesImplementation(testFixtures(project(":common-core")))
     testFixturesImplementation(libs.spring.test)
     testFixturesImplementation(libs.kotest.runner.junit5)
