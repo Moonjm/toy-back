@@ -18,33 +18,14 @@ class ResponseCreatedAspect {
         responseCreated: ResponseCreated,
     ): ResponseEntity<Void> {
         val result = joinPoint.proceed() as ResponseEntity<*>
-        val body = result.body
+        val signature = joinPoint.signature as MethodSignature
 
         var path = responseCreated.path
-        val placeholders = PLACEHOLDER_REGEX.findAll(path).map { it.groupValues[1] }.toList()
-
-        for (name in placeholders) {
-            val arg = getArgument(joinPoint, name)
-            val value = arg?.toString() ?: body?.toString() ?: ""
-            path = path.replace("{$name}", value)
+        signature.parameterNames.zip(joinPoint.args).forEach { (name, value) ->
+            path = path.replace("{$name}", value.toString())
         }
+        path = path.replace("{id}", result.body.toString())
 
         return ResponseEntity.created(URI.create(path)).build()
-    }
-
-    companion object {
-        private val PLACEHOLDER_REGEX = "\\{(\\w+)}".toRegex()
-    }
-
-    private fun getArgument(
-        joinPoint: ProceedingJoinPoint,
-        name: String,
-    ): Any? {
-        val signature = joinPoint.signature as MethodSignature
-        val paramNames = signature.parameterNames
-        val args = joinPoint.args
-
-        val index = paramNames.indexOf(name)
-        return if (index >= 0) args[index] else null
     }
 }
