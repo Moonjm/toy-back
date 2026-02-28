@@ -29,7 +29,7 @@ class JwtServiceTest :
                 Then("parseClaims로 파싱 시 subject와 authority가 일치한다") {
                     val claims = jwtService.parseClaims(token)
                     claims.subject shouldBe "testuser"
-                    claims["authority"] shouldBe "USER"
+                    claims.getStringClaim("authority") shouldBe "USER"
                 }
             }
 
