@@ -28,3 +28,8 @@ security:
     secret: ${JWT_SECRET:vj9g4oRmXLDYW9fuGHZdkpSgHALhTCi6LZoiSaVyCF4=}
     access-token-expire-minutes: ${JWT_EXPIRE_MINUTES:120}
     refresh-token-expire-days: ${JWT_REFRESH_DAYS:30}
+
+holiday:
+  api:
+    service-key: ${HOLIDAY_API_SERVICE_KEY:}
+    base-url: http://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService
