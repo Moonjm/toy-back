@@ -10,7 +10,6 @@ import java.time.format.DateTimeFormatter
 
 private val log = KotlinLogging.logger {}
 
-@Suppress("SpringJavaInjectionPointsAutowiringInspection")
 @Component
 class HolidayApiClient(
     private val properties: HolidayApiProperties,
