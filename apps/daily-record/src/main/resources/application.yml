@@ -32,4 +32,4 @@ security:
 holiday:
   api:
     service-key: ${HOLIDAY_API_SERVICE_KEY:}
-    base-url: http://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService
+    base-url: https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService

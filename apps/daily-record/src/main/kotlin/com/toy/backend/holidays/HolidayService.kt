@@ -5,7 +5,7 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.util.concurrent.CompletableFuture
-import java.util.concurrent.Executors
+import java.util.concurrent.ExecutorService
 
 private val log = KotlinLogging.logger {}
 
@@ -14,6 +14,7 @@ class HolidayService(
     private val repository: HolidayRepository,
     private val apiClient: HolidayApiClient,
     private val writer: HolidayWriter,
+    private val virtualThreadExecutor: ExecutorService,
 ) {
     @Transactional(readOnly = true)
     fun getHolidaysByYear(year: Int): Map<String, List<String>> {
@@ -27,15 +28,13 @@ class HolidayService(
 
     fun fetchAndSaveHolidays(year: Int) {
         val holidays =
-            Executors.newVirtualThreadPerTaskExecutor().use { executor ->
-                (1..12)
-                    .map { month ->
-                        CompletableFuture.supplyAsync(
-                            { apiClient.fetchHolidays(year, month) },
-                            executor,
-                        )
-                    }.flatMap { it.join() }
-            }
+            (1..12)
+                .map { month ->
+                    CompletableFuture.supplyAsync(
+                        { apiClient.fetchHolidays(year, month) },
+                        virtualThreadExecutor,
+                    )
+                }.flatMap { it.join() }
         if (holidays.isEmpty()) {
             log.warn { "공휴일 API 응답 없음: year=$year" }
             return
