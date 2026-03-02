@@ -13,8 +13,9 @@ private val log = KotlinLogging.logger {}
 @Component
 class HolidayApiClient(
     private val properties: HolidayApiProperties,
+    restClientBuilder: RestClient.Builder,
 ) {
-    private val restClient = RestClient.create()
+    private val restClient = restClientBuilder.build()
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
 
     fun fetchHolidays(
@@ -41,10 +42,12 @@ class HolidayApiClient(
                     .body(JsonNode::class.java)
                     ?: return emptyList()
 
-            val items = response.path("response").path("body").path("items")
-            if (items.isMissingNode || items.isNull || items.isString) return emptyList()
-
-            val item = items.path("item")
+            val item =
+                response
+                    .path("response")
+                    .path("body")
+                    .path("items")
+                    .path("item")
             if (item.isMissingNode || item.isNull) return emptyList()
 
             if (item.isArray) {
