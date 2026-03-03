@@ -8,6 +8,7 @@ import kotlinx.coroutines.withTimeout
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.LocalDate
+import kotlin.coroutines.cancellation.CancellationException
 
 private val log = KotlinLogging.logger {}
 
@@ -27,8 +28,13 @@ class HolidayScheduler(
                 listOf(currentYear, currentYear + 1)
                     .map { year ->
                         async {
-                            runCatching { service.fetchAndSaveHolidays(year) }
-                                .onFailure { log.error(it) { "공휴일 업데이트 실패: year=$year" } }
+                            try {
+                                service.fetchAndSaveHolidays(year)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                log.error(e) { "공휴일 업데이트 실패: year=$year" }
+                            }
                         }
                     }.awaitAll()
             }
