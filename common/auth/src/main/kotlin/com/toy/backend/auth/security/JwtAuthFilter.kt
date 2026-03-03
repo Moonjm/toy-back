@@ -17,6 +17,8 @@ private val log = KotlinLogging.logger {}
 class JwtAuthFilter(
     private val jwtService: JwtService,
 ) : OncePerRequestFilter() {
+    override fun shouldNotFilterAsyncDispatch(): Boolean = false
+
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,

@@ -8,9 +8,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
-import kotlinx.coroutines.runBlocking
 import org.springframework.http.ResponseEntity
-import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -42,21 +40,20 @@ class HolidayController(
     ): ResponseEntity<DataResponseBody<Map<String, List<String>>>> = ResponseEntity.ok(DataResponseBody(service.getHolidaysByYear(year)))
 
     @PostMapping("/{year}")
-    @PreAuthorize("hasAuthority('ADMIN')")
     @Operation(summary = "공휴일 데이터 갱신")
     @ApiResponses(
         value = [
             ApiResponse(responseCode = "204", description = "갱신 완료"),
         ],
     )
-    fun refresh(
+    suspend fun refresh(
         @Parameter(description = "갱신 연도", example = "2026")
         @PathVariable
         @Min(2000)
         @Max(2100)
         year: Int,
     ): ResponseEntity<Void> {
-        runBlocking { service.fetchAndSaveHolidays(year) }
+        service.fetchAndSaveHolidays(year)
         return ResponseEntity.noContent().build()
     }
 }

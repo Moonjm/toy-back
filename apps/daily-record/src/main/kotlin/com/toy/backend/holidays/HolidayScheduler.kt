@@ -4,6 +4,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.LocalDate
@@ -22,12 +23,18 @@ class HolidayScheduler(
 
             val currentYear = LocalDate.now().year
             log.info { "공휴일 데이터 업데이트: $currentYear, ${currentYear + 1}" }
-            listOf(currentYear, currentYear + 1)
-                .map { year ->
-                    async {
-                        runCatching { service.fetchAndSaveHolidays(year) }
-                            .onFailure { log.error(it) { "공휴일 업데이트 실패: year=$year" } }
-                    }
-                }.awaitAll()
+            withTimeout(SCHEDULER_TIMEOUT_MS) {
+                listOf(currentYear, currentYear + 1)
+                    .map { year ->
+                        async {
+                            runCatching { service.fetchAndSaveHolidays(year) }
+                                .onFailure { log.error(it) { "공휴일 업데이트 실패: year=$year" } }
+                        }
+                    }.awaitAll()
+            }
         }
+
+    companion object {
+        private const val SCHEDULER_TIMEOUT_MS = 300_000L // 5분
+    }
 }
