@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
+import kotlinx.coroutines.runBlocking
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.validation.annotation.Validated
@@ -55,7 +56,7 @@ class HolidayController(
         @Max(2100)
         year: Int,
     ): ResponseEntity<Void> {
-        service.fetchAndSaveHolidays(year)
+        runBlocking { service.fetchAndSaveHolidays(year) }
         return ResponseEntity.noContent().build()
     }
 }

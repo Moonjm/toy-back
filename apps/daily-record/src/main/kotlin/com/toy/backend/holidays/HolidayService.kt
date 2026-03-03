@@ -1,11 +1,14 @@
 package com.toy.backend.holidays
 
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.ExecutorService
 
 private val log = KotlinLogging.logger {}
 
@@ -14,7 +17,6 @@ class HolidayService(
     private val repository: HolidayRepository,
     private val apiClient: HolidayApiClient,
     private val writer: HolidayWriter,
-    private val virtualThreadExecutor: ExecutorService,
 ) {
     @Transactional(readOnly = true)
     fun getHolidaysByYear(year: Int): Map<String, List<String>> {
@@ -26,19 +28,18 @@ class HolidayService(
             .mapValues { (_, holidays) -> holidays.map { it.name } }
     }
 
-    fun fetchAndSaveHolidays(year: Int) {
+    suspend fun fetchAndSaveHolidays(year: Int) {
         val holidays =
-            (1..12)
-                .map { month ->
-                    CompletableFuture.supplyAsync(
-                        { apiClient.fetchHolidays(year, month) },
-                        virtualThreadExecutor,
-                    )
-                }.flatMap { it.join() }
+            coroutineScope {
+                (1..12)
+                    .map { month -> async { apiClient.fetchHolidays(year, month) } }
+                    .awaitAll()
+                    .flatten()
+            }
         if (holidays.isEmpty()) {
             log.warn { "공휴일 API 응답 없음: year=$year" }
             return
         }
-        writer.saveHolidays(year, holidays)
+        withContext(Dispatchers.IO) { writer.saveHolidays(year, holidays) }
     }
 }

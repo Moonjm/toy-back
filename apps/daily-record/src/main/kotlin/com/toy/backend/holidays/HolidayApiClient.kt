@@ -1,8 +1,10 @@
 package com.toy.backend.holidays
 
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.reactor.awaitSingleOrNull
 import org.springframework.stereotype.Component
-import org.springframework.web.client.RestClient
+import org.springframework.web.reactive.function.client.WebClient
+import org.springframework.web.reactive.function.client.bodyToMono
 import tools.jackson.databind.JsonNode
 import java.net.URI
 import java.time.LocalDate
@@ -13,12 +15,12 @@ private val log = KotlinLogging.logger {}
 @Component
 class HolidayApiClient(
     private val properties: HolidayApiProperties,
-    restClientBuilder: RestClient.Builder,
+    webClientBuilder: WebClient.Builder,
 ) {
-    private val restClient = restClientBuilder.build()
+    private val webClient = webClientBuilder.build()
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
 
-    fun fetchHolidays(
+    suspend fun fetchHolidays(
         year: Int,
         month: Int,
     ): List<HolidayItem> {
@@ -35,11 +37,12 @@ class HolidayApiClient(
 
         return try {
             val response =
-                restClient
+                webClient
                     .get()
                     .uri(uri)
                     .retrieve()
-                    .body(JsonNode::class.java)
+                    .bodyToMono<JsonNode>()
+                    .awaitSingleOrNull()
                     ?: return emptyList()
 
             val item =
