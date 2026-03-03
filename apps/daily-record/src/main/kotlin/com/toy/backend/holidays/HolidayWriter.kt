@@ -20,7 +20,7 @@ class HolidayWriter(
         val end = LocalDate.of(year, 12, 31)
         repository.deleteByDateBetween(start, end)
 
-        val entities = holidays.map { Holiday(date = it.date, name = it.name) }
+        val entities = holidays.distinctBy { it.date to it.name }.map { Holiday(date = it.date, name = it.name) }
         repository.saveAll(entities)
         log.info { "공휴일 저장 완료: year=$year, count=${entities.size}" }
     }
