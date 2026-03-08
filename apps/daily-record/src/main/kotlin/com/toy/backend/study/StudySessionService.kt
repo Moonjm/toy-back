@@ -58,13 +58,12 @@ class StudySessionService(
 
     fun list(
         username: String,
-        date: LocalDate?,
         from: LocalDate?,
         to: LocalDate?,
     ): List<StudySessionResponse> {
         val user = findUser(username)
-        val start = (from ?: date ?: LocalDate.now()).atStartOfDay()
-        val end = (to ?: date ?: LocalDate.now()).atTime(LocalTime.MAX)
+        val start = (from ?: LocalDate.now()).atStartOfDay()
+        val end = (to ?: LocalDate.now()).atTime(LocalTime.MAX)
         return repository
             .findAllByUserAndStartedAtBetweenOrderByStartedAtDesc(user, start, end)
             .map { it.toResponse() }

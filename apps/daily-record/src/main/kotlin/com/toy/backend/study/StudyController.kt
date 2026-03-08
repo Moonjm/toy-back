@@ -120,21 +120,17 @@ class StudyController(
         ],
     )
     fun list(
-        @Parameter(description = "조회 날짜", example = "2026-02-01")
-        @RequestParam(required = false)
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-        date: LocalDate?,
-        @Parameter(description = "조회 시작 날짜", example = "2026-02-01")
+        @Parameter(description = "조회 시작 날짜", example = "2026-03-08")
         @RequestParam(required = false)
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
         from: LocalDate?,
-        @Parameter(description = "조회 종료 날짜", example = "2026-02-28")
+        @Parameter(description = "조회 종료 날짜", example = "2026-03-08")
         @RequestParam(required = false)
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
         to: LocalDate?,
         authentication: Authentication,
     ): ResponseEntity<DataResponseBody<List<StudySessionResponse>>> =
-        ResponseEntity.ok(DataResponseBody(service.list(authentication.name, date, from, to)))
+        ResponseEntity.ok(DataResponseBody(service.list(authentication.name, from, to)))
 
     @PostMapping("/sessions")
     @Operation(summary = "공부 세션 시작")
