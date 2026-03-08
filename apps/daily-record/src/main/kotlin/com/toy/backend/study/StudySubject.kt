@@ -26,8 +26,7 @@ class StudySubject(
 data class StudySubjectResponse(
     val id: Long,
     val name: String,
-    val sortOrder: Int,
 )
 
 fun StudySubject.toResponse(): StudySubjectResponse =
-    StudySubjectResponse(id = requiredId, name = name, sortOrder = sortOrder)
+    StudySubjectResponse(id = requiredId, name = name)
