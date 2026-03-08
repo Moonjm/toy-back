@@ -19,6 +19,7 @@ class HolidayWriter(
         val start = LocalDate.of(year, 1, 1)
         val end = LocalDate.of(year, 12, 31)
         repository.deleteByDateBetween(start, end)
+        repository.flush()
 
         val entities = holidays.distinctBy { it.date to it.name }.map { Holiday(date = it.date, name = it.name) }
         repository.saveAll(entities)
