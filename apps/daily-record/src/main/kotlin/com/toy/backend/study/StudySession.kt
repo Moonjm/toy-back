@@ -1,6 +1,8 @@
 package com.toy.backend.study
 
+import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.entity.BaseEntity
+import com.toy.backend.common.exception.CustomException
 import com.toy.backend.user.User
 import jakarta.persistence.*
 import java.time.Duration
@@ -44,7 +46,7 @@ class StudySession(
 
     fun resume(at: LocalDateTime) {
         val activePause = pauses.lastOrNull { it.resumedAt == null }
-            ?: error("No active pause to resume")
+            ?: throw CustomException(ErrorCode.INVALID_REQUEST, "활성 일시정지가 없습니다")
         activePause.resumedAt = at
     }
 
