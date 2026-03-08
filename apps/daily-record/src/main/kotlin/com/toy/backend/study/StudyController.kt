@@ -1,5 +1,6 @@
 package com.toy.backend.study
 
+import com.toy.backend.common.annotation.ResponseCreated
 import com.toy.backend.common.response.DataResponseBody
 import com.toy.backend.common.response.ErrorResponseBody
 import io.swagger.v3.oas.annotations.Operation
@@ -40,14 +41,15 @@ class StudyController(
             ApiResponse(responseCode = "200", description = "성공"),
         ],
     )
-    fun subjects(): ResponseEntity<List<StudySubjectResponse>> =
-        ResponseEntity.ok(service.listSubjects())
+    fun subjects(): ResponseEntity<DataResponseBody<List<StudySubjectResponse>>> =
+        ResponseEntity.ok(DataResponseBody(service.listSubjects()))
 
     @PostMapping("/subjects")
+    @ResponseCreated("/study/subjects/{id}")
     @Operation(summary = "과목 생성")
     @ApiResponses(
         value = [
-            ApiResponse(responseCode = "200", description = "생성된 과목 ID"),
+            ApiResponse(responseCode = "201", description = "생성된 과목 ID"),
         ],
     )
     fun createSubject(
@@ -133,10 +135,11 @@ class StudyController(
         ResponseEntity.ok(DataResponseBody(service.list(authentication.name, from, to)))
 
     @PostMapping("/sessions")
+    @ResponseCreated("/study/sessions/{id}")
     @Operation(summary = "공부 세션 시작")
     @ApiResponses(
         value = [
-            ApiResponse(responseCode = "200", description = "생성된 세션 ID"),
+            ApiResponse(responseCode = "201", description = "생성된 세션 ID"),
             ApiResponse(
                 responseCode = "404",
                 description = "과목을 찾을 수 없음",
@@ -204,5 +207,5 @@ class StudyController(
     fun end(
         @PathVariable id: Long,
         authentication: Authentication,
-    ): ResponseEntity<StudySessionResponse> = ResponseEntity.ok(service.end(authentication.name, id))
+    ): ResponseEntity<DataResponseBody<StudySessionResponse>> = ResponseEntity.ok(DataResponseBody(service.end(authentication.name, id)))
 }
