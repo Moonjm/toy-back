@@ -7,6 +7,7 @@ springdoc = "3.0.1"
 kotlin-logging = "8.0.01"
 kotlin-jdsl = "3.8.0"
 aws-s3 = "2.42.3"
+p6spy-starter = "2.0.0"
 kotest = "6.1.4"
 mockk = "1.14.9"
 
@@ -40,6 +41,7 @@ aws-s3 = { module = "software.amazon.awssdk:s3", version.ref = "aws-s3" }
 
 # Database
 postgresql = { module = "org.postgresql:postgresql" }
+p6spy-spring-boot-starter = { module = "com.github.gavlyukovskiy:p6spy-spring-boot-starter", version.ref = "p6spy-starter" }
 
 # Test
 kotest-runner-junit5 = { module = "io.kotest:kotest-runner-junit5", version.ref = "kotest" }

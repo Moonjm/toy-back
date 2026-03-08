@@ -63,6 +63,7 @@ class StudySession(
 
     fun end(at: LocalDateTime) {
         if (endedAt != null) throw CustomException(ErrorCode.INVALID_REQUEST, "이미 종료된 세션입니다")
+        pauses.find { it.resumedAt == null }?.resumedAt = at
         endedAt = at
         totalSeconds = calculateTotalSeconds(at)
     }

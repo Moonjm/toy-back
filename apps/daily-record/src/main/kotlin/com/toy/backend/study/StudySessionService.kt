@@ -74,10 +74,14 @@ class StudySessionService(
 
     @Transactional
     fun start(username: String, request: StudySessionStartRequest): Long {
+        val user = findUser(username)
+        if (repository.existsByUserAndEndedAtIsNull(user)) {
+            throw CustomException(ErrorCode.INVALID_REQUEST, "진행중인 세션이 이미 존재합니다")
+        }
         val subject = subjectRepository.findByIdOrNull(request.subjectId)
             ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, request.subjectId)
         val session = StudySession(
-            user = findUser(username),
+            user = user,
             subject = subject,
             startedAt = LocalDateTime.now(),
         )

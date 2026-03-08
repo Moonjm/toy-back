@@ -7,6 +7,7 @@ import java.time.LocalDateTime
 
 interface StudySessionRepository : JpaRepository<StudySession, Long> {
     fun findByIdAndUser(id: Long, user: User): StudySession?
+    fun existsByUserAndEndedAtIsNull(user: User): Boolean
     fun existsBySubject(subject: StudySubject): Boolean
 
     @Query(
