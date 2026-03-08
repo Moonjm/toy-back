@@ -15,6 +15,12 @@ data class StudySubjectRequest(
     val name: String,
 )
 
+@Schema(description = "과목 순서 변경 요청")
+data class StudySubjectReorderRequest(
+    @field:Schema(description = "순서대로 정렬된 과목 ID 목록", example = "[3, 1, 2]")
+    val subjectIds: List<Long>,
+)
+
 @Schema(description = "세션 응답")
 data class StudySessionResponse(
     val id: Long,

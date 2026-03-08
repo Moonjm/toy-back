@@ -38,6 +38,16 @@ class StudySessionService(
     }
 
     @Transactional
+    fun reorderSubjects(request: StudySubjectReorderRequest) {
+        val subjects = subjectRepository.findAllById(request.subjectIds).associateBy { it.requiredId }
+        request.subjectIds.forEachIndexed { index, id ->
+            val subject = subjects[id]
+                ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
+            subject.updateSortOrder(index)
+        }
+    }
+
+    @Transactional
     fun deleteSubject(id: Long) {
         val subject = subjectRepository.findByIdOrNull(id)
             ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)

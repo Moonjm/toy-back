@@ -47,6 +47,15 @@ class StudyController(
         return ResponseEntity.noContent().build()
     }
 
+    @PutMapping("/subjects/reorder")
+    @Operation(summary = "과목 순서 변경")
+    fun reorderSubjects(
+        @Valid @RequestBody request: StudySubjectReorderRequest,
+    ): ResponseEntity<Void> {
+        service.reorderSubjects(request)
+        return ResponseEntity.noContent().build()
+    }
+
     @DeleteMapping("/subjects/{id}")
     @Operation(summary = "과목 삭제")
     fun deleteSubject(@PathVariable id: Long): ResponseEntity<Void> {
