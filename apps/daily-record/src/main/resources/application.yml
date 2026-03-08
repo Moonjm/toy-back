@@ -8,9 +8,9 @@ spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
   datasource:
-    url: jdbc:postgresql://${DB_HOST:192.168.0.10}:${DB_PORT:8102}/daily-record
-    username: ${DB_USERNAME:daily-record}
-    password: ${DB_PASSWORD:daily00}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/daily-record
+    username: ${DB_USERNAME:toy}
+    password: ${DB_PASSWORD:toy00}
     driver-class-name: org.postgresql.Driver
   jpa:
     open-in-view: false
