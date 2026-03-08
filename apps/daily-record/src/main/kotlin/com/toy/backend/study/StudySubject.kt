@@ -1,24 +1,33 @@
 package com.toy.backend.study
 
-enum class StudySubject(
-    val emoji: String,
-    val displayName: String,
-) {
-    FISCAL("🏛️", "재정학"),
-    TAX_LAW_INTRO("📜", "세법학개론"),
-    ACCOUNTING_INTRO("📊", "회계학개론"),
-    COMMERCIAL_LAW("⚖️", "상법/민법/행정소송법"),
-    TAX_LAW_1("📕", "세법학 1부"),
-    TAX_LAW_2("📗", "세법학 2부"),
-    FINANCIAL_ACCOUNTING("🧮", "회계학 1부"),
-    COST_ACCOUNTING("💰", "회계학 2부"),
+import com.toy.backend.common.entity.BaseEntity
+import jakarta.persistence.Column
+import jakarta.persistence.Entity
+import jakarta.persistence.Table
+
+@Entity
+@Table(name = "study_subjects")
+class StudySubject(
+    @Column(nullable = false, length = 50)
+    var name: String,
+
+    @Column(nullable = false)
+    var sortOrder: Int = 0,
+) : BaseEntity() {
+    fun updateDetails(name: String) {
+        this.name = name
+    }
+
+    fun updateSortOrder(sortOrder: Int) {
+        this.sortOrder = sortOrder
+    }
 }
 
 data class StudySubjectResponse(
+    val id: Long,
     val name: String,
-    val emoji: String,
-    val displayName: String,
+    val sortOrder: Int,
 )
 
 fun StudySubject.toResponse(): StudySubjectResponse =
-    StudySubjectResponse(name = name, emoji = emoji, displayName = displayName)
+    StudySubjectResponse(id = requiredId, name = name, sortOrder = sortOrder)

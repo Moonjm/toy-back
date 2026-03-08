@@ -5,8 +5,14 @@ import java.time.LocalDateTime
 
 @Schema(description = "세션 시작 요청")
 data class StudySessionStartRequest(
-    @field:Schema(description = "과목", example = "FISCAL")
-    val subject: StudySubject,
+    @field:Schema(description = "과목 ID", example = "1")
+    val subjectId: Long,
+)
+
+@Schema(description = "과목 생성/수정 요청")
+data class StudySubjectRequest(
+    @field:Schema(description = "과목명", example = "재정학")
+    val name: String,
 )
 
 @Schema(description = "세션 응답")

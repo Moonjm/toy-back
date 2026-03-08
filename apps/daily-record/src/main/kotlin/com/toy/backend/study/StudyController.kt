@@ -8,10 +8,12 @@ import jakarta.validation.Valid
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
@@ -27,7 +29,30 @@ class StudyController(
     @GetMapping("/subjects")
     @Operation(summary = "과목 목록 조회")
     fun subjects(): ResponseEntity<List<StudySubjectResponse>> =
-        ResponseEntity.ok(StudySubject.entries.map { it.toResponse() })
+        ResponseEntity.ok(service.listSubjects())
+
+    @PostMapping("/subjects")
+    @Operation(summary = "과목 생성")
+    fun createSubject(
+        @Valid @RequestBody request: StudySubjectRequest,
+    ): ResponseEntity<Long> = ResponseEntity.ok(service.createSubject(request))
+
+    @PutMapping("/subjects/{id}")
+    @Operation(summary = "과목 수정")
+    fun updateSubject(
+        @PathVariable id: Long,
+        @Valid @RequestBody request: StudySubjectRequest,
+    ): ResponseEntity<Void> {
+        service.updateSubject(id, request)
+        return ResponseEntity.noContent().build()
+    }
+
+    @DeleteMapping("/subjects/{id}")
+    @Operation(summary = "과목 삭제")
+    fun deleteSubject(@PathVariable id: Long): ResponseEntity<Void> {
+        service.deleteSubject(id)
+        return ResponseEntity.noContent().build()
+    }
 
     @GetMapping("/sessions")
     @Operation(summary = "공부 세션 목록 조회")

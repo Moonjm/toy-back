@@ -19,8 +19,8 @@ class StudySession(
     @JoinColumn(name = "user_id", nullable = false)
     var user: User,
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 30)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "subject_id", nullable = false)
     var subject: StudySubject,
 
     @Column(nullable = false)

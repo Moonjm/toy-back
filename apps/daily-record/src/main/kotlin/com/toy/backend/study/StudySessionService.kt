@@ -3,6 +3,7 @@ package com.toy.backend.study
 import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.exception.CustomException
 import com.toy.backend.user.UserRepository
+import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
@@ -13,8 +14,38 @@ import java.time.LocalTime
 @Transactional(readOnly = true)
 class StudySessionService(
     private val repository: StudySessionRepository,
+    private val subjectRepository: StudySubjectRepository,
     private val userRepository: UserRepository,
 ) {
+    // --- Subject CRUD ---
+
+    fun listSubjects(): List<StudySubjectResponse> =
+        subjectRepository.findAllByOrderBySortOrderAscIdAsc().map { it.toResponse() }
+
+    @Transactional
+    fun createSubject(request: StudySubjectRequest): Long {
+        val maxOrder = subjectRepository.findAllByOrderBySortOrderAscIdAsc()
+            .maxOfOrNull { it.sortOrder } ?: -1
+        val subject = StudySubject(name = request.name, sortOrder = maxOrder + 1)
+        return subjectRepository.save(subject).requiredId
+    }
+
+    @Transactional
+    fun updateSubject(id: Long, request: StudySubjectRequest) {
+        val subject = subjectRepository.findByIdOrNull(id)
+            ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
+        subject.updateDetails(name = request.name)
+    }
+
+    @Transactional
+    fun deleteSubject(id: Long) {
+        val subject = subjectRepository.findByIdOrNull(id)
+            ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
+        subjectRepository.delete(subject)
+    }
+
+    // --- Session CRUD ---
+
     fun list(
         username: String,
         date: LocalDate?,
@@ -31,9 +62,11 @@ class StudySessionService(
 
     @Transactional
     fun start(username: String, request: StudySessionStartRequest): Long {
+        val subject = subjectRepository.findByIdOrNull(request.subjectId)
+            ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, request.subjectId)
         val session = StudySession(
             user = findUser(username),
-            subject = request.subject,
+            subject = subject,
             startedAt = LocalDateTime.now(),
         )
         return repository.save(session).requiredId
