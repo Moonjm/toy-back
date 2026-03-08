@@ -51,6 +51,9 @@ class StudySessionService(
     fun deleteSubject(id: Long) {
         val subject = subjectRepository.findByIdOrNull(id)
             ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
+        if (repository.existsBySubject(subject)) {
+            throw CustomException(ErrorCode.INVALID_REQUEST, "해당 과목을 사용하는 세션이 존재합니다")
+        }
         subjectRepository.delete(subject)
     }
 

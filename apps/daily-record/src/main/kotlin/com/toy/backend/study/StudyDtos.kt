@@ -1,6 +1,9 @@
 package com.toy.backend.study
 
 import io.swagger.v3.oas.annotations.media.Schema
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotEmpty
+import jakarta.validation.constraints.Size
 import java.time.LocalDateTime
 
 @Schema(description = "세션 시작 요청")
@@ -11,12 +14,15 @@ data class StudySessionStartRequest(
 
 @Schema(description = "과목 생성/수정 요청")
 data class StudySubjectRequest(
+    @field:NotBlank
+    @field:Size(max = 50)
     @field:Schema(description = "과목명", example = "재정학")
     val name: String,
 )
 
 @Schema(description = "과목 순서 변경 요청")
 data class StudySubjectReorderRequest(
+    @field:NotEmpty
     @field:Schema(description = "순서대로 정렬된 과목 ID 목록", example = "[3, 1, 2]")
     val subjectIds: List<Long>,
 )

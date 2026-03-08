@@ -4,7 +4,15 @@ import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.entity.BaseEntity
 import com.toy.backend.common.exception.CustomException
 import com.toy.backend.user.User
-import jakarta.persistence.*
+import jakarta.persistence.CascadeType
+import jakarta.persistence.Column
+import jakarta.persistence.Entity
+import jakarta.persistence.FetchType
+import jakarta.persistence.Index
+import jakarta.persistence.JoinColumn
+import jakarta.persistence.ManyToOne
+import jakarta.persistence.OneToMany
+import jakarta.persistence.Table
 import java.time.Duration
 import java.time.LocalDateTime
 
@@ -39,18 +47,22 @@ class StudySession(
 ) : BaseEntity() {
 
     fun pause(at: LocalDateTime): StudyPause {
+        if (endedAt != null) throw CustomException(ErrorCode.INVALID_REQUEST, "이미 종료된 세션입니다")
+        if (pauses.any { it.resumedAt == null }) throw CustomException(ErrorCode.INVALID_REQUEST, "이미 일시정지 중입니다")
         val pause = StudyPause(session = this, pausedAt = at)
         pauses.add(pause)
         return pause
     }
 
     fun resume(at: LocalDateTime) {
+        if (endedAt != null) throw CustomException(ErrorCode.INVALID_REQUEST, "이미 종료된 세션입니다")
         val activePause = pauses.lastOrNull { it.resumedAt == null }
             ?: throw CustomException(ErrorCode.INVALID_REQUEST, "활성 일시정지가 없습니다")
         activePause.resumedAt = at
     }
 
     fun end(at: LocalDateTime) {
+        if (endedAt != null) throw CustomException(ErrorCode.INVALID_REQUEST, "이미 종료된 세션입니다")
         endedAt = at
         totalSeconds = calculateTotalSeconds(at)
     }
