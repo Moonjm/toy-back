@@ -15,6 +15,16 @@ interface StudySessionRepository : JpaRepository<StudySession, Long> {
         SELECT s FROM StudySession s
         JOIN FETCH s.subject
         LEFT JOIN FETCH s.pauses
+        WHERE s.user = :user AND s.endedAt IS NULL
+        """
+    )
+    fun findByUserAndEndedAtIsNull(user: User): StudySession?
+
+    @Query(
+        """
+        SELECT s FROM StudySession s
+        JOIN FETCH s.subject
+        LEFT JOIN FETCH s.pauses
         WHERE s.user = :user
           AND s.startedAt BETWEEN :from AND :to
         ORDER BY s.startedAt DESC

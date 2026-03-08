@@ -57,6 +57,11 @@ class StudySessionService(
         subjectRepository.delete(subject)
     }
 
+    fun findActiveSession(username: String): StudySessionResponse? {
+        val user = findUser(username)
+        return repository.findByUserAndEndedAtIsNull(user)?.toResponse()
+    }
+
     // --- Session CRUD ---
 
     fun list(

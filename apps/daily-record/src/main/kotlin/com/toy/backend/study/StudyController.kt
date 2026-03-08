@@ -114,6 +114,18 @@ class StudyController(
 
     // --- Session ---
 
+    @GetMapping("/sessions/active")
+    @Operation(summary = "진행 중인 세션 조회")
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "성공 (없으면 data=null)"),
+        ],
+    )
+    fun activeSession(
+        authentication: Authentication,
+    ): ResponseEntity<DataResponseBody<StudySessionResponse?>> =
+        ResponseEntity.ok(DataResponseBody(service.findActiveSession(authentication.name)))
+
     @GetMapping("/sessions")
     @Operation(summary = "공부 세션 목록 조회")
     @ApiResponses(
