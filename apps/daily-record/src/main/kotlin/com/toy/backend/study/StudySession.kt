@@ -68,8 +68,6 @@ class StudySession(
         totalSeconds = calculateTotalSeconds(at)
     }
 
-    fun calculateElapsedSeconds(now: LocalDateTime): Long = calculateTotalSeconds(now)
-
     private fun calculateTotalSeconds(endTime: LocalDateTime): Long {
         val totalDuration = Duration.between(startedAt, endTime)
         val pausedDuration = pauses.sumOf { pause ->

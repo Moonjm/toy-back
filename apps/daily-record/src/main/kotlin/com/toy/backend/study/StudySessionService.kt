@@ -6,7 +6,6 @@ import com.toy.backend.user.UserRepository
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import com.toy.backend.user.User
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -132,28 +131,6 @@ class StudySessionService(
                 StudyDailyGoal(user = user, date = request.date, goalMinutes = request.goalMinutes),
             )
         }
-    }
-
-    fun getDailyGoal(username: String, date: LocalDate): StudyDailyGoalResponse? {
-        val user = findUser(username)
-        val goal = dailyGoalRepository.findByUserAndDate(user, date) ?: return null
-        val totalSeconds = getTotalStudiedSeconds(user, date)
-        return goal.toResponse(totalSeconds)
-    }
-
-    private fun getTotalStudiedSeconds(user: User, date: LocalDate): Long {
-        val start = date.atStartOfDay()
-        val end = date.atTime(LocalTime.MAX)
-        val now = LocalDateTime.now()
-        return repository
-            .findAllByUserAndStartedAtBetweenOrderByStartedAtDesc(user, start, end)
-            .sumOf { session ->
-                if (session.endedAt != null) {
-                    session.totalSeconds
-                } else {
-                    session.calculateElapsedSeconds(now)
-                }
-            }
     }
 
     private fun findUser(username: String) =
