@@ -91,7 +91,7 @@ fun StudyDailyGoal.toResponse(totalStudiedSeconds: Long): StudyDailyGoalResponse
         goalMinutes = goalMinutes,
         totalStudiedSeconds = totalStudiedSeconds,
         achievementRate = if (goalMinutes > 0) {
-            (totalStudiedSeconds / 60.0 / goalMinutes * 100).coerceAtMost(100.0)
+            Math.round(totalStudiedSeconds / 60.0 / goalMinutes * 1000) / 10.0
         } else {
             0.0
         },

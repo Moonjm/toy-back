@@ -144,9 +144,16 @@ class StudySessionService(
     private fun getTotalStudiedSeconds(user: User, date: LocalDate): Long {
         val start = date.atStartOfDay()
         val end = date.atTime(LocalTime.MAX)
+        val now = LocalDateTime.now()
         return repository
             .findAllByUserAndStartedAtBetweenOrderByStartedAtDesc(user, start, end)
-            .sumOf { it.totalSeconds }
+            .sumOf { session ->
+                if (session.endedAt != null) {
+                    session.totalSeconds
+                } else {
+                    session.calculateElapsedSeconds(now)
+                }
+            }
     }
 
     private fun findUser(username: String) =

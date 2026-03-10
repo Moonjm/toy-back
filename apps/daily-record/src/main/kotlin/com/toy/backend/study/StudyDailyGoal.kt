@@ -5,7 +5,6 @@ import com.toy.backend.user.User
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.FetchType
-import jakarta.persistence.Index
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
@@ -17,9 +16,6 @@ import java.time.LocalDate
     name = "study_daily_goals",
     uniqueConstraints = [
         UniqueConstraint(name = "uk_study_daily_goals_user_date", columnNames = ["user_id", "date"]),
-    ],
-    indexes = [
-        Index(name = "idx_study_daily_goals_user_date", columnList = "user_id, date"),
     ],
 )
 class StudyDailyGoal(

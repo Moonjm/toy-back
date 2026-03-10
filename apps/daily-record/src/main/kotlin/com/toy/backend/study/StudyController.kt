@@ -210,7 +210,7 @@ class StudyController(
     @Operation(summary = "일일 목표 설정/수정")
     @ApiResponses(
         value = [
-            ApiResponse(responseCode = "200", description = "성공"),
+            ApiResponse(responseCode = "204", description = "설정됨"),
         ],
     )
     fun setDailyGoal(
@@ -243,7 +243,7 @@ class StudyController(
     @Operation(summary = "공부 세션 종료")
     @ApiResponses(
         value = [
-            ApiResponse(responseCode = "200", description = "종료된 세션 정보"),
+            ApiResponse(responseCode = "204", description = "종료됨"),
             ApiResponse(
                 responseCode = "404",
                 description = "세션을 찾을 수 없음",
