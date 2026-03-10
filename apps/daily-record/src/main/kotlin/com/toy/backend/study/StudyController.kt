@@ -204,6 +204,41 @@ class StudyController(
         return ResponseEntity.noContent().build()
     }
 
+    // --- Daily Goal ---
+
+    @PutMapping("/daily-goals")
+    @Operation(summary = "일일 목표 설정/수정")
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "성공"),
+        ],
+    )
+    fun setDailyGoal(
+        @Valid @RequestBody request: StudyDailyGoalRequest,
+        authentication: Authentication,
+    ): ResponseEntity<Void> {
+        service.setDailyGoal(authentication.name, request)
+        return ResponseEntity.noContent().build()
+    }
+
+    @GetMapping("/daily-goals")
+    @Operation(summary = "일일 목표 조회")
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "성공 (없으면 data=null)"),
+        ],
+    )
+    fun getDailyGoal(
+        @Parameter(description = "조회 날짜", example = "2026-03-10")
+        @RequestParam
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+        date: LocalDate,
+        authentication: Authentication,
+    ): ResponseEntity<DataResponseBody<StudyDailyGoalResponse?>> =
+        ResponseEntity.ok(DataResponseBody(service.getDailyGoal(authentication.name, date)))
+
+    // --- Session ---
+
     @PatchMapping("/sessions/{id}/end")
     @Operation(summary = "공부 세션 종료")
     @ApiResponses(
@@ -219,5 +254,8 @@ class StudyController(
     fun end(
         @PathVariable id: Long,
         authentication: Authentication,
-    ): ResponseEntity<DataResponseBody<StudySessionResponse>> = ResponseEntity.ok(DataResponseBody(service.end(authentication.name, id)))
+    ): ResponseEntity<Void> {
+        service.end(authentication.name, id)
+        return ResponseEntity.noContent().build()
+    }
 }

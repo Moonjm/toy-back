@@ -6,6 +6,7 @@ import com.toy.backend.user.UserRepository
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import com.toy.backend.user.User
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -15,6 +16,7 @@ import java.time.LocalTime
 class StudySessionService(
     private val repository: StudySessionRepository,
     private val subjectRepository: StudySubjectRepository,
+    private val dailyGoalRepository: StudyDailyGoalRepository,
     private val userRepository: UserRepository,
 ) {
     // --- Subject CRUD ---
@@ -106,16 +108,45 @@ class StudySessionService(
     }
 
     @Transactional
-    fun end(username: String, id: Long): StudySessionResponse {
+    fun end(username: String, id: Long) {
         val session = findSession(username, id)
         session.end(at = LocalDateTime.now())
-        return session.toResponse()
     }
 
     private fun findSession(username: String, id: Long): StudySession {
         val user = findUser(username)
         return repository.findByIdAndUser(id, user)
             ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
+    }
+
+    // --- Daily Goal ---
+
+    @Transactional
+    fun setDailyGoal(username: String, request: StudyDailyGoalRequest) {
+        val user = findUser(username)
+        val goal = dailyGoalRepository.findByUserAndDate(user, request.date)
+        if (goal != null) {
+            goal.updateGoal(request.goalMinutes)
+        } else {
+            dailyGoalRepository.save(
+                StudyDailyGoal(user = user, date = request.date, goalMinutes = request.goalMinutes),
+            )
+        }
+    }
+
+    fun getDailyGoal(username: String, date: LocalDate): StudyDailyGoalResponse? {
+        val user = findUser(username)
+        val goal = dailyGoalRepository.findByUserAndDate(user, date) ?: return null
+        val totalSeconds = getTotalStudiedSeconds(user, date)
+        return goal.toResponse(totalSeconds)
+    }
+
+    private fun getTotalStudiedSeconds(user: User, date: LocalDate): Long {
+        val start = date.atStartOfDay()
+        val end = date.atTime(LocalTime.MAX)
+        return repository
+            .findAllByUserAndStartedAtBetweenOrderByStartedAtDesc(user, start, end)
+            .sumOf { it.totalSeconds }
     }
 
     private fun findUser(username: String) =

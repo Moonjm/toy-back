@@ -1,9 +1,12 @@
 package com.toy.backend.study
 
 import io.swagger.v3.oas.annotations.media.Schema
+import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
+import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 @Schema(description = "세션 시작 요청")
@@ -59,4 +62,37 @@ fun StudyPause.toResponse(): StudyPauseResponse =
         id = requiredId,
         pausedAt = pausedAt,
         resumedAt = resumedAt,
+    )
+
+// --- Daily Goal ---
+
+@Schema(description = "일일 목표 설정 요청")
+data class StudyDailyGoalRequest(
+    @field:NotNull
+    @field:Schema(description = "날짜", example = "2026-03-10")
+    val date: LocalDate,
+
+    @field:Min(1)
+    @field:Schema(description = "목표 시간(분)", example = "180")
+    val goalMinutes: Int,
+)
+
+@Schema(description = "일일 목표 응답")
+data class StudyDailyGoalResponse(
+    val date: LocalDate,
+    val goalMinutes: Int,
+    val totalStudiedSeconds: Long,
+    val achievementRate: Double,
+)
+
+fun StudyDailyGoal.toResponse(totalStudiedSeconds: Long): StudyDailyGoalResponse =
+    StudyDailyGoalResponse(
+        date = date,
+        goalMinutes = goalMinutes,
+        totalStudiedSeconds = totalStudiedSeconds,
+        achievementRate = if (goalMinutes > 0) {
+            (totalStudiedSeconds / 60.0 / goalMinutes * 100).coerceAtMost(100.0)
+        } else {
+            0.0
+        },
     )
