@@ -75,3 +75,8 @@ data class StudyDailyGoalRequest(
     val goalMinutes: Int,
 )
 
+@Schema(description = "오늘 목표 응답")
+data class StudyDailyGoalTodayResponse(
+    @field:Schema(description = "목표 시간(분)", example = "180")
+    val goalMinutes: Int?,
+)

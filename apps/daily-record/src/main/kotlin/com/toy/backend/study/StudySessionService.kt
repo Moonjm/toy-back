@@ -133,6 +133,11 @@ class StudySessionService(
         }
     }
 
+    fun getTodayGoalMinutes(username: String): Int? {
+        val user = findUser(username)
+        return dailyGoalRepository.findByUserAndDate(user, LocalDate.now())?.goalMinutes
+    }
+
     private fun findUser(username: String) =
         userRepository.findByUsername(username)
             ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, username)

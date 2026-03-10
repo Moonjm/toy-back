@@ -241,4 +241,15 @@ class StudyController(
         return ResponseEntity.noContent().build()
     }
 
+    @GetMapping("/daily-goals/today")
+    @Operation(summary = "오늘 목표 시간 조회")
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "성공 (없으면 data=null)"),
+        ],
+    )
+    fun getTodayGoal(
+        authentication: Authentication,
+    ): ResponseEntity<DataResponseBody<StudyDailyGoalTodayResponse>> =
+        ResponseEntity.ok(DataResponseBody(StudyDailyGoalTodayResponse(service.getTodayGoalMinutes(authentication.name))))
 }
