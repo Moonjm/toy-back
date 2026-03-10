@@ -4,8 +4,8 @@ import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
-import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
+import kotlin.math.roundToInt
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -68,7 +68,6 @@ fun StudyPause.toResponse(): StudyPauseResponse =
 
 @Schema(description = "일일 목표 설정 요청")
 data class StudyDailyGoalRequest(
-    @field:NotNull
     @field:Schema(description = "날짜", example = "2026-03-10")
     val date: LocalDate,
 
@@ -91,7 +90,7 @@ fun StudyDailyGoal.toResponse(totalStudiedSeconds: Long): StudyDailyGoalResponse
         goalMinutes = goalMinutes,
         totalStudiedSeconds = totalStudiedSeconds,
         achievementRate = if (goalMinutes > 0) {
-            Math.round(totalStudiedSeconds / 60.0 / goalMinutes * 1000) / 10.0
+            (totalStudiedSeconds / 60.0 / goalMinutes * 1000).roundToInt() / 10.0
         } else {
             0.0
         },

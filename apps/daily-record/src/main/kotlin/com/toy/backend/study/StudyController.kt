@@ -204,6 +204,26 @@ class StudyController(
         return ResponseEntity.noContent().build()
     }
 
+    @PatchMapping("/sessions/{id}/end")
+    @Operation(summary = "공부 세션 종료")
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "204", description = "종료됨"),
+            ApiResponse(
+                responseCode = "404",
+                description = "세션을 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],
+            ),
+        ],
+    )
+    fun end(
+        @PathVariable id: Long,
+        authentication: Authentication,
+    ): ResponseEntity<Void> {
+        service.end(authentication.name, id)
+        return ResponseEntity.noContent().build()
+    }
+
     // --- Daily Goal ---
 
     @PutMapping("/daily-goals")
@@ -236,26 +256,4 @@ class StudyController(
         authentication: Authentication,
     ): ResponseEntity<DataResponseBody<StudyDailyGoalResponse?>> =
         ResponseEntity.ok(DataResponseBody(service.getDailyGoal(authentication.name, date)))
-
-    // --- Session ---
-
-    @PatchMapping("/sessions/{id}/end")
-    @Operation(summary = "공부 세션 종료")
-    @ApiResponses(
-        value = [
-            ApiResponse(responseCode = "204", description = "종료됨"),
-            ApiResponse(
-                responseCode = "404",
-                description = "세션을 찾을 수 없음",
-                content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],
-            ),
-        ],
-    )
-    fun end(
-        @PathVariable id: Long,
-        authentication: Authentication,
-    ): ResponseEntity<Void> {
-        service.end(authentication.name, id)
-        return ResponseEntity.noContent().build()
-    }
 }
