@@ -6,9 +6,11 @@ import com.toy.backend.user.UserRepository
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.temporal.TemporalAdjusters
 
 @Service
 @Transactional(readOnly = true)
@@ -136,6 +138,29 @@ class StudySessionService(
     fun getTodayGoalMinutes(username: String): Int? {
         val user = findUser(username)
         return dailyGoalRepository.findByUserAndDate(user, LocalDate.now())?.goalMinutes
+    }
+
+    fun getWeeklySummary(username: String): StudyWeeklySummaryResponse {
+        val user = findUser(username)
+        val today = LocalDate.now()
+        val monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        val yesterday = today.minusDays(1)
+
+        if (monday == today) {
+            return StudyWeeklySummaryResponse(totalGoalMinutes = 0, totalActualMinutes = 0)
+        }
+
+        val totalGoalMinutes = dailyGoalRepository.sumGoalMinutesByUserAndDateBetween(user, monday, yesterday)
+        val totalActualSeconds = repository.sumTotalSecondsByUserAndStartedAtBetween(
+            user,
+            monday.atStartOfDay(),
+            yesterday.atTime(LocalTime.MAX),
+        )
+
+        return StudyWeeklySummaryResponse(
+            totalGoalMinutes = totalGoalMinutes,
+            totalActualMinutes = (totalActualSeconds / 60).toInt(),
+        )
     }
 
     private fun findUser(username: String) =
