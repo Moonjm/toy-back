@@ -80,3 +80,11 @@ data class StudyDailyGoalTodayResponse(
     @field:Schema(description = "목표 시간(분)", example = "180")
     val goalMinutes: Int?,
 )
+
+@Schema(description = "주간 요약 응답")
+data class StudyWeeklySummaryResponse(
+    @field:Schema(description = "총 목표 시간(분)", example = "960")
+    val totalGoalMinutes: Int,
+    @field:Schema(description = "총 실제 공부 시간(분)", example = "720")
+    val totalActualMinutes: Int,
+)

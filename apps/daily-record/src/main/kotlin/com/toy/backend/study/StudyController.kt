@@ -241,6 +241,18 @@ class StudyController(
         return ResponseEntity.noContent().build()
     }
 
+    @GetMapping("/weekly-summary")
+    @Operation(summary = "주간 요약 조회 (이번 주 월~어제)")
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "성공"),
+        ],
+    )
+    fun getWeeklySummary(
+        authentication: Authentication,
+    ): ResponseEntity<DataResponseBody<StudyWeeklySummaryResponse>> =
+        ResponseEntity.ok(DataResponseBody(service.getWeeklySummary(authentication.name)))
+
     @GetMapping("/daily-goals/today")
     @Operation(summary = "오늘 목표 시간 조회")
     @ApiResponses(

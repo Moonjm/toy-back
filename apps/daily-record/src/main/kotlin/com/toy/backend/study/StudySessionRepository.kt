@@ -35,4 +35,7 @@ interface StudySessionRepository : JpaRepository<StudySession, Long> {
         from: LocalDateTime,
         to: LocalDateTime,
     ): List<StudySession>
+
+    @Query("SELECT COALESCE(SUM(s.totalSeconds), 0) FROM StudySession s WHERE s.user = :user AND s.startedAt BETWEEN :from AND :to")
+    fun sumTotalSecondsByUserAndStartedAtBetween(user: User, from: LocalDateTime, to: LocalDateTime): Long
 }
