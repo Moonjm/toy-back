@@ -21,6 +21,7 @@ dependencies {
     api(libs.kotlin.jdsl.jpql.dsl)
     api(libs.kotlin.jdsl.jpql.render)
     api(libs.kotlin.jdsl.spring.data.jpa)
+    api(libs.logbook)
     runtimeOnly(libs.postgresql)
     runtimeOnly(libs.p6spy.spring.boot.starter)
     testFixturesImplementation(libs.spring.test)
