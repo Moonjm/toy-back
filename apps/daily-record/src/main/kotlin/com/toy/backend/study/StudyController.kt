@@ -200,6 +200,11 @@ class StudyController(
         value = [
             ApiResponse(responseCode = "204", description = "타입 변경됨"),
             ApiResponse(
+                responseCode = "400",
+                description = "활성 일시정지가 없거나 이미 종료된 세션",
+                content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],
+            ),
+            ApiResponse(
                 responseCode = "404",
                 description = "세션을 찾을 수 없음",
                 content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],

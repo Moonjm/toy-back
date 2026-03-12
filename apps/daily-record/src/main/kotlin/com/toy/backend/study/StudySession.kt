@@ -54,11 +54,20 @@ class StudySession(
         return pause
     }
 
+    fun activePause(): StudyPause? = pauses.lastOrNull { it.resumedAt == null }
+
     fun resume(at: LocalDateTime) {
         if (endedAt != null) throw CustomException(ErrorCode.INVALID_REQUEST, "이미 종료된 세션입니다")
-        val activePause = pauses.lastOrNull { it.resumedAt == null }
+        val pause = activePause()
             ?: throw CustomException(ErrorCode.INVALID_REQUEST, "활성 일시정지가 없습니다")
-        activePause.resumedAt = at
+        pause.resumedAt = at
+    }
+
+    fun updatePauseType(type: PauseType) {
+        if (endedAt != null) throw CustomException(ErrorCode.INVALID_REQUEST, "이미 종료된 세션입니다")
+        val pause = activePause()
+            ?: throw CustomException(ErrorCode.INVALID_REQUEST, "활성 일시정지가 없습니다")
+        pause.updateType(type)
     }
 
     fun end(at: LocalDateTime) {
