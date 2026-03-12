@@ -117,9 +117,7 @@ class StudySessionService(
     @Transactional
     fun updatePauseType(username: String, sessionId: Long, request: StudyPauseTypeRequest) {
         val session = findSession(username, sessionId)
-        val activePause = session.pauses.lastOrNull { it.resumedAt == null }
-            ?: throw CustomException(ErrorCode.INVALID_REQUEST, "활성 일시정지가 없습니다")
-        activePause.updateType(request.type)
+        session.updatePauseType(request.type)
     }
 
     private fun findSession(username: String, id: Long): StudySession {
