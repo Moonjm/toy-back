@@ -39,11 +39,26 @@ data class StudySessionResponse(
     val pauses: List<StudyPauseResponse>,
 )
 
+@Schema(description = "일시정지 타입 응답")
+data class PauseTypeResponse(
+    val value: PauseType,
+    val label: String,
+)
+
+fun PauseType.toResponse(): PauseTypeResponse = PauseTypeResponse(value = this, label = label)
+
+@Schema(description = "일시정지 타입 변경 요청")
+data class StudyPauseTypeRequest(
+    @field:Schema(description = "일시정지 타입", example = "LUNCH")
+    val type: PauseType,
+)
+
 @Schema(description = "일시정지 응답")
 data class StudyPauseResponse(
     val id: Long,
     val pausedAt: LocalDateTime,
     val resumedAt: LocalDateTime?,
+    val type: PauseType,
 )
 
 fun StudySession.toResponse(): StudySessionResponse =
@@ -61,6 +76,7 @@ fun StudyPause.toResponse(): StudyPauseResponse =
         id = requiredId,
         pausedAt = pausedAt,
         resumedAt = resumedAt,
+        type = type,
     )
 
 // --- Daily Goal ---

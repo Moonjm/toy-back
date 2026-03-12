@@ -114,6 +114,14 @@ class StudySessionService(
         session.end(at = LocalDateTime.now())
     }
 
+    @Transactional
+    fun updatePauseType(username: String, sessionId: Long, request: StudyPauseTypeRequest) {
+        val session = findSession(username, sessionId)
+        val activePause = session.pauses.lastOrNull { it.resumedAt == null }
+            ?: throw CustomException(ErrorCode.INVALID_REQUEST, "활성 일시정지가 없습니다")
+        activePause.updateType(request.type)
+    }
+
     private fun findSession(username: String, id: Long): StudySession {
         val user = findUser(username)
         return repository.findByIdAndUser(id, user)

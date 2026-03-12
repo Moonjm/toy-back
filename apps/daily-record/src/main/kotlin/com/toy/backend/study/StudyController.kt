@@ -164,6 +164,16 @@ class StudyController(
         authentication: Authentication,
     ): ResponseEntity<Long> = ResponseEntity.ok(service.start(authentication.name, request))
 
+    @GetMapping("/pause-types")
+    @Operation(summary = "일시정지 타입 목록 조회")
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "성공"),
+        ],
+    )
+    fun pauseTypes(): ResponseEntity<DataResponseBody<List<PauseTypeResponse>>> =
+        ResponseEntity.ok(DataResponseBody(PauseType.entries.map { it.toResponse() }))
+
     @PatchMapping("/sessions/{id}/pause")
     @Operation(summary = "공부 세션 일시정지")
     @ApiResponses(
@@ -181,6 +191,27 @@ class StudyController(
         authentication: Authentication,
     ): ResponseEntity<Void> {
         service.pause(authentication.name, id)
+        return ResponseEntity.noContent().build()
+    }
+
+    @PatchMapping("/sessions/{id}/pause-type")
+    @Operation(summary = "현재 일시정지 타입 변경")
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "204", description = "타입 변경됨"),
+            ApiResponse(
+                responseCode = "404",
+                description = "세션을 찾을 수 없음",
+                content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],
+            ),
+        ],
+    )
+    fun updatePauseType(
+        @PathVariable id: Long,
+        @Valid @RequestBody request: StudyPauseTypeRequest,
+        authentication: Authentication,
+    ): ResponseEntity<Void> {
+        service.updatePauseType(authentication.name, id, request)
         return ResponseEntity.noContent().build()
     }
 
