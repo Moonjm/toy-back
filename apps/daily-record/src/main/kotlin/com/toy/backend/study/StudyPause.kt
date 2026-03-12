@@ -3,6 +3,8 @@ package com.toy.backend.study
 import com.toy.backend.common.entity.BaseEntity
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
+import jakarta.persistence.EnumType
+import jakarta.persistence.Enumerated
 import jakarta.persistence.FetchType
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
@@ -21,4 +23,12 @@ class StudyPause(
 
     @Column(nullable = true)
     var resumedAt: LocalDateTime? = null,
-) : BaseEntity()
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    var type: PauseType = PauseType.REST,
+) : BaseEntity() {
+    fun updateType(type: PauseType) {
+        this.type = type
+    }
+}
