@@ -54,7 +54,7 @@ class StudySession(
         return pause
     }
 
-    fun activePause(): StudyPause? = pauses.lastOrNull { it.resumedAt == null }
+    fun activePause(): StudyPause? = pauses.singleOrNull { it.resumedAt == null }
 
     fun resume(at: LocalDateTime) {
         if (endedAt != null) throw CustomException(ErrorCode.INVALID_REQUEST, "이미 종료된 세션입니다")
@@ -72,7 +72,7 @@ class StudySession(
 
     fun end(at: LocalDateTime) {
         if (endedAt != null) throw CustomException(ErrorCode.INVALID_REQUEST, "이미 종료된 세션입니다")
-        pauses.find { it.resumedAt == null }?.resumedAt = at
+        activePause()?.resumedAt = at
         endedAt = at
         totalSeconds = calculateTotalSeconds(at)
     }
