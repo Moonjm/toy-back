@@ -6,8 +6,13 @@ import org.springframework.data.jpa.repository.Query
 import java.time.LocalDateTime
 
 interface StudySessionRepository : JpaRepository<StudySession, Long> {
-    fun findByIdAndUser(id: Long, user: User): StudySession?
+    fun findByIdAndUser(
+        id: Long,
+        user: User,
+    ): StudySession?
+
     fun existsByUserAndEndedAtIsNull(user: User): Boolean
+
     fun existsBySubject(subject: StudySubject): Boolean
 
     @Query(
@@ -16,7 +21,7 @@ interface StudySessionRepository : JpaRepository<StudySession, Long> {
         JOIN FETCH s.subject
         LEFT JOIN FETCH s.pauses
         WHERE s.user = :user AND s.endedAt IS NULL
-        """
+        """,
     )
     fun findByUserAndEndedAtIsNull(user: User): StudySession?
 
@@ -28,7 +33,7 @@ interface StudySessionRepository : JpaRepository<StudySession, Long> {
         WHERE s.user = :user
           AND s.startedAt BETWEEN :from AND :to
         ORDER BY s.startedAt DESC
-        """
+        """,
     )
     fun findAllByUserAndStartedAtBetweenOrderByStartedAtDesc(
         user: User,
@@ -37,5 +42,9 @@ interface StudySessionRepository : JpaRepository<StudySession, Long> {
     ): List<StudySession>
 
     @Query("SELECT COALESCE(SUM(s.totalSeconds), 0) FROM StudySession s WHERE s.user = :user AND s.startedAt BETWEEN :from AND :to")
-    fun sumTotalSecondsByUserAndStartedAtBetween(user: User, from: LocalDateTime, to: LocalDateTime): Long
+    fun sumTotalSecondsByUserAndStartedAtBetween(
+        user: User,
+        from: LocalDateTime,
+        to: LocalDateTime,
+    ): Long
 }

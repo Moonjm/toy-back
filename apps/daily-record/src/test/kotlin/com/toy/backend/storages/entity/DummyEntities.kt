@@ -27,9 +27,10 @@ fun dummyItem(
     quantity: Int = 1,
     createdByUser: User,
     id: Long = 1L,
-): StorageItem = StorageItem(
-    section = section,
-    name = name,
-    quantity = quantity,
-    createdByUser = createdByUser,
-).withId(id)
+): StorageItem =
+    StorageItem(
+        section = section,
+        name = name,
+        quantity = quantity,
+        createdByUser = createdByUser,
+    ).withId(id)

@@ -85,7 +85,6 @@ fun StudyPause.toResponse(): StudyPauseResponse =
 data class StudyDailyGoalRequest(
     @field:Schema(description = "날짜", example = "2026-03-10")
     val date: LocalDate,
-
     @field:Min(1)
     @field:Schema(description = "목표 시간(분)", example = "180")
     val goalMinutes: Int,

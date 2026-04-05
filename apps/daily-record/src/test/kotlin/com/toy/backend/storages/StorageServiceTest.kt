@@ -122,9 +122,10 @@ class StorageServiceTest :
                 every { storageRepository.findByIdOrNull(99L) } returns otherStorage
 
                 Then("STORAGE_ACCESS_DENIED 발생") {
-                    val ex = shouldThrow<CustomException> {
-                        service.updateStorage(username, 99L, dummyStorageUpdateRequest())
-                    }
+                    val ex =
+                        shouldThrow<CustomException> {
+                            service.updateStorage(username, 99L, dummyStorageUpdateRequest())
+                        }
                     ex.errorCode shouldBe ErrorCode.STORAGE_ACCESS_DENIED
                 }
             }
@@ -211,9 +212,10 @@ class StorageServiceTest :
                 every { sectionRepository.findByIdAndStorage(999L, storage) } returns null
 
                 Then("RESOURCE_NOT_FOUND 발생") {
-                    val ex = shouldThrow<CustomException> {
-                        service.updateSection(username, 1L, 999L, dummySectionUpdateRequest())
-                    }
+                    val ex =
+                        shouldThrow<CustomException> {
+                            service.updateSection(username, 1L, 999L, dummySectionUpdateRequest())
+                        }
                     ex.errorCode shouldBe ErrorCode.RESOURCE_NOT_FOUND
                 }
             }

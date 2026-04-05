@@ -33,7 +33,12 @@ class StorageItem(
     @JoinColumn(name = "created_by_user_id", nullable = false)
     var createdByUser: User,
 ) : BaseEntity() {
-    fun updateDetails(name: String, quantity: Int, expiryDate: LocalDate?, section: StorageSection) {
+    fun updateDetails(
+        name: String,
+        quantity: Int,
+        expiryDate: LocalDate?,
+        section: StorageSection,
+    ) {
         this.name = name
         this.quantity = quantity
         this.expiryDate = expiryDate

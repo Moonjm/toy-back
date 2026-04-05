@@ -7,7 +7,10 @@ interface StorageSectionRepository : JpaRepository<StorageSection, Long> {
 
     fun findAllByStorageInOrderBySortOrderAsc(storages: List<Storage>): List<StorageSection>
 
-    fun findByIdAndStorage(id: Long, storage: Storage): StorageSection?
+    fun findByIdAndStorage(
+        id: Long,
+        storage: Storage,
+    ): StorageSection?
 
     fun findTopByStorageOrderBySortOrderDesc(storage: Storage): StorageSection?
 

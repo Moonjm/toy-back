@@ -107,7 +107,9 @@ class StudyController(
             ),
         ],
     )
-    fun deleteSubject(@PathVariable id: Long): ResponseEntity<Void> {
+    fun deleteSubject(
+        @PathVariable id: Long,
+    ): ResponseEntity<Void> {
         service.deleteSubject(id)
         return ResponseEntity.noContent().build()
     }
@@ -121,9 +123,7 @@ class StudyController(
             ApiResponse(responseCode = "200", description = "성공 (없으면 data=null)"),
         ],
     )
-    fun activeSession(
-        authentication: Authentication,
-    ): ResponseEntity<DataResponseBody<StudySessionResponse?>> =
+    fun activeSession(authentication: Authentication): ResponseEntity<DataResponseBody<StudySessionResponse?>> =
         ResponseEntity.ok(DataResponseBody(service.findActiveSession(authentication.name)))
 
     @GetMapping("/sessions")
@@ -284,9 +284,7 @@ class StudyController(
             ApiResponse(responseCode = "200", description = "성공"),
         ],
     )
-    fun getWeeklySummary(
-        authentication: Authentication,
-    ): ResponseEntity<DataResponseBody<StudyWeeklySummaryResponse>> =
+    fun getWeeklySummary(authentication: Authentication): ResponseEntity<DataResponseBody<StudyWeeklySummaryResponse>> =
         ResponseEntity.ok(DataResponseBody(service.getWeeklySummary(authentication.name)))
 
     @GetMapping("/daily-goals/today")
@@ -296,8 +294,6 @@ class StudyController(
             ApiResponse(responseCode = "200", description = "성공 (없으면 data=null)"),
         ],
     )
-    fun getTodayGoal(
-        authentication: Authentication,
-    ): ResponseEntity<DataResponseBody<StudyDailyGoalTodayResponse>> =
+    fun getTodayGoal(authentication: Authentication): ResponseEntity<DataResponseBody<StudyDailyGoalTodayResponse>> =
         ResponseEntity.ok(DataResponseBody(StudyDailyGoalTodayResponse(service.getTodayGoalMinutes(authentication.name))))
 }

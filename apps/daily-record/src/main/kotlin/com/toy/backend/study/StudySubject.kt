@@ -10,7 +10,6 @@ import jakarta.persistence.Table
 class StudySubject(
     @Column(nullable = false, length = 50)
     var name: String,
-
     @Column(nullable = false)
     var sortOrder: Int = 0,
 ) : BaseEntity() {
@@ -28,5 +27,4 @@ data class StudySubjectResponse(
     val name: String,
 )
 
-fun StudySubject.toResponse(): StudySubjectResponse =
-    StudySubjectResponse(id = requiredId, name = name)
+fun StudySubject.toResponse(): StudySubjectResponse = StudySubjectResponse(id = requiredId, name = name)

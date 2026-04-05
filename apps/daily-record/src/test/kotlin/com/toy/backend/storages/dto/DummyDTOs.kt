@@ -11,17 +11,11 @@ fun dummyStorageCreateRequest(
     sections: List<String> = listOf("윗칸", "아랫칸"),
 ) = StorageCreateRequest(name = name, sections = sections)
 
-fun dummyStorageUpdateRequest(
-    name: String = "김치냉장고",
-) = StorageUpdateRequest(name = name)
+fun dummyStorageUpdateRequest(name: String = "김치냉장고") = StorageUpdateRequest(name = name)
 
-fun dummySectionCreateRequest(
-    name: String = "선반1",
-) = SectionCreateRequest(name = name)
+fun dummySectionCreateRequest(name: String = "선반1") = SectionCreateRequest(name = name)
 
-fun dummySectionUpdateRequest(
-    name: String = "선반2",
-) = SectionUpdateRequest(name = name)
+fun dummySectionUpdateRequest(name: String = "선반2") = SectionUpdateRequest(name = name)
 
 fun dummyItemRequest(
     name: String = "우유",

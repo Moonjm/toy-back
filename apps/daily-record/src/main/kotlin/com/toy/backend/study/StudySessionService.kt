@@ -22,21 +22,26 @@ class StudySessionService(
 ) {
     // --- Subject CRUD ---
 
-    fun listSubjects(): List<StudySubjectResponse> =
-        subjectRepository.findAllByOrderBySortOrderAscIdAsc().map { it.toResponse() }
+    fun listSubjects(): List<StudySubjectResponse> = subjectRepository.findAllByOrderBySortOrderAscIdAsc().map { it.toResponse() }
 
     @Transactional
     fun createSubject(request: StudySubjectRequest): Long {
-        val maxOrder = subjectRepository.findAllByOrderBySortOrderAscIdAsc()
-            .maxOfOrNull { it.sortOrder } ?: -1
+        val maxOrder =
+            subjectRepository
+                .findAllByOrderBySortOrderAscIdAsc()
+                .maxOfOrNull { it.sortOrder } ?: -1
         val subject = StudySubject(name = request.name, sortOrder = maxOrder + 1)
         return subjectRepository.save(subject).requiredId
     }
 
     @Transactional
-    fun updateSubject(id: Long, request: StudySubjectRequest) {
-        val subject = subjectRepository.findByIdOrNull(id)
-            ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
+    fun updateSubject(
+        id: Long,
+        request: StudySubjectRequest,
+    ) {
+        val subject =
+            subjectRepository.findByIdOrNull(id)
+                ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
         subject.updateDetails(name = request.name)
     }
 
@@ -44,16 +49,18 @@ class StudySessionService(
     fun reorderSubjects(request: StudySubjectReorderRequest) {
         val subjects = subjectRepository.findAllById(request.subjectIds).associateBy { it.requiredId }
         request.subjectIds.forEachIndexed { index, id ->
-            val subject = subjects[id]
-                ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
+            val subject =
+                subjects[id]
+                    ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
             subject.updateSortOrder(index)
         }
     }
 
     @Transactional
     fun deleteSubject(id: Long) {
-        val subject = subjectRepository.findByIdOrNull(id)
-            ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
+        val subject =
+            subjectRepository.findByIdOrNull(id)
+                ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
         if (repository.existsBySubject(subject)) {
             throw CustomException(ErrorCode.INVALID_REQUEST, "해당 과목을 사용하는 세션이 존재합니다")
         }
@@ -81,46 +88,67 @@ class StudySessionService(
     }
 
     @Transactional
-    fun start(username: String, request: StudySessionStartRequest): Long {
+    fun start(
+        username: String,
+        request: StudySessionStartRequest,
+    ): Long {
         val user = findUser(username)
         if (repository.existsByUserAndEndedAtIsNull(user)) {
             throw CustomException(ErrorCode.INVALID_REQUEST, "진행중인 세션이 이미 존재합니다")
         }
-        val subject = subjectRepository.findByIdOrNull(request.subjectId)
-            ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, request.subjectId)
-        val session = StudySession(
-            user = user,
-            subject = subject,
-            startedAt = LocalDateTime.now(),
-        )
+        val subject =
+            subjectRepository.findByIdOrNull(request.subjectId)
+                ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, request.subjectId)
+        val session =
+            StudySession(
+                user = user,
+                subject = subject,
+                startedAt = LocalDateTime.now(),
+            )
         return repository.save(session).requiredId
     }
 
     @Transactional
-    fun pause(username: String, id: Long) {
+    fun pause(
+        username: String,
+        id: Long,
+    ) {
         val session = findSession(username, id)
         session.pause(at = LocalDateTime.now())
     }
 
     @Transactional
-    fun resume(username: String, id: Long) {
+    fun resume(
+        username: String,
+        id: Long,
+    ) {
         val session = findSession(username, id)
         session.resume(at = LocalDateTime.now())
     }
 
     @Transactional
-    fun end(username: String, id: Long) {
+    fun end(
+        username: String,
+        id: Long,
+    ) {
         val session = findSession(username, id)
         session.end(at = LocalDateTime.now())
     }
 
     @Transactional
-    fun updatePauseType(username: String, sessionId: Long, request: StudyPauseTypeRequest) {
+    fun updatePauseType(
+        username: String,
+        sessionId: Long,
+        request: StudyPauseTypeRequest,
+    ) {
         val session = findSession(username, sessionId)
         session.updatePauseType(request.type)
     }
 
-    private fun findSession(username: String, id: Long): StudySession {
+    private fun findSession(
+        username: String,
+        id: Long,
+    ): StudySession {
         val user = findUser(username)
         return repository.findByIdAndUser(id, user)
             ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
@@ -129,7 +157,10 @@ class StudySessionService(
     // --- Daily Goal ---
 
     @Transactional
-    fun setDailyGoal(username: String, request: StudyDailyGoalRequest) {
+    fun setDailyGoal(
+        username: String,
+        request: StudyDailyGoalRequest,
+    ) {
         val user = findUser(username)
         val goal = dailyGoalRepository.findByUserAndDate(user, request.date)
         if (goal != null) {
@@ -157,11 +188,12 @@ class StudySessionService(
         }
 
         val totalGoalMinutes = dailyGoalRepository.sumGoalMinutesByUserAndDateBetween(user, monday, yesterday)
-        val totalActualSeconds = repository.sumTotalSecondsByUserAndStartedAtBetween(
-            user,
-            monday.atStartOfDay(),
-            yesterday.atTime(LocalTime.MAX),
-        )
+        val totalActualSeconds =
+            repository.sumTotalSecondsByUserAndStartedAtBetween(
+                user,
+                monday.atStartOfDay(),
+                yesterday.atTime(LocalTime.MAX),
+            )
 
         return StudyWeeklySummaryResponse(
             totalGoalMinutes = totalGoalMinutes,

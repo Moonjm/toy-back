@@ -33,9 +33,7 @@ class StorageController(
     @GetMapping
     @Operation(summary = "보관함 목록 조회")
     @ApiResponses(value = [ApiResponse(responseCode = "200", description = "성공")])
-    fun listStorages(
-        authentication: Authentication,
-    ): ResponseEntity<DataResponseBody<List<StorageResponse>>> =
+    fun listStorages(authentication: Authentication): ResponseEntity<DataResponseBody<List<StorageResponse>>> =
         ResponseEntity.ok(DataResponseBody(service.listStorages(authentication.name)))
 
     @PostMapping
@@ -44,21 +42,28 @@ class StorageController(
     @ApiResponses(
         value = [
             ApiResponse(responseCode = "201", description = "생성됨"),
-            ApiResponse(responseCode = "400", description = "잘못된 요청", content = [Content(schema = Schema(implementation = ErrorResponseBody::class))]),
+            ApiResponse(
+                responseCode = "400",
+                description = "잘못된 요청",
+                content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],
+            ),
         ],
     )
     fun createStorage(
         @Valid @RequestBody request: StorageCreateRequest,
         authentication: Authentication,
-    ): ResponseEntity<Long> =
-        ResponseEntity.ok(service.createStorage(authentication.name, request))
+    ): ResponseEntity<Long> = ResponseEntity.ok(service.createStorage(authentication.name, request))
 
     @PutMapping("/{id}")
     @Operation(summary = "보관함 이름 수정")
     @ApiResponses(
         value = [
             ApiResponse(responseCode = "204", description = "수정됨"),
-            ApiResponse(responseCode = "404", description = "찾을 수 없음", content = [Content(schema = Schema(implementation = ErrorResponseBody::class))]),
+            ApiResponse(
+                responseCode = "404",
+                description = "찾을 수 없음",
+                content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],
+            ),
         ],
     )
     fun updateStorage(
@@ -75,7 +80,11 @@ class StorageController(
     @ApiResponses(
         value = [
             ApiResponse(responseCode = "204", description = "삭제됨"),
-            ApiResponse(responseCode = "404", description = "찾을 수 없음", content = [Content(schema = Schema(implementation = ErrorResponseBody::class))]),
+            ApiResponse(
+                responseCode = "404",
+                description = "찾을 수 없음",
+                content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],
+            ),
         ],
     )
     fun deleteStorage(
@@ -94,22 +103,29 @@ class StorageController(
     @ApiResponses(
         value = [
             ApiResponse(responseCode = "201", description = "생성됨"),
-            ApiResponse(responseCode = "400", description = "잘못된 요청", content = [Content(schema = Schema(implementation = ErrorResponseBody::class))]),
+            ApiResponse(
+                responseCode = "400",
+                description = "잘못된 요청",
+                content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],
+            ),
         ],
     )
     fun createSection(
         @PathVariable id: Long,
         @Valid @RequestBody request: SectionCreateRequest,
         authentication: Authentication,
-    ): ResponseEntity<Long> =
-        ResponseEntity.ok(service.createSection(authentication.name, id, request))
+    ): ResponseEntity<Long> = ResponseEntity.ok(service.createSection(authentication.name, id, request))
 
     @PutMapping("/{id}/sections/{sectionId}")
     @Operation(summary = "구역 이름 수정")
     @ApiResponses(
         value = [
             ApiResponse(responseCode = "204", description = "수정됨"),
-            ApiResponse(responseCode = "404", description = "찾을 수 없음", content = [Content(schema = Schema(implementation = ErrorResponseBody::class))]),
+            ApiResponse(
+                responseCode = "404",
+                description = "찾을 수 없음",
+                content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],
+            ),
         ],
     )
     fun updateSection(
@@ -127,7 +143,11 @@ class StorageController(
     @ApiResponses(
         value = [
             ApiResponse(responseCode = "204", description = "삭제됨"),
-            ApiResponse(responseCode = "404", description = "찾을 수 없음", content = [Content(schema = Schema(implementation = ErrorResponseBody::class))]),
+            ApiResponse(
+                responseCode = "404",
+                description = "찾을 수 없음",
+                content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],
+            ),
         ],
     )
     fun deleteSection(
@@ -156,22 +176,29 @@ class StorageController(
     @ApiResponses(
         value = [
             ApiResponse(responseCode = "201", description = "생성됨"),
-            ApiResponse(responseCode = "400", description = "잘못된 요청", content = [Content(schema = Schema(implementation = ErrorResponseBody::class))]),
+            ApiResponse(
+                responseCode = "400",
+                description = "잘못된 요청",
+                content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],
+            ),
         ],
     )
     fun createItem(
         @PathVariable id: Long,
         @Valid @RequestBody request: ItemRequest,
         authentication: Authentication,
-    ): ResponseEntity<Long> =
-        ResponseEntity.ok(service.createItem(authentication.name, id, request))
+    ): ResponseEntity<Long> = ResponseEntity.ok(service.createItem(authentication.name, id, request))
 
     @PutMapping("/{id}/items/{itemId}")
     @Operation(summary = "품목 수정")
     @ApiResponses(
         value = [
             ApiResponse(responseCode = "204", description = "수정됨"),
-            ApiResponse(responseCode = "404", description = "찾을 수 없음", content = [Content(schema = Schema(implementation = ErrorResponseBody::class))]),
+            ApiResponse(
+                responseCode = "404",
+                description = "찾을 수 없음",
+                content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],
+            ),
         ],
     )
     fun updateItem(
@@ -189,7 +216,11 @@ class StorageController(
     @ApiResponses(
         value = [
             ApiResponse(responseCode = "204", description = "삭제됨"),
-            ApiResponse(responseCode = "404", description = "찾을 수 없음", content = [Content(schema = Schema(implementation = ErrorResponseBody::class))]),
+            ApiResponse(
+                responseCode = "404",
+                description = "찾을 수 없음",
+                content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],
+            ),
         ],
     )
     fun deleteItem(
