@@ -20,6 +20,7 @@ enum class ErrorCode(
     CIRCULAR_RELATIONSHIP(HttpStatus.BAD_REQUEST, "순환 관계가 감지되었습니다."),
     SELF_RELATIONSHIP(HttpStatus.BAD_REQUEST, "자기 자신과의 관계는 설정할 수 없습니다."),
     INVALID_DATE_RANGE(HttpStatus.BAD_REQUEST, "생년월일이 사망일보다 이후일 수 없습니다."),
+    STORAGE_ACCESS_DENIED(HttpStatus.FORBIDDEN, "보관함에 대한 접근 권한이 없습니다."),
     ACCOUNT_LOCKED(HttpStatus.FORBIDDEN, "계정이 잠겨 있습니다: %s"),
     ;
 

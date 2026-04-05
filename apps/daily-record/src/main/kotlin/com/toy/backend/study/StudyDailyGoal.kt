@@ -22,10 +22,8 @@ class StudyDailyGoal(
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     var user: User,
-
     @Column(nullable = false)
     var date: LocalDate,
-
     @Column(nullable = false)
     var goalMinutes: Int,
 ) : BaseEntity() {

@@ -17,13 +17,10 @@ class StudyPause(
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "session_id", nullable = false)
     var session: StudySession,
-
     @Column(nullable = false)
     var pausedAt: LocalDateTime,
-
     @Column(nullable = true)
     var resumedAt: LocalDateTime? = null,
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     var type: PauseType = PauseType.REST,
