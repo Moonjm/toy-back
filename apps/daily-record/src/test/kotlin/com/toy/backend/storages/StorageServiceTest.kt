@@ -77,13 +77,12 @@ class StorageServiceTest :
 
         Given("보관함 생성") {
             When("페어 없는 개인 사용자") {
-                val request = dummyStorageCreateRequest(name = "냉장고", sections = listOf("윗칸"))
+                val request = dummyStorageCreateRequest(name = "냉장고")
 
                 every { userRepository.findByUsername(username) } returns user
                 every { pairService.findConnectedPair(user) } returns null
                 every { storageRepository.findTopByUserOrderBySortOrderDesc(user) } returns null
                 every { storageRepository.save(any()) } answers { firstArg<Storage>().withId(1L) }
-                every { sectionRepository.save(any()) } answers { firstArg<StorageSection>().withId(1L) }
 
                 val id = service.createStorage(username, request)
 
@@ -97,7 +96,7 @@ class StorageServiceTest :
                 val partner = dummyUser(username = "partner", name = "파트너", id = 2L)
                 val pair = PairConnection(inviter = user, inviteCode = "ABC123").withId(10L)
                 pair.accept(partner)
-                val request = dummyStorageCreateRequest(name = "냉장고", sections = emptyList())
+                val request = dummyStorageCreateRequest(name = "냉장고")
 
                 every { userRepository.findByUsername(username) } returns user
                 every { pairService.findConnectedPair(user) } returns pair

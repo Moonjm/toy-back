@@ -56,12 +56,6 @@ data class StorageCreateRequest(
     @field:NotBlank
     @field:Size(max = 30)
     val name: String,
-    @field:Schema(description = "초기 구역 이름 목록", example = "[\"윗칸\", \"아랫칸\", \"야채칸\"]")
-    val sections: List<
-        @NotBlank
-        @Size(max = 20)
-        String,
-    > = emptyList(),
 )
 
 @Schema(description = "보관함 이름 수정 요청")

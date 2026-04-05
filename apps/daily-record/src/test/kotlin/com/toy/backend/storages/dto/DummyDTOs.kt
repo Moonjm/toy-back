@@ -6,10 +6,7 @@ import com.toy.backend.storages.SectionUpdateRequest
 import com.toy.backend.storages.StorageCreateRequest
 import com.toy.backend.storages.StorageUpdateRequest
 
-fun dummyStorageCreateRequest(
-    name: String = "냉장고",
-    sections: List<String> = listOf("윗칸", "아랫칸"),
-) = StorageCreateRequest(name = name, sections = sections)
+fun dummyStorageCreateRequest(name: String = "냉장고") = StorageCreateRequest(name = name)
 
 fun dummyStorageUpdateRequest(name: String = "김치냉장고") = StorageUpdateRequest(name = name)
 

@@ -58,10 +58,6 @@ class StorageService(
             )
         storageRepository.save(storage)
 
-        request.sections.forEachIndexed { index, sectionName ->
-            sectionRepository.save(StorageSection(storage = storage, name = sectionName, sortOrder = index))
-        }
-
         return storage.requiredId
     }
 
