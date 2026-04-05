@@ -166,10 +166,7 @@ class StorageService(
         request: ItemRequest,
     ) {
         val storage = findOwnedStorage(username, storageId)
-        val sections = sectionRepository.findAllByStorageOrderBySortOrderAsc(storage)
-        val item =
-            itemRepository.findByIdAndSectionIn(itemId, sections)
-                ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, itemId)
+        val item = findOwnedItem(itemId, storage)
         val targetSection =
             sectionRepository.findByIdAndStorage(request.sectionId, storage)
                 ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, request.sectionId)
@@ -183,11 +180,21 @@ class StorageService(
         itemId: Long,
     ) {
         val storage = findOwnedStorage(username, storageId)
-        val sections = sectionRepository.findAllByStorageOrderBySortOrderAsc(storage)
-        val item =
-            itemRepository.findByIdAndSectionIn(itemId, sections)
-                ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, itemId)
+        val item = findOwnedItem(itemId, storage)
         itemRepository.delete(item)
+    }
+
+    private fun findOwnedItem(
+        itemId: Long,
+        storage: Storage,
+    ): StorageItem {
+        val item =
+            itemRepository.findByIdOrNull(itemId)
+                ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, itemId)
+        if (item.section.storage.requiredId != storage.requiredId) {
+            throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, itemId)
+        }
+        return item
     }
 
     // ── 내부 ──

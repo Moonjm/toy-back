@@ -9,6 +9,7 @@ import jakarta.persistence.Index
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import jakarta.validation.constraints.Min
 import java.time.LocalDate
 
 @Entity
@@ -26,6 +27,7 @@ class StorageItem(
     @Column(nullable = false, length = 30)
     var name: String,
     @Column(nullable = false)
+    @field:Min(1)
     var quantity: Int = 1,
     @Column(name = "expiry_date", nullable = true)
     var expiryDate: LocalDate? = null,

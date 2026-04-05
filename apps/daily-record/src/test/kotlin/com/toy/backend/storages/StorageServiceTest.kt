@@ -316,8 +316,7 @@ class StorageServiceTest :
                 every { userRepository.findByUsername(username) } returns user
                 every { pairService.findConnectedPair(user) } returns null
                 every { storageRepository.findByIdOrNull(1L) } returns storage
-                every { sectionRepository.findAllByStorageOrderBySortOrderAsc(storage) } returns listOf(section)
-                every { itemRepository.findByIdAndSectionIn(10L, listOf(section)) } returns item
+                every { itemRepository.findByIdOrNull(10L) } returns item
                 every { sectionRepository.findByIdAndStorage(1L, storage) } returns section
 
                 service.updateItem(username, 1L, 10L, dummyItemRequest(name = "두유", quantity = 3, sectionId = 1L))
@@ -337,8 +336,7 @@ class StorageServiceTest :
                 every { userRepository.findByUsername(username) } returns user
                 every { pairService.findConnectedPair(user) } returns null
                 every { storageRepository.findByIdOrNull(1L) } returns storage
-                every { sectionRepository.findAllByStorageOrderBySortOrderAsc(storage) } returns listOf(section1, section2)
-                every { itemRepository.findByIdAndSectionIn(10L, listOf(section1, section2)) } returns item
+                every { itemRepository.findByIdOrNull(10L) } returns item
                 every { sectionRepository.findByIdAndStorage(2L, storage) } returns section2
 
                 service.updateItem(username, 1L, 10L, dummyItemRequest(name = "우유", sectionId = 2L))
@@ -350,13 +348,11 @@ class StorageServiceTest :
 
             When("존재하지 않는 품목") {
                 val storage = dummyStorage(user = user)
-                val section = dummySection(storage = storage)
 
                 every { userRepository.findByUsername(username) } returns user
                 every { pairService.findConnectedPair(user) } returns null
                 every { storageRepository.findByIdOrNull(1L) } returns storage
-                every { sectionRepository.findAllByStorageOrderBySortOrderAsc(storage) } returns listOf(section)
-                every { itemRepository.findByIdAndSectionIn(999L, listOf(section)) } returns null
+                every { itemRepository.findByIdOrNull(999L) } returns null
 
                 Then("RESOURCE_NOT_FOUND 발생") {
                     val ex =
@@ -377,8 +373,7 @@ class StorageServiceTest :
                 every { userRepository.findByUsername(username) } returns user
                 every { pairService.findConnectedPair(user) } returns null
                 every { storageRepository.findByIdOrNull(1L) } returns storage
-                every { sectionRepository.findAllByStorageOrderBySortOrderAsc(storage) } returns listOf(section)
-                every { itemRepository.findByIdAndSectionIn(10L, listOf(section)) } returns item
+                every { itemRepository.findByIdOrNull(10L) } returns item
                 justRun { itemRepository.delete(item) }
 
                 service.deleteItem(username, 1L, 10L)
