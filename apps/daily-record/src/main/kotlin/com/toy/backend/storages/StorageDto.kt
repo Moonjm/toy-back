@@ -1,6 +1,7 @@
 package com.toy.backend.storages
 
 import io.swagger.v3.oas.annotations.media.Schema
+import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import java.time.LocalDate
@@ -89,6 +90,7 @@ data class ItemRequest(
     @field:Size(max = 30)
     val name: String,
     @field:Schema(description = "수량", example = "1")
+    @field:Min(1)
     val quantity: Int = 1,
     @field:Schema(description = "소비기한", example = "2026-04-08")
     val expiryDate: LocalDate? = null,

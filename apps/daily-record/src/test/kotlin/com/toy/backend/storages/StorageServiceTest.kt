@@ -147,21 +147,15 @@ class StorageServiceTest :
         Given("보관함 삭제") {
             When("정상 삭제") {
                 val storage = dummyStorage(user = user, name = "냉장고")
-                val section = dummySection(storage = storage)
 
                 every { userRepository.findByUsername(username) } returns user
                 every { pairService.findConnectedPair(user) } returns null
                 every { storageRepository.findByIdOrNull(1L) } returns storage
-                every { sectionRepository.findAllByStorageOrderBySortOrderAsc(storage) } returns listOf(section)
-                justRun { itemRepository.deleteAllBySectionIn(listOf(section)) }
-                justRun { sectionRepository.deleteAllByStorage(storage) }
                 justRun { storageRepository.delete(storage) }
 
                 service.deleteStorage(username, 1L)
 
-                Then("하위 구역, 품목 모두 삭제") {
-                    verify { itemRepository.deleteAllBySectionIn(listOf(section)) }
-                    verify { sectionRepository.deleteAllByStorage(storage) }
+                Then("cascade 삭제") {
                     verify { storageRepository.delete(storage) }
                 }
             }
@@ -220,6 +214,80 @@ class StorageServiceTest :
             }
         }
 
+        Given("구역 삭제") {
+            When("정상 삭제") {
+                val storage = dummyStorage(user = user)
+                val section = dummySection(storage = storage)
+
+                every { userRepository.findByUsername(username) } returns user
+                every { pairService.findConnectedPair(user) } returns null
+                every { storageRepository.findByIdOrNull(1L) } returns storage
+                every { sectionRepository.findByIdAndStorage(1L, storage) } returns section
+                justRun { sectionRepository.delete(section) }
+
+                service.deleteSection(username, 1L, 1L)
+
+                Then("cascade 삭제") {
+                    verify { sectionRepository.delete(section) }
+                }
+            }
+
+            When("존재하지 않는 구역") {
+                val storage = dummyStorage(user = user)
+
+                every { userRepository.findByUsername(username) } returns user
+                every { pairService.findConnectedPair(user) } returns null
+                every { storageRepository.findByIdOrNull(1L) } returns storage
+                every { sectionRepository.findByIdAndStorage(999L, storage) } returns null
+
+                Then("RESOURCE_NOT_FOUND 발생") {
+                    val ex =
+                        shouldThrow<CustomException> {
+                            service.deleteSection(username, 1L, 999L)
+                        }
+                    ex.errorCode shouldBe ErrorCode.RESOURCE_NOT_FOUND
+                }
+            }
+        }
+
+        Given("품목 목록 조회") {
+            When("구역과 품목이 있는 보관함") {
+                val storage = dummyStorage(user = user)
+                val section = dummySection(storage = storage, name = "윗칸")
+                val item = dummyItem(section = section, name = "우유", createdByUser = user, id = 10L)
+
+                every { userRepository.findByUsername(username) } returns user
+                every { pairService.findConnectedPair(user) } returns null
+                every { storageRepository.findByIdOrNull(1L) } returns storage
+                every { sectionRepository.findAllByStorageOrderBySortOrderAsc(storage) } returns listOf(section)
+                every { itemRepository.findAllBySectionIn(listOf(section)) } returns listOf(item)
+
+                val result = service.listItems(username, 1L)
+
+                Then("구역별 품목 반환") {
+                    result.size shouldBe 1
+                    result[0].name shouldBe "윗칸"
+                    result[0].items.size shouldBe 1
+                    result[0].items[0].name shouldBe "우유"
+                }
+            }
+
+            When("구역이 없는 보관함") {
+                val storage = dummyStorage(user = user)
+
+                every { userRepository.findByUsername(username) } returns user
+                every { pairService.findConnectedPair(user) } returns null
+                every { storageRepository.findByIdOrNull(1L) } returns storage
+                every { sectionRepository.findAllByStorageOrderBySortOrderAsc(storage) } returns emptyList()
+
+                val result = service.listItems(username, 1L)
+
+                Then("빈 목록 반환") {
+                    result.size shouldBe 0
+                }
+            }
+        }
+
         Given("품목 추가") {
             When("정상 추가") {
                 val storage = dummyStorage(user = user)
@@ -235,6 +303,67 @@ class StorageServiceTest :
 
                 Then("품목 ID 반환") {
                     id shouldBe 10L
+                }
+            }
+        }
+
+        Given("품목 수정") {
+            When("같은 구역 내 수정") {
+                val storage = dummyStorage(user = user)
+                val section = dummySection(storage = storage, name = "윗칸")
+                val item = dummyItem(section = section, name = "우유", createdByUser = user, id = 10L)
+
+                every { userRepository.findByUsername(username) } returns user
+                every { pairService.findConnectedPair(user) } returns null
+                every { storageRepository.findByIdOrNull(1L) } returns storage
+                every { sectionRepository.findAllByStorageOrderBySortOrderAsc(storage) } returns listOf(section)
+                every { itemRepository.findByIdAndSectionIn(10L, listOf(section)) } returns item
+                every { sectionRepository.findByIdAndStorage(1L, storage) } returns section
+
+                service.updateItem(username, 1L, 10L, dummyItemRequest(name = "두유", quantity = 3, sectionId = 1L))
+
+                Then("이름과 수량 변경") {
+                    item.name shouldBe "두유"
+                    item.quantity shouldBe 3
+                }
+            }
+
+            When("다른 구역으로 이동") {
+                val storage = dummyStorage(user = user)
+                val section1 = dummySection(storage = storage, name = "윗칸", id = 1L)
+                val section2 = dummySection(storage = storage, name = "아랫칸", id = 2L)
+                val item = dummyItem(section = section1, name = "우유", createdByUser = user, id = 10L)
+
+                every { userRepository.findByUsername(username) } returns user
+                every { pairService.findConnectedPair(user) } returns null
+                every { storageRepository.findByIdOrNull(1L) } returns storage
+                every { sectionRepository.findAllByStorageOrderBySortOrderAsc(storage) } returns listOf(section1, section2)
+                every { itemRepository.findByIdAndSectionIn(10L, listOf(section1, section2)) } returns item
+                every { sectionRepository.findByIdAndStorage(2L, storage) } returns section2
+
+                service.updateItem(username, 1L, 10L, dummyItemRequest(name = "우유", sectionId = 2L))
+
+                Then("구역 변경") {
+                    item.section shouldBe section2
+                }
+            }
+
+            When("존재하지 않는 품목") {
+                val storage = dummyStorage(user = user)
+                val section = dummySection(storage = storage)
+
+                every { userRepository.findByUsername(username) } returns user
+                every { pairService.findConnectedPair(user) } returns null
+                every { storageRepository.findByIdOrNull(1L) } returns storage
+                every { sectionRepository.findAllByStorageOrderBySortOrderAsc(storage) } returns listOf(section)
+                every { itemRepository.findByIdAndSectionIn(999L, listOf(section)) } returns null
+
+                Then("RESOURCE_NOT_FOUND 발생") {
+                    val ex =
+                        shouldThrow<CustomException> {
+                            service.updateItem(username, 1L, 999L, dummyItemRequest())
+                        }
+                    ex.errorCode shouldBe ErrorCode.RESOURCE_NOT_FOUND
                 }
             }
         }

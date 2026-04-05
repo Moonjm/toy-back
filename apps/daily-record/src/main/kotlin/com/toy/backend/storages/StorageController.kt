@@ -54,7 +54,7 @@ class StorageController(
         authentication: Authentication,
     ): ResponseEntity<Long> = ResponseEntity.ok(service.createStorage(authentication.name, request))
 
-    @PutMapping("/{id}")
+    @PutMapping("/{storageId}")
     @Operation(summary = "보관함 이름 수정")
     @ApiResponses(
         value = [
@@ -67,15 +67,15 @@ class StorageController(
         ],
     )
     fun updateStorage(
-        @PathVariable id: Long,
+        @PathVariable storageId: Long,
         @Valid @RequestBody request: StorageUpdateRequest,
         authentication: Authentication,
     ): ResponseEntity<Void> {
-        service.updateStorage(authentication.name, id, request)
+        service.updateStorage(authentication.name, storageId, request)
         return ResponseEntity.noContent().build()
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/{storageId}")
     @Operation(summary = "보관함 삭제")
     @ApiResponses(
         value = [
@@ -88,16 +88,16 @@ class StorageController(
         ],
     )
     fun deleteStorage(
-        @Parameter(description = "보관함 ID", example = "1") @PathVariable id: Long,
+        @Parameter(description = "보관함 ID", example = "1") @PathVariable storageId: Long,
         authentication: Authentication,
     ): ResponseEntity<Void> {
-        service.deleteStorage(authentication.name, id)
+        service.deleteStorage(authentication.name, storageId)
         return ResponseEntity.noContent().build()
     }
 
     // ── 구역 ──
 
-    @PostMapping("/{id}/sections")
+    @PostMapping("/{storageId}/sections")
     @ResponseCreated("/storages/{storageId}/sections/{id}")
     @Operation(summary = "구역 추가")
     @ApiResponses(
@@ -111,12 +111,12 @@ class StorageController(
         ],
     )
     fun createSection(
-        @PathVariable id: Long,
+        @PathVariable storageId: Long,
         @Valid @RequestBody request: SectionCreateRequest,
         authentication: Authentication,
-    ): ResponseEntity<Long> = ResponseEntity.ok(service.createSection(authentication.name, id, request))
+    ): ResponseEntity<Long> = ResponseEntity.ok(service.createSection(authentication.name, storageId, request))
 
-    @PutMapping("/{id}/sections/{sectionId}")
+    @PutMapping("/{storageId}/sections/{sectionId}")
     @Operation(summary = "구역 이름 수정")
     @ApiResponses(
         value = [
@@ -129,16 +129,16 @@ class StorageController(
         ],
     )
     fun updateSection(
-        @PathVariable id: Long,
+        @PathVariable storageId: Long,
         @PathVariable sectionId: Long,
         @Valid @RequestBody request: SectionUpdateRequest,
         authentication: Authentication,
     ): ResponseEntity<Void> {
-        service.updateSection(authentication.name, id, sectionId, request)
+        service.updateSection(authentication.name, storageId, sectionId, request)
         return ResponseEntity.noContent().build()
     }
 
-    @DeleteMapping("/{id}/sections/{sectionId}")
+    @DeleteMapping("/{storageId}/sections/{sectionId}")
     @Operation(summary = "구역 삭제")
     @ApiResponses(
         value = [
@@ -151,26 +151,26 @@ class StorageController(
         ],
     )
     fun deleteSection(
-        @PathVariable id: Long,
+        @PathVariable storageId: Long,
         @PathVariable sectionId: Long,
         authentication: Authentication,
     ): ResponseEntity<Void> {
-        service.deleteSection(authentication.name, id, sectionId)
+        service.deleteSection(authentication.name, storageId, sectionId)
         return ResponseEntity.noContent().build()
     }
 
     // ── 품목 ──
 
-    @GetMapping("/{id}/items")
+    @GetMapping("/{storageId}/items")
     @Operation(summary = "보관함 품목 조회")
     @ApiResponses(value = [ApiResponse(responseCode = "200", description = "성공")])
     fun listItems(
-        @PathVariable id: Long,
+        @PathVariable storageId: Long,
         authentication: Authentication,
     ): ResponseEntity<DataResponseBody<List<SectionResponse>>> =
-        ResponseEntity.ok(DataResponseBody(service.listItems(authentication.name, id)))
+        ResponseEntity.ok(DataResponseBody(service.listItems(authentication.name, storageId)))
 
-    @PostMapping("/{id}/items")
+    @PostMapping("/{storageId}/items")
     @ResponseCreated("/storages/{storageId}/items/{id}")
     @Operation(summary = "품목 추가")
     @ApiResponses(
@@ -184,12 +184,12 @@ class StorageController(
         ],
     )
     fun createItem(
-        @PathVariable id: Long,
+        @PathVariable storageId: Long,
         @Valid @RequestBody request: ItemRequest,
         authentication: Authentication,
-    ): ResponseEntity<Long> = ResponseEntity.ok(service.createItem(authentication.name, id, request))
+    ): ResponseEntity<Long> = ResponseEntity.ok(service.createItem(authentication.name, storageId, request))
 
-    @PutMapping("/{id}/items/{itemId}")
+    @PutMapping("/{storageId}/items/{itemId}")
     @Operation(summary = "품목 수정")
     @ApiResponses(
         value = [
@@ -202,16 +202,16 @@ class StorageController(
         ],
     )
     fun updateItem(
-        @PathVariable id: Long,
+        @PathVariable storageId: Long,
         @PathVariable itemId: Long,
         @Valid @RequestBody request: ItemRequest,
         authentication: Authentication,
     ): ResponseEntity<Void> {
-        service.updateItem(authentication.name, id, itemId, request)
+        service.updateItem(authentication.name, storageId, itemId, request)
         return ResponseEntity.noContent().build()
     }
 
-    @DeleteMapping("/{id}/items/{itemId}")
+    @DeleteMapping("/{storageId}/items/{itemId}")
     @Operation(summary = "품목 삭제")
     @ApiResponses(
         value = [
@@ -224,11 +224,11 @@ class StorageController(
         ],
     )
     fun deleteItem(
-        @PathVariable id: Long,
+        @PathVariable storageId: Long,
         @PathVariable itemId: Long,
         authentication: Authentication,
     ): ResponseEntity<Void> {
-        service.deleteItem(authentication.name, id, itemId)
+        service.deleteItem(authentication.name, storageId, itemId)
         return ResponseEntity.noContent().build()
     }
 }

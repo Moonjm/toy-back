@@ -77,11 +77,6 @@ class StorageService(
         id: Long,
     ) {
         val storage = findOwnedStorage(username, id)
-        val sections = sectionRepository.findAllByStorageOrderBySortOrderAsc(storage)
-        if (sections.isNotEmpty()) {
-            itemRepository.deleteAllBySectionIn(sections)
-            sectionRepository.deleteAllByStorage(storage)
-        }
         storageRepository.delete(storage)
     }
 
@@ -123,7 +118,6 @@ class StorageService(
         val section =
             sectionRepository.findByIdAndStorage(sectionId, storage)
                 ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, sectionId)
-        itemRepository.deleteAllBySection(section)
         sectionRepository.delete(section)
     }
 
@@ -149,11 +143,10 @@ class StorageService(
         storageId: Long,
         request: ItemRequest,
     ): Long {
-        val storage = findOwnedStorage(username, storageId)
+        val (user, storage) = findUserAndOwnedStorage(username, storageId)
         val section =
             sectionRepository.findByIdAndStorage(request.sectionId, storage)
                 ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, request.sectionId)
-        val user = findUser(username)
         val item =
             StorageItem(
                 section = section,
@@ -212,10 +205,10 @@ class StorageService(
         }
     }
 
-    private fun findOwnedStorage(
+    private fun findUserAndOwnedStorage(
         username: String,
         storageId: Long,
-    ): Storage {
+    ): Pair<User, Storage> {
         val user = findUser(username)
         val storage =
             storageRepository.findByIdOrNull(storageId)
@@ -232,8 +225,13 @@ class StorageService(
         if (!hasAccess) {
             throw CustomException(ErrorCode.STORAGE_ACCESS_DENIED)
         }
-        return storage
+        return user to storage
     }
+
+    private fun findOwnedStorage(
+        username: String,
+        storageId: Long,
+    ): Storage = findUserAndOwnedStorage(username, storageId).second
 
     private fun nextStorageSortOrder(
         user: User,
