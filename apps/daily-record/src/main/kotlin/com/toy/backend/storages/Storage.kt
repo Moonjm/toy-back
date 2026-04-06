@@ -37,6 +37,10 @@ class Storage(
         this.name = name
     }
 
+    fun updateSortOrder(sortOrder: Int) {
+        this.sortOrder = sortOrder
+    }
+
     fun transferToPair(pairId: Long) {
         this.pairId = pairId
         this.user = null

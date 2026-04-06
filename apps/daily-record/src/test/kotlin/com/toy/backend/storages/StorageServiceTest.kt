@@ -7,8 +7,10 @@ import com.toy.backend.pair.PairConnection
 import com.toy.backend.pair.PairService
 import com.toy.backend.storages.dto.dummyItemRequest
 import com.toy.backend.storages.dto.dummySectionCreateRequest
+import com.toy.backend.storages.dto.dummySectionMoveRequest
 import com.toy.backend.storages.dto.dummySectionUpdateRequest
 import com.toy.backend.storages.dto.dummyStorageCreateRequest
+import com.toy.backend.storages.dto.dummyStorageMoveRequest
 import com.toy.backend.storages.dto.dummyStorageUpdateRequest
 import com.toy.backend.storages.entity.dummyItem
 import com.toy.backend.storages.entity.dummySection
@@ -157,6 +159,175 @@ class StorageServiceTest :
 
                 Then("cascade 삭제") {
                     verify { storageRepository.delete(storage) }
+                }
+            }
+        }
+
+        Given("보관함 순서 변경") {
+            When("3개 보관함에서 마지막을 첫 번째 앞으로 이동") {
+                val s1 = dummyStorage(user = user, name = "냉장고", sortOrder = 0, id = 1L)
+                val s2 = dummyStorage(user = user, name = "냉동고", sortOrder = 1, id = 2L)
+                val s3 = dummyStorage(user = user, name = "김치냉장고", sortOrder = 2, id = 3L)
+
+                every { userRepository.findByUsername(username) } returns user
+                every { pairService.findConnectedPair(user) } returns null
+                every { storageRepository.findAllByUserOrderBySortOrderAsc(user) } returns listOf(s1, s2, s3)
+                every { storageRepository.saveAll(any<List<Storage>>()) } answers { firstArg() }
+
+                service.moveStorage(username, dummyStorageMoveRequest(targetId = 3L, beforeId = 1L))
+
+                Then("순서가 3,1,2로 변경") {
+                    s3.sortOrder shouldBe 0
+                    s1.sortOrder shouldBe 1
+                    s2.sortOrder shouldBe 2
+                }
+            }
+
+            When("맨 뒤로 이동 (beforeId = null)") {
+                val s1 = dummyStorage(user = user, name = "냉장고", sortOrder = 0, id = 1L)
+                val s2 = dummyStorage(user = user, name = "냉동고", sortOrder = 1, id = 2L)
+                val s3 = dummyStorage(user = user, name = "김치냉장고", sortOrder = 2, id = 3L)
+
+                every { userRepository.findByUsername(username) } returns user
+                every { pairService.findConnectedPair(user) } returns null
+                every { storageRepository.findAllByUserOrderBySortOrderAsc(user) } returns listOf(s1, s2, s3)
+                every { storageRepository.saveAll(any<List<Storage>>()) } answers { firstArg() }
+
+                service.moveStorage(username, dummyStorageMoveRequest(targetId = 1L, beforeId = null))
+
+                Then("순서가 2,3,1로 변경") {
+                    s2.sortOrder shouldBe 0
+                    s3.sortOrder shouldBe 1
+                    s1.sortOrder shouldBe 2
+                }
+            }
+
+            When("targetId와 beforeId가 같으면") {
+                every { userRepository.findByUsername(username) } returns user
+
+                Then("INVALID_REQUEST 발생") {
+                    val ex =
+                        shouldThrow<CustomException> {
+                            service.moveStorage(username, dummyStorageMoveRequest(targetId = 1L, beforeId = 1L))
+                        }
+                    ex.errorCode shouldBe ErrorCode.INVALID_REQUEST
+                }
+            }
+
+            When("존재하지 않는 targetId") {
+                every { userRepository.findByUsername(username) } returns user
+                every { pairService.findConnectedPair(user) } returns null
+                every { storageRepository.findAllByUserOrderBySortOrderAsc(user) } returns emptyList()
+
+                Then("RESOURCE_NOT_FOUND 발생") {
+                    val ex =
+                        shouldThrow<CustomException> {
+                            service.moveStorage(username, dummyStorageMoveRequest(targetId = 999L))
+                        }
+                    ex.errorCode shouldBe ErrorCode.RESOURCE_NOT_FOUND
+                }
+            }
+
+            When("존재하지 않는 beforeId") {
+                val s1 = dummyStorage(user = user, name = "냉장고", sortOrder = 0, id = 1L)
+
+                every { userRepository.findByUsername(username) } returns user
+                every { pairService.findConnectedPair(user) } returns null
+                every { storageRepository.findAllByUserOrderBySortOrderAsc(user) } returns listOf(s1)
+
+                Then("RESOURCE_NOT_FOUND 발생") {
+                    val ex =
+                        shouldThrow<CustomException> {
+                            service.moveStorage(username, dummyStorageMoveRequest(targetId = 1L, beforeId = 999L))
+                        }
+                    ex.errorCode shouldBe ErrorCode.RESOURCE_NOT_FOUND
+                }
+            }
+        }
+
+        Given("구역 순서 변경") {
+            When("3개 구역에서 마지막을 첫 번째 앞으로 이동") {
+                val storage = dummyStorage(user = user)
+                val sec1 = dummySection(storage = storage, name = "윗칸", sortOrder = 0, id = 1L)
+                val sec2 = dummySection(storage = storage, name = "중간칸", sortOrder = 1, id = 2L)
+                val sec3 = dummySection(storage = storage, name = "아랫칸", sortOrder = 2, id = 3L)
+
+                every { userRepository.findByUsername(username) } returns user
+                every { pairService.findConnectedPair(user) } returns null
+                every { storageRepository.findByIdOrNull(1L) } returns storage
+                every { sectionRepository.findAllByStorageOrderBySortOrderAsc(storage) } returns listOf(sec1, sec2, sec3)
+                every { sectionRepository.saveAll(any<List<StorageSection>>()) } answers { firstArg() }
+
+                service.moveSection(username, 1L, dummySectionMoveRequest(targetId = 3L, beforeId = 1L))
+
+                Then("순서가 3,1,2로 변경") {
+                    sec3.sortOrder shouldBe 0
+                    sec1.sortOrder shouldBe 1
+                    sec2.sortOrder shouldBe 2
+                }
+            }
+
+            When("맨 뒤로 이동 (beforeId = null)") {
+                val storage = dummyStorage(user = user)
+                val sec1 = dummySection(storage = storage, name = "윗칸", sortOrder = 0, id = 1L)
+                val sec2 = dummySection(storage = storage, name = "중간칸", sortOrder = 1, id = 2L)
+
+                every { userRepository.findByUsername(username) } returns user
+                every { pairService.findConnectedPair(user) } returns null
+                every { storageRepository.findByIdOrNull(1L) } returns storage
+                every { sectionRepository.findAllByStorageOrderBySortOrderAsc(storage) } returns listOf(sec1, sec2)
+                every { sectionRepository.saveAll(any<List<StorageSection>>()) } answers { firstArg() }
+
+                service.moveSection(username, 1L, dummySectionMoveRequest(targetId = 1L, beforeId = null))
+
+                Then("순서가 2,1로 변경") {
+                    sec2.sortOrder shouldBe 0
+                    sec1.sortOrder shouldBe 1
+                }
+            }
+
+            When("targetId와 beforeId가 같으면") {
+                Then("INVALID_REQUEST 발생") {
+                    val ex =
+                        shouldThrow<CustomException> {
+                            service.moveSection(username, 1L, dummySectionMoveRequest(targetId = 1L, beforeId = 1L))
+                        }
+                    ex.errorCode shouldBe ErrorCode.INVALID_REQUEST
+                }
+            }
+
+            When("존재하지 않는 targetId") {
+                val storage = dummyStorage(user = user)
+
+                every { userRepository.findByUsername(username) } returns user
+                every { pairService.findConnectedPair(user) } returns null
+                every { storageRepository.findByIdOrNull(1L) } returns storage
+                every { sectionRepository.findAllByStorageOrderBySortOrderAsc(storage) } returns emptyList()
+
+                Then("RESOURCE_NOT_FOUND 발생") {
+                    val ex =
+                        shouldThrow<CustomException> {
+                            service.moveSection(username, 1L, dummySectionMoveRequest(targetId = 999L))
+                        }
+                    ex.errorCode shouldBe ErrorCode.RESOURCE_NOT_FOUND
+                }
+            }
+
+            When("존재하지 않는 beforeId") {
+                val storage = dummyStorage(user = user)
+                val sec1 = dummySection(storage = storage, name = "윗칸", sortOrder = 0, id = 1L)
+
+                every { userRepository.findByUsername(username) } returns user
+                every { pairService.findConnectedPair(user) } returns null
+                every { storageRepository.findByIdOrNull(1L) } returns storage
+                every { sectionRepository.findAllByStorageOrderBySortOrderAsc(storage) } returns listOf(sec1)
+
+                Then("RESOURCE_NOT_FOUND 발생") {
+                    val ex =
+                        shouldThrow<CustomException> {
+                            service.moveSection(username, 1L, dummySectionMoveRequest(targetId = 1L, beforeId = 999L))
+                        }
+                    ex.errorCode shouldBe ErrorCode.RESOURCE_NOT_FOUND
                 }
             }
         }

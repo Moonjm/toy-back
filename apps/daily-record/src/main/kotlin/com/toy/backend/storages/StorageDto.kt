@@ -98,6 +98,22 @@ data class ItemRequest(
     val sectionId: Long,
 )
 
+@Schema(description = "보관함 순서 변경 요청")
+data class StorageMoveRequest(
+    @field:Schema(description = "이동할 보관함 ID", example = "3")
+    val targetId: Long,
+    @field:Schema(description = "앞에 둘 보관함 ID (null이면 맨 뒤로)", example = "8")
+    val beforeId: Long? = null,
+)
+
+@Schema(description = "구역 순서 변경 요청")
+data class SectionMoveRequest(
+    @field:Schema(description = "이동할 구역 ID", example = "3")
+    val targetId: Long,
+    @field:Schema(description = "앞에 둘 구역 ID (null이면 맨 뒤로)", example = "8")
+    val beforeId: Long? = null,
+)
+
 // ── 변환 ──
 
 fun Storage.toResponse(sections: List<SectionResponse>): StorageResponse =
