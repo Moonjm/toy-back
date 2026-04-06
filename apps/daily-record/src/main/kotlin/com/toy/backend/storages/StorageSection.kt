@@ -32,4 +32,8 @@ class StorageSection(
     fun updateName(name: String) {
         this.name = name
     }
+
+    fun updateSortOrder(sortOrder: Int) {
+        this.sortOrder = sortOrder
+    }
 }

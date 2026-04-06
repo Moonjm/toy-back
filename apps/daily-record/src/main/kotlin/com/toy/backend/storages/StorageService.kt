@@ -80,6 +80,40 @@ class StorageService(
         storageRepository.delete(storage)
     }
 
+    @Transactional
+    fun moveStorage(
+        username: String,
+        request: StorageMoveRequest,
+    ) {
+        if (request.beforeId == request.targetId) {
+            throw CustomException(ErrorCode.INVALID_REQUEST, "targetId")
+        }
+
+        val user = findUser(username)
+        val entities = findUserStorages(user).toMutableList()
+
+        val targetIndex = entities.indexOfFirst { it.id == request.targetId }
+        if (targetIndex < 0) {
+            throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, request.targetId)
+        }
+        val target = entities.removeAt(targetIndex)
+
+        val insertIndex =
+            request.beforeId
+                ?.let { id ->
+                    val idx = entities.indexOfFirst { it.id == id }
+                    if (idx < 0) {
+                        throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
+                    }
+                    idx
+                }
+                ?: entities.size
+
+        entities.add(insertIndex, target)
+        entities.forEachIndexed { index, entity -> entity.updateSortOrder(index) }
+        storageRepository.saveAll(entities)
+    }
+
     // ── 구역 ──
 
     @Transactional
@@ -119,6 +153,41 @@ class StorageService(
             sectionRepository.findByIdAndStorage(sectionId, storage)
                 ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, sectionId)
         sectionRepository.delete(section)
+    }
+
+    @Transactional
+    fun moveSection(
+        username: String,
+        storageId: Long,
+        request: SectionMoveRequest,
+    ) {
+        if (request.beforeId == request.targetId) {
+            throw CustomException(ErrorCode.INVALID_REQUEST, "targetId")
+        }
+
+        val storage = findOwnedStorage(username, storageId)
+        val entities = sectionRepository.findAllByStorageOrderBySortOrderAsc(storage).toMutableList()
+
+        val targetIndex = entities.indexOfFirst { it.id == request.targetId }
+        if (targetIndex < 0) {
+            throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, request.targetId)
+        }
+        val target = entities.removeAt(targetIndex)
+
+        val insertIndex =
+            request.beforeId
+                ?.let { id ->
+                    val idx = entities.indexOfFirst { it.id == id }
+                    if (idx < 0) {
+                        throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
+                    }
+                    idx
+                }
+                ?: entities.size
+
+        entities.add(insertIndex, target)
+        entities.forEachIndexed { index, entity -> entity.updateSortOrder(index) }
+        sectionRepository.saveAll(entities)
     }
 
     // ── 품목 ──
