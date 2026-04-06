@@ -101,6 +101,11 @@ class StorageController(
         value = [
             ApiResponse(responseCode = "204", description = "변경됨"),
             ApiResponse(
+                responseCode = "400",
+                description = "잘못된 요청 (targetId와 beforeId가 같은 경우)",
+                content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],
+            ),
+            ApiResponse(
                 responseCode = "404",
                 description = "찾을 수 없음",
                 content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],
@@ -184,6 +189,11 @@ class StorageController(
     @ApiResponses(
         value = [
             ApiResponse(responseCode = "204", description = "변경됨"),
+            ApiResponse(
+                responseCode = "400",
+                description = "잘못된 요청 (targetId와 beforeId가 같은 경우)",
+                content = [Content(schema = Schema(implementation = ErrorResponseBody::class))],
+            ),
             ApiResponse(
                 responseCode = "404",
                 description = "찾을 수 없음",

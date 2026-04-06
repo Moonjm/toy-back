@@ -227,6 +227,22 @@ class StorageServiceTest :
                     ex.errorCode shouldBe ErrorCode.RESOURCE_NOT_FOUND
                 }
             }
+
+            When("존재하지 않는 beforeId") {
+                val s1 = dummyStorage(user = user, name = "냉장고", sortOrder = 0, id = 1L)
+
+                every { userRepository.findByUsername(username) } returns user
+                every { pairService.findConnectedPair(user) } returns null
+                every { storageRepository.findAllByUserOrderBySortOrderAsc(user) } returns listOf(s1)
+
+                Then("RESOURCE_NOT_FOUND 발생") {
+                    val ex =
+                        shouldThrow<CustomException> {
+                            service.moveStorage(username, dummyStorageMoveRequest(targetId = 1L, beforeId = 999L))
+                        }
+                    ex.errorCode shouldBe ErrorCode.RESOURCE_NOT_FOUND
+                }
+            }
         }
 
         Given("구역 순서 변경") {
@@ -277,6 +293,41 @@ class StorageServiceTest :
                             service.moveSection(username, 1L, dummySectionMoveRequest(targetId = 1L, beforeId = 1L))
                         }
                     ex.errorCode shouldBe ErrorCode.INVALID_REQUEST
+                }
+            }
+
+            When("존재하지 않는 targetId") {
+                val storage = dummyStorage(user = user)
+
+                every { userRepository.findByUsername(username) } returns user
+                every { pairService.findConnectedPair(user) } returns null
+                every { storageRepository.findByIdOrNull(1L) } returns storage
+                every { sectionRepository.findAllByStorageOrderBySortOrderAsc(storage) } returns emptyList()
+
+                Then("RESOURCE_NOT_FOUND 발생") {
+                    val ex =
+                        shouldThrow<CustomException> {
+                            service.moveSection(username, 1L, dummySectionMoveRequest(targetId = 999L))
+                        }
+                    ex.errorCode shouldBe ErrorCode.RESOURCE_NOT_FOUND
+                }
+            }
+
+            When("존재하지 않는 beforeId") {
+                val storage = dummyStorage(user = user)
+                val sec1 = dummySection(storage = storage, name = "윗칸", sortOrder = 0, id = 1L)
+
+                every { userRepository.findByUsername(username) } returns user
+                every { pairService.findConnectedPair(user) } returns null
+                every { storageRepository.findByIdOrNull(1L) } returns storage
+                every { sectionRepository.findAllByStorageOrderBySortOrderAsc(storage) } returns listOf(sec1)
+
+                Then("RESOURCE_NOT_FOUND 발생") {
+                    val ex =
+                        shouldThrow<CustomException> {
+                            service.moveSection(username, 1L, dummySectionMoveRequest(targetId = 1L, beforeId = 999L))
+                        }
+                    ex.errorCode shouldBe ErrorCode.RESOURCE_NOT_FOUND
                 }
             }
         }
