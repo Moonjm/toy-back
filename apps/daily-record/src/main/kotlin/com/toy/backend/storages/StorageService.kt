@@ -111,7 +111,6 @@ class StorageService(
 
         entities.add(insertIndex, target)
         entities.forEachIndexed { index, entity -> entity.updateSortOrder(index) }
-        storageRepository.saveAll(entities)
     }
 
     // ── 구역 ──
@@ -187,7 +186,6 @@ class StorageService(
 
         entities.add(insertIndex, target)
         entities.forEachIndexed { index, entity -> entity.updateSortOrder(index) }
-        sectionRepository.saveAll(entities)
     }
 
     // ── 품목 ──
