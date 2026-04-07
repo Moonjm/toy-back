@@ -138,10 +138,11 @@ class StorageServiceTest :
                 every { pairService.findConnectedPair(user) } returns null
                 every { storageRepository.findByIdOrNull(1L) } returns storage
 
-                service.updateStorage(username, 1L, dummyStorageUpdateRequest(name = "김치냉장고"))
+                service.updateStorage(username, 1L, dummyStorageUpdateRequest(name = "김치냉장고", storageType = "kimchi"))
 
-                Then("이름 변경") {
+                Then("이름과 보관함 종류 변경") {
                     storage.name shouldBe "김치냉장고"
+                    storage.storageType shouldBe "kimchi"
                 }
             }
         }
@@ -466,10 +467,11 @@ class StorageServiceTest :
                 every { sectionRepository.findByIdAndStorage(1L, storage) } returns section
                 every { itemRepository.save(any()) } answers { firstArg<StorageItem>().withId(10L) }
 
-                val id = service.createItem(username, 1L, dummyItemRequest(sectionId = 1L))
+                val id = service.createItem(username, 1L, dummyItemRequest(sectionId = 1L, category = "dairy_milk"))
 
                 Then("품목 ID 반환") {
                     id shouldBe 10L
+                    verify { itemRepository.save(match { it.category == "dairy_milk" }) }
                 }
             }
         }
@@ -486,11 +488,12 @@ class StorageServiceTest :
                 every { itemRepository.findByIdOrNull(10L) } returns item
                 every { sectionRepository.findByIdAndStorage(1L, storage) } returns section
 
-                service.updateItem(username, 1L, 10L, dummyItemRequest(name = "두유", quantity = 3, sectionId = 1L))
+                service.updateItem(username, 1L, 10L, dummyItemRequest(name = "두유", quantity = 3, category = "dairy_soymilk", sectionId = 1L))
 
-                Then("이름과 수량 변경") {
+                Then("이름, 수량, 카테고리 변경") {
                     item.name shouldBe "두유"
                     item.quantity shouldBe 3
+                    item.category shouldBe "dairy_soymilk"
                 }
             }
 
