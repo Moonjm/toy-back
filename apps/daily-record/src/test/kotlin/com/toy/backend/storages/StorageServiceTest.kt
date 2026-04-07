@@ -172,7 +172,6 @@ class StorageServiceTest :
                 every { userRepository.findByUsername(username) } returns user
                 every { pairService.findConnectedPair(user) } returns null
                 every { storageRepository.findAllByUserOrderBySortOrderAsc(user) } returns listOf(s1, s2, s3)
-                every { storageRepository.saveAll(any<List<Storage>>()) } answers { firstArg() }
 
                 service.moveStorage(username, dummyStorageMoveRequest(targetId = 3L, beforeId = 1L))
 
@@ -191,7 +190,6 @@ class StorageServiceTest :
                 every { userRepository.findByUsername(username) } returns user
                 every { pairService.findConnectedPair(user) } returns null
                 every { storageRepository.findAllByUserOrderBySortOrderAsc(user) } returns listOf(s1, s2, s3)
-                every { storageRepository.saveAll(any<List<Storage>>()) } answers { firstArg() }
 
                 service.moveStorage(username, dummyStorageMoveRequest(targetId = 1L, beforeId = null))
 
@@ -256,7 +254,6 @@ class StorageServiceTest :
                 every { pairService.findConnectedPair(user) } returns null
                 every { storageRepository.findByIdOrNull(1L) } returns storage
                 every { sectionRepository.findAllByStorageOrderBySortOrderAsc(storage) } returns listOf(sec1, sec2, sec3)
-                every { sectionRepository.saveAll(any<List<StorageSection>>()) } answers { firstArg() }
 
                 service.moveSection(username, 1L, dummySectionMoveRequest(targetId = 3L, beforeId = 1L))
 
@@ -276,7 +273,6 @@ class StorageServiceTest :
                 every { pairService.findConnectedPair(user) } returns null
                 every { storageRepository.findByIdOrNull(1L) } returns storage
                 every { sectionRepository.findAllByStorageOrderBySortOrderAsc(storage) } returns listOf(sec1, sec2)
-                every { sectionRepository.saveAll(any<List<StorageSection>>()) } answers { firstArg() }
 
                 service.moveSection(username, 1L, dummySectionMoveRequest(targetId = 1L, beforeId = null))
 
