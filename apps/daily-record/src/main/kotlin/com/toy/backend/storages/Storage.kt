@@ -28,13 +28,16 @@ class Storage(
     var pairId: Long? = null,
     @Column(nullable = false, length = 30)
     var name: String,
+    @Column(name = "storage_type", nullable = true, length = 20)
+    var storageType: String? = null,
     @Column(nullable = false)
     var sortOrder: Int = 0,
     @OneToMany(mappedBy = "storage", cascade = [CascadeType.REMOVE], orphanRemoval = true)
     val sections: MutableList<StorageSection> = mutableListOf(),
 ) : BaseEntity() {
-    fun updateName(name: String) {
+    fun update(name: String, storageType: String?) {
         this.name = name
+        this.storageType = storageType
     }
 
     fun updateSortOrder(sortOrder: Int) {

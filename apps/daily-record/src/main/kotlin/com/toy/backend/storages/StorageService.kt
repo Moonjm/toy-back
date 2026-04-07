@@ -54,6 +54,7 @@ class StorageService(
                 user = if (pair == null) user else null,
                 pairId = pair?.requiredId,
                 name = request.name,
+                storageType = request.storageType,
                 sortOrder = nextSortOrder,
             )
         storageRepository.save(storage)
@@ -68,7 +69,7 @@ class StorageService(
         request: StorageUpdateRequest,
     ) {
         val storage = findOwnedStorage(username, id)
-        storage.updateName(request.name)
+        storage.update(request.name, request.storageType)
     }
 
     @Transactional
@@ -220,6 +221,7 @@ class StorageService(
                 name = request.name,
                 quantity = request.quantity,
                 expiryDate = request.expiryDate,
+                category = request.category,
                 createdByUser = user,
             )
         return itemRepository.save(item).requiredId
@@ -237,7 +239,7 @@ class StorageService(
         val targetSection =
             sectionRepository.findByIdAndStorage(request.sectionId, storage)
                 ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, request.sectionId)
-        item.updateDetails(name = request.name, quantity = request.quantity, expiryDate = request.expiryDate, section = targetSection)
+        item.updateDetails(name = request.name, quantity = request.quantity, expiryDate = request.expiryDate, category = request.category, section = targetSection)
     }
 
     @Transactional

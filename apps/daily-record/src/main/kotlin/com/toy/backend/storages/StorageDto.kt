@@ -17,6 +17,8 @@ data class StorageResponse(
     val name: String,
     @field:Schema(description = "정렬 순서", example = "0")
     val sortOrder: Int,
+    @field:Schema(description = "보관함 종류", example = "fridge")
+    val storageType: String?,
     @field:Schema(description = "구역 목록")
     val sections: List<SectionResponse>,
 )
@@ -43,6 +45,8 @@ data class ItemResponse(
     val quantity: Int,
     @field:Schema(description = "소비기한", example = "2026-04-08")
     val expiryDate: LocalDate?,
+    @field:Schema(description = "품목 카테고리 키", example = "dairy_milk")
+    val category: String?,
     @field:Schema(description = "등록자 ID", example = "1")
     val createdBy: Long,
     @field:Schema(description = "등록일시")
@@ -57,14 +61,20 @@ data class StorageCreateRequest(
     @field:NotBlank
     @field:Size(max = 30)
     val name: String,
+    @field:Schema(description = "보관함 종류 키", example = "fridge")
+    @field:Size(max = 20)
+    val storageType: String? = null,
 )
 
-@Schema(description = "보관함 이름 수정 요청")
+@Schema(description = "보관함 수정 요청")
 data class StorageUpdateRequest(
     @field:Schema(description = "보관함 이름", example = "김치냉장고")
     @field:NotBlank
     @field:Size(max = 30)
     val name: String,
+    @field:Schema(description = "보관함 종류 키", example = "fridge")
+    @field:Size(max = 20)
+    val storageType: String? = null,
 )
 
 @Schema(description = "구역 추가 요청")
@@ -94,6 +104,9 @@ data class ItemRequest(
     val quantity: Int = 1,
     @field:Schema(description = "소비기한", example = "2026-04-08")
     val expiryDate: LocalDate? = null,
+    @field:Schema(description = "품목 카테고리 키", example = "dairy_milk")
+    @field:Size(max = 30)
+    val category: String? = null,
     @field:Schema(description = "구역 ID", example = "1")
     val sectionId: Long,
 )
@@ -121,6 +134,7 @@ fun Storage.toResponse(sections: List<SectionResponse>): StorageResponse =
         id = requiredId,
         name = name,
         sortOrder = sortOrder,
+        storageType = storageType,
         sections = sections,
     )
 
@@ -138,6 +152,7 @@ fun StorageItem.toResponse(): ItemResponse =
         name = name,
         quantity = quantity,
         expiryDate = expiryDate,
+        category = category,
         createdBy = createdByUser.requiredId,
         createdAt = createdAt,
     )

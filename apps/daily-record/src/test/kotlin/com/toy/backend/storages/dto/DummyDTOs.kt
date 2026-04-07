@@ -8,9 +8,15 @@ import com.toy.backend.storages.StorageCreateRequest
 import com.toy.backend.storages.StorageMoveRequest
 import com.toy.backend.storages.StorageUpdateRequest
 
-fun dummyStorageCreateRequest(name: String = "냉장고") = StorageCreateRequest(name = name)
+fun dummyStorageCreateRequest(
+    name: String = "냉장고",
+    storageType: String? = "fridge",
+) = StorageCreateRequest(name = name, storageType = storageType)
 
-fun dummyStorageUpdateRequest(name: String = "김치냉장고") = StorageUpdateRequest(name = name)
+fun dummyStorageUpdateRequest(
+    name: String = "김치냉장고",
+    storageType: String? = "kimchi",
+) = StorageUpdateRequest(name = name, storageType = storageType)
 
 fun dummySectionCreateRequest(name: String = "선반1") = SectionCreateRequest(name = name)
 
@@ -29,5 +35,6 @@ fun dummySectionMoveRequest(
 fun dummyItemRequest(
     name: String = "우유",
     quantity: Int = 1,
+    category: String? = "dairy_milk",
     sectionId: Long = 1L,
-) = ItemRequest(name = name, quantity = quantity, sectionId = sectionId)
+) = ItemRequest(name = name, quantity = quantity, category = category, sectionId = sectionId)

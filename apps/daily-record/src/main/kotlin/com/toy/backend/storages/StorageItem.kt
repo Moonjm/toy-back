@@ -31,6 +31,8 @@ class StorageItem(
     var quantity: Int = 1,
     @Column(name = "expiry_date", nullable = true)
     var expiryDate: LocalDate? = null,
+    @Column(nullable = true, length = 30)
+    var category: String? = null,
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_user_id", nullable = false)
     var createdByUser: User,
@@ -39,11 +41,13 @@ class StorageItem(
         name: String,
         quantity: Int,
         expiryDate: LocalDate?,
+        category: String?,
         section: StorageSection,
     ) {
         this.name = name
         this.quantity = quantity
         this.expiryDate = expiryDate
+        this.category = category
         this.section = section
     }
 }

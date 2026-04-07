@@ -10,9 +10,10 @@ fun dummyStorage(
     user: User? = null,
     pairId: Long? = null,
     name: String = "냉장고",
+    storageType: String? = "fridge",
     sortOrder: Int = 0,
     id: Long = 1L,
-): Storage = Storage(user = user, pairId = pairId, name = name, sortOrder = sortOrder).withId(id)
+): Storage = Storage(user = user, pairId = pairId, name = name, storageType = storageType, sortOrder = sortOrder).withId(id)
 
 fun dummySection(
     storage: Storage,
@@ -25,6 +26,7 @@ fun dummyItem(
     section: StorageSection,
     name: String = "우유",
     quantity: Int = 1,
+    category: String? = "dairy_milk",
     createdByUser: User,
     id: Long = 1L,
 ): StorageItem =
@@ -32,5 +34,6 @@ fun dummyItem(
         section = section,
         name = name,
         quantity = quantity,
+        category = category,
         createdByUser = createdByUser,
     ).withId(id)
