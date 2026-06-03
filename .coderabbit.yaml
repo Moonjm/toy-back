@@ -1,0 +1,19 @@
+# https://docs.coderabbit.ai/reference/yaml-template
+language: ko-KR
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!**/build/**"
+  path_instructions:
+    - path: "**/*.kt"
+      instructions: "Kotlin/서버 관례 준수 여부 확인. null 안전성(!! 회피), 예외 처리·전파, 코루틴/스레드 안전성, 트랜잭션 경계, DI·레이어 분리, 리소스 누수 위주로 점검."
+    - path: "**/*.kts"
+      instructions: "Gradle 빌드 스크립트 — 의존성 버전 일관성, 불필요한 플러그인/설정 위주로 점검."
+chat:
+  auto_reply: true
