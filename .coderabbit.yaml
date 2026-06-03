@@ -10,9 +10,6 @@ reviews:
     drafts: false
   path_filters:
     - "!**/build/**"
-    - "!gradle/wrapper/**"
-    - "!gradlew"
-    - "!gradlew.bat"
   path_instructions:
     - path: "**/*.kt"
       instructions: "Kotlin/서버 관례 준수 여부 확인. null 안전성(!! 회피), 예외 처리·전파, 코루틴/스레드 안전성, 트랜잭션 경계, DI·레이어 분리, 리소스 누수 위주로 점검."
