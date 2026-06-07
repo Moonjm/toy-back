@@ -7,7 +7,6 @@ import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.exception.CustomException
 import com.toy.backend.common.utils.findAllNotNull
 import com.toy.backend.pair.PairRepository
-import com.toy.backend.pair.PairStatus
 import com.toy.backend.user.User
 import com.toy.backend.user.UserRepository
 import org.springframework.data.repository.findByIdOrNull
@@ -121,10 +120,7 @@ class DailyRecordService(
 
     /** 현재 사용자의 CONNECTED 상태 파트너를 반환한다(없으면 null). */
     private fun findPartner(user: User): User? {
-        val pair =
-            pairRepository.findByInviterAndStatus(user, PairStatus.CONNECTED)
-                ?: pairRepository.findByPartnerAndStatus(user, PairStatus.CONNECTED)
-                ?: return null
+        val pair = pairRepository.findConnectedPair(user) ?: return null
         return if (pair.inviter.requiredId == user.requiredId) pair.partner else pair.inviter
     }
 

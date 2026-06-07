@@ -124,9 +124,7 @@ class DailyRecordServiceTest :
 
                 every { userRepository.findByUsername("testuser") } returns user
                 every { repository.findByIdOrNull(1L) } returns record
-                every {
-                    pairRepository.findByInviterAndStatus(user, PairStatus.CONNECTED)
-                } returns pair
+                every { pairRepository.findConnectedPair(user) } returns pair
                 every { categoryRepository.findByIdOrNull(2L) } returns newCategory
 
                 service.update("testuser", 1L, request)
@@ -158,8 +156,7 @@ class DailyRecordServiceTest :
 
                 every { userRepository.findByUsername("testuser") } returns user
                 every { repository.findByIdOrNull(1L) } returns record
-                every { pairRepository.findByInviterAndStatus(user, PairStatus.CONNECTED) } returns null
-                every { pairRepository.findByPartnerAndStatus(user, PairStatus.CONNECTED) } returns null
+                every { pairRepository.findConnectedPair(user) } returns null
 
                 Then("CustomException(RESOURCE_NOT_FOUND) 발생") {
                     val ex =
@@ -203,9 +200,7 @@ class DailyRecordServiceTest :
 
                 every { userRepository.findByUsername("testuser") } returns user
                 every { repository.findByIdOrNull(1L) } returns record
-                every {
-                    pairRepository.findByInviterAndStatus(user, PairStatus.CONNECTED)
-                } returns pair
+                every { pairRepository.findConnectedPair(user) } returns pair
                 justRun { repository.delete(record) }
 
                 service.delete("testuser", 1L)

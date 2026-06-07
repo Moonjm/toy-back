@@ -107,17 +107,13 @@ class PairService(
         userRepository.findByUsername(username)
             ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, username)
 
-    private fun isConnected(user: User): Boolean =
-        pairRepository.findByInviterAndStatus(user, PairStatus.CONNECTED) != null ||
-            pairRepository.findByPartnerAndStatus(user, PairStatus.CONNECTED) != null
+    private fun isConnected(user: User): Boolean = findConnectedPair(user) != null
 
     private fun findActivePair(user: User): PairConnection? =
         pairRepository.findByInviterAndStatusIn(user, listOf(PairStatus.PENDING, PairStatus.CONNECTED))
             ?: pairRepository.findByPartnerAndStatus(user, PairStatus.CONNECTED)
 
-    fun findConnectedPair(user: User): PairConnection? =
-        pairRepository.findByInviterAndStatus(user, PairStatus.CONNECTED)
-            ?: pairRepository.findByPartnerAndStatus(user, PairStatus.CONNECTED)
+    fun findConnectedPair(user: User): PairConnection? = pairRepository.findConnectedPair(user)
 
     private fun generateUniqueCode(): String {
         val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
