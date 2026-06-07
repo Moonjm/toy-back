@@ -29,8 +29,7 @@ class PairServiceTest :
         Given("초대 생성 시") {
             When("정상 요청 (신규)") {
                 every { userRepository.findByUsername("inviter") } returns inviter
-                every { pairRepository.findByInviterAndStatus(inviter, PairStatus.CONNECTED) } returns null
-                every { pairRepository.findByPartnerAndStatus(inviter, PairStatus.CONNECTED) } returns null
+                every { pairRepository.findConnectedPair(inviter) } returns null
                 every { pairRepository.findByInviterAndStatus(inviter, PairStatus.PENDING) } returns null
                 every { pairRepository.findByInviteCode(any()) } returns null
                 every { pairRepository.save(any()) } answers { firstArg() }
@@ -47,8 +46,7 @@ class PairServiceTest :
                 val existing = dummyPairConnection(inviter = inviter, inviteCode = "EXIST1")
 
                 every { userRepository.findByUsername("inviter") } returns inviter
-                every { pairRepository.findByInviterAndStatus(inviter, PairStatus.CONNECTED) } returns null
-                every { pairRepository.findByPartnerAndStatus(inviter, PairStatus.CONNECTED) } returns null
+                every { pairRepository.findConnectedPair(inviter) } returns null
                 every { pairRepository.findByInviterAndStatus(inviter, PairStatus.PENDING) } returns existing
 
                 val result = service.createInvite("inviter")
@@ -62,7 +60,7 @@ class PairServiceTest :
                 val connected = dummyPairConnection(inviter = inviter, status = PairStatus.CONNECTED)
 
                 every { userRepository.findByUsername("inviter") } returns inviter
-                every { pairRepository.findByInviterAndStatus(inviter, PairStatus.CONNECTED) } returns connected
+                every { pairRepository.findConnectedPair(inviter) } returns connected
 
                 Then("CustomException(ALREADY_PAIRED) 발생") {
                     val ex = shouldThrow<CustomException> { service.createInvite("inviter") }
@@ -77,11 +75,9 @@ class PairServiceTest :
                 val request = dummyPairAcceptRequest(inviteCode = "ABC123")
 
                 every { userRepository.findByUsername("partner") } returns partner
-                every { pairRepository.findByInviterAndStatus(partner, PairStatus.CONNECTED) } returns null
-                every { pairRepository.findByPartnerAndStatus(partner, PairStatus.CONNECTED) } returns null
+                every { pairRepository.findConnectedPair(partner) } returns null
                 every { pairRepository.findByInviteCode("ABC123") } returns pair
-                every { pairRepository.findByInviterAndStatus(inviter, PairStatus.CONNECTED) } returns null
-                every { pairRepository.findByPartnerAndStatus(inviter, PairStatus.CONNECTED) } returns null
+                every { pairRepository.findConnectedPair(inviter) } returns null
 
                 val result = service.acceptInvite("partner", request)
 
@@ -96,8 +92,7 @@ class PairServiceTest :
                 val request = dummyPairAcceptRequest(inviteCode = "SELF01")
 
                 every { userRepository.findByUsername("inviter") } returns inviter
-                every { pairRepository.findByInviterAndStatus(inviter, PairStatus.CONNECTED) } returns null
-                every { pairRepository.findByPartnerAndStatus(inviter, PairStatus.CONNECTED) } returns null
+                every { pairRepository.findConnectedPair(inviter) } returns null
                 every { pairRepository.findByInviteCode("SELF01") } returns pair
 
                 Then("CustomException(INVALID_REQUEST) 발생") {
@@ -110,8 +105,7 @@ class PairServiceTest :
                 val request = dummyPairAcceptRequest(inviteCode = "NOCODE")
 
                 every { userRepository.findByUsername("partner") } returns partner
-                every { pairRepository.findByInviterAndStatus(partner, PairStatus.CONNECTED) } returns null
-                every { pairRepository.findByPartnerAndStatus(partner, PairStatus.CONNECTED) } returns null
+                every { pairRepository.findConnectedPair(partner) } returns null
                 every { pairRepository.findByInviteCode("NOCODE") } returns null
 
                 Then("CustomException(RESOURCE_NOT_FOUND) 발생") {
@@ -199,7 +193,7 @@ class PairServiceTest :
                     )
 
                 every { userRepository.findByUsername("inviter") } returns inviter
-                every { pairRepository.findByInviterAndStatus(inviter, PairStatus.CONNECTED) } returns pair
+                every { pairRepository.findConnectedPair(inviter) } returns pair
                 every { dailyRecordService.list("partner", null, null, null) } returns emptyList()
 
                 val result = service.getPartnerDailyRecords("inviter", null, null, null)
@@ -212,8 +206,7 @@ class PairServiceTest :
 
             When("페어 미연결") {
                 every { userRepository.findByUsername("inviter") } returns inviter
-                every { pairRepository.findByInviterAndStatus(inviter, PairStatus.CONNECTED) } returns null
-                every { pairRepository.findByPartnerAndStatus(inviter, PairStatus.CONNECTED) } returns null
+                every { pairRepository.findConnectedPair(inviter) } returns null
 
                 Then("CustomException(PAIR_NOT_CONNECTED) 발생") {
                     val ex =
