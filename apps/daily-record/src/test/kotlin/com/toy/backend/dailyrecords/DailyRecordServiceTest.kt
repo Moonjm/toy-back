@@ -131,9 +131,10 @@ class DailyRecordServiceTest :
 
                 service.update("testuser", 1L, request)
 
-                Then("엔티티가 업데이트된다") {
+                Then("엔티티가 업데이트되고 작성자는 그대로 유지된다") {
                     record.category shouldBe newCategory
                     record.memo shouldBe "메모"
+                    record.user shouldBe partner
                 }
             }
 
@@ -142,6 +143,23 @@ class DailyRecordServiceTest :
 
                 every { userRepository.findByUsername("testuser") } returns user
                 every { repository.findByIdOrNull(1L) } returns record
+
+                Then("CustomException(RESOURCE_NOT_FOUND) 발생") {
+                    val ex =
+                        shouldThrow<CustomException> {
+                            service.update("testuser", 1L, dummyDailyRecordRequest())
+                        }
+                    ex.errorCode shouldBe ErrorCode.RESOURCE_NOT_FOUND
+                }
+            }
+
+            When("짝이 없는데 남의 together 기록 수정 요청") {
+                val record = dummyDailyRecord(user = partner, category = category, together = true)
+
+                every { userRepository.findByUsername("testuser") } returns user
+                every { repository.findByIdOrNull(1L) } returns record
+                every { pairRepository.findByInviterAndStatus(user, PairStatus.CONNECTED) } returns null
+                every { pairRepository.findByPartnerAndStatus(user, PairStatus.CONNECTED) } returns null
 
                 Then("CustomException(RESOURCE_NOT_FOUND) 발생") {
                     val ex =
