@@ -1,0 +1,43 @@
+package com.toy.backend.ledger.inbound
+
+import com.toy.backend.ledger.entries.EntrySource
+import java.math.BigDecimal
+import java.time.LocalDateTime
+
+enum class ParsedKind { APPROVAL, CANCEL }
+
+data class ParsedMessage(
+    val kind: ParsedKind,
+    val amount: BigDecimal,
+    val currency: String,
+    val merchant: String?,
+    val occurredAt: LocalDateTime,
+    val source: EntrySource,
+    val description: String? = null,
+)
+
+interface MessageParser {
+    fun supports(text: String): Boolean
+
+    fun parse(
+        text: String,
+        receivedAt: LocalDateTime,
+    ): ParsedMessage
+}
+
+object ParserDates {
+    /**
+     * 연도가 없는 MM/dd HH:mm을 수신 시점 기준으로 보정한다.
+     * 수신일보다 하루 이상 미래면 전년도로 간주한다 (12월 말 수신한 1월 거래 등 경계 대응).
+     */
+    fun resolveYear(
+        month: Int,
+        day: Int,
+        hour: Int,
+        minute: Int,
+        receivedAt: LocalDateTime,
+    ): LocalDateTime {
+        val candidate = LocalDateTime.of(receivedAt.year, month, day, hour, minute)
+        return if (candidate.isAfter(receivedAt.plusDays(1))) candidate.minusYears(1) else candidate
+    }
+}
