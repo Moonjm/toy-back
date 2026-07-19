@@ -12,9 +12,10 @@ interface LedgerEntryRepository : JpaRepository<LedgerEntry, Long> {
         toExclusive: LocalDateTime,
     ): List<LedgerEntry>
 
-    fun findFirstByUserAndAmountAndMerchantAndSourceAndEntryAtAfterOrderByEntryAtDesc(
+    fun findFirstByUserAndAmountAndCurrencyAndMerchantAndSourceAndEntryAtAfterOrderByEntryAtDesc(
         user: User,
         amount: BigDecimal,
+        currency: String,
         merchant: String,
         source: EntrySource,
         after: LocalDateTime,

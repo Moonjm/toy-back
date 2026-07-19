@@ -16,6 +16,7 @@ import argparse
 import html
 import re
 import sys
+from collections import Counter
 from datetime import datetime
 from decimal import Decimal
 
@@ -82,9 +83,19 @@ def dedupe_key(entry):
 
 
 def merge(old_entries, new_entries):
-    """신형(시간 있음) 우선으로 병합하고, 구형에서 겹치는 건은 버린다."""
-    seen = {dedupe_key(e) for e in new_entries}
-    unique_old = [e for e in old_entries if dedupe_key(e) not in seen]
+    """신형(시간 있음) 우선으로 병합한다.
+
+    같은 키(일자, 금액, 내용)의 구형 행은 신형에 존재하는 '개수만큼만' 중복으로 간주해 버린다 —
+    같은 날 같은 금액의 정당한 별개 거래가 통째로 유실되는 것을 막는다.
+    """
+    remaining = Counter(dedupe_key(e) for e in new_entries)
+    unique_old = []
+    for entry in old_entries:
+        key = dedupe_key(entry)
+        if remaining.get(key, 0) > 0:
+            remaining[key] -= 1
+        else:
+            unique_old.append(entry)
     return unique_old + new_entries
 
 

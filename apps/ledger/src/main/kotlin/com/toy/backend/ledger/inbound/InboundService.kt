@@ -54,7 +54,7 @@ class InboundService(
     }
 
     /**
-     * 같은 금액·가맹점의 최근 7일 내 승인 건을 삭제하고, 없으면 음수 건으로 저장해 합계를 보정한다.
+     * 같은 금액·통화·가맹점의 최근 7일 내 승인 건을 삭제하고, 없으면 음수 건으로 저장해 합계를 보정한다.
      * 취소 문자와 같은 source(SMS)로 저장된 건만 매칭한다 — 수동/반복/이관 건이 삭제되는 것을 막는다.
      */
     private fun cancel(
@@ -65,9 +65,10 @@ class InboundService(
     ): InboundResponse {
         val matched =
             parsed.merchant?.let { merchant ->
-                entryRepository.findFirstByUserAndAmountAndMerchantAndSourceAndEntryAtAfterOrderByEntryAtDesc(
+                entryRepository.findFirstByUserAndAmountAndCurrencyAndMerchantAndSourceAndEntryAtAfterOrderByEntryAtDesc(
                     user,
                     parsed.amount,
+                    parsed.currency,
                     merchant,
                     parsed.source,
                     receivedAt.minusDays(CANCEL_MATCH_DAYS),

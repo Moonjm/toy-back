@@ -27,14 +27,14 @@ class RecurringRuleService(
 
     /**
      * 내역 상세의 "반복" 버튼: entry 값을 복사해 규칙을 만든다.
-     * 이번 달 반복일이 이미 지났으면(오늘 포함) 원본 entry가 이번 달 발생분이므로
-     * 이번 달을 생성 완료로 초기화해 스케줄러의 중복 생성을 막는다.
+     * 원본 entry가 해당 달의 발생분이므로 lastGeneratedMonth를 entry의 달로 초기화한다 —
+     * 원본과 같은 달의 중복 생성을 막으면서, 과거 달 entry로 만든 규칙은 이번 달 발생분이
+     * 캐치업으로 정상 생성된다.
      */
     @Transactional
     fun create(
         username: String,
         request: RecurringRuleCreateRequest,
-        today: LocalDate = LocalDate.now(),
     ): Long {
         val user = findUser(username)
         val entry =
@@ -43,18 +43,16 @@ class RecurringRuleService(
         if (entry.user.requiredId != user.requiredId) {
             throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, request.entryId)
         }
-        val dayOfMonth = request.dayOfMonth ?: entry.entryAt.dayOfMonth
-        val effectiveDay = minOf(dayOfMonth, today.lengthOfMonth())
         val rule =
             RecurringRule(
                 user = user,
-                dayOfMonth = dayOfMonth,
+                dayOfMonth = request.dayOfMonth ?: entry.entryAt.dayOfMonth,
                 amount = entry.amount,
                 currency = entry.currency,
                 type = entry.type,
                 merchant = entry.merchant,
                 description = entry.description,
-                lastGeneratedMonth = if (today.dayOfMonth >= effectiveDay) today.format(MONTH_FORMAT) else null,
+                lastGeneratedMonth = entry.entryAt.format(MONTH_FORMAT),
             )
         return repository.save(rule).requiredId
     }
