@@ -130,4 +130,30 @@ class InboundServiceTest :
                 }
             }
         }
+
+        Given("supports는 true지만 parse가 예외를 던지는 파서") {
+            val brokenParser =
+                mockk<MessageParser> {
+                    every { supports(any()) } returns true
+                    every { parse(any(), any()) } throws RuntimeException("파서 결함")
+                }
+            val brokenService =
+                InboundService(
+                    parsers = listOf(brokenParser),
+                    entryRepository = entryRepository,
+                    inboundRepository = inboundRepository,
+                    userRepository = userRepository,
+                )
+
+            When("process") {
+                val text = "supports는 통과하지만 parse에서 터지는 문자"
+                val result = brokenService.process("testuser", text)
+
+                Then("예외 전파 없이 PARSE_FAILED로 흡수하고 원문을 보존") {
+                    result.status shouldBe InboundStatus.PARSE_FAILED
+                    result.entryId shouldBe null
+                    verify { inboundRepository.save(match { it.status == InboundStatus.PARSE_FAILED && it.rawText == text }) }
+                }
+            }
+        }
     })

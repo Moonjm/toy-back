@@ -21,7 +21,12 @@ import java.time.LocalDateTime
 @Component
 @Order(20)
 class OverseasApprovalParser : MessageParser {
-    override fun supports(text: String): Boolean = text.contains("해외승인") && AMOUNT_REGEX.containsMatchIn(text)
+    override fun supports(text: String): Boolean {
+        val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        return text.contains("해외승인") &&
+            lines.any { AMOUNT_REGEX.containsMatchIn(it) } &&
+            DATE_REGEX.containsMatchIn(text)
+    }
 
     override fun parse(
         text: String,
@@ -30,7 +35,7 @@ class OverseasApprovalParser : MessageParser {
         val kind = if (text.contains("취소")) ParsedKind.CANCEL else ParsedKind.APPROVAL
 
         val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
-        val amountIndex = lines.indexOfFirst { AMOUNT_REGEX.matches(it) }
+        val amountIndex = lines.indexOfFirst { AMOUNT_REGEX.containsMatchIn(it) }
         val amountMatch = AMOUNT_REGEX.find(lines[amountIndex])!!
         val (currency, rawAmount) = amountMatch.destructured
 

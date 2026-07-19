@@ -22,17 +22,26 @@ import java.time.LocalDateTime
 @Component
 @Order(10)
 class CardApprovalParser : MessageParser {
-    override fun supports(text: String): Boolean = KIND_REGEX.containsMatchIn(text) && DATE_REGEX.containsMatchIn(text)
+    override fun supports(text: String): Boolean {
+        val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        return KIND_REGEX.containsMatchIn(text) &&
+            lines.any { AMOUNT_LINE_REGEX.containsMatchIn(it) } &&
+            lines.any { DATE_REGEX.containsMatchIn(it) }
+    }
 
     override fun parse(
         text: String,
         receivedAt: LocalDateTime,
     ): ParsedMessage {
         val kind = if (KIND_REGEX.find(text)!!.groupValues[1] == "취소") ParsedKind.CANCEL else ParsedKind.APPROVAL
-        val amount = BigDecimal(AMOUNT_REGEX.find(text)!!.groupValues[1].replace(",", ""))
 
         val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
-        val dateIndex = lines.indexOfFirst { DATE_REGEX.matches(it) }
+        val amount =
+            BigDecimal(
+                lines.firstNotNullOfOrNull { AMOUNT_LINE_REGEX.find(it) }!!.groupValues[1].replace(",", ""),
+            )
+
+        val dateIndex = lines.indexOfFirst { DATE_REGEX.containsMatchIn(it) }
         val dateMatch = DATE_REGEX.find(lines[dateIndex])!!
         val (month, day, hour, minute) = dateMatch.destructured
         val merchant =
@@ -59,7 +68,7 @@ class CardApprovalParser : MessageParser {
 
     companion object {
         private val KIND_REGEX = Regex("""카드\s*(승인|취소)""")
-        private val AMOUNT_REGEX = Regex("""(?m)^([\d,]+)원""")
+        private val AMOUNT_LINE_REGEX = Regex("""^([\d,]+)원""")
         private val DATE_REGEX = Regex("""(\d{2})/(\d{2})\s+(\d{2}):(\d{2})""")
     }
 }

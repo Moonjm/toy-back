@@ -21,6 +21,7 @@ data class ParsedMessage(
  *
  * 계약: [parse]는 [supports]가 true를 반환한 텍스트에 대해서만 호출해야 한다.
  * 구현체는 이 전제 하에 형식이 보장된 것으로 간주하고 파싱한다 (파서 체인이 supports로 선별).
+ * 이 계약을 위반해 [parse]가 예외를 던지면 InboundService가 PARSE_FAILED로 흡수해 원문을 보존한다.
  */
 interface MessageParser {
     fun supports(text: String): Boolean

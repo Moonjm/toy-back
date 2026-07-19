@@ -35,16 +35,21 @@ class InboundService(
             return record(user, text, InboundStatus.PARSE_FAILED, entryId = null)
         }
 
-        val parsed = parser.parse(text, receivedAt)
-        return when (parsed.kind) {
-            ParsedKind.APPROVAL -> {
-                val entry = entryRepository.save(parsed.toEntry(user))
-                record(user, text, InboundStatus.SAVED, entry.requiredId)
-            }
+        return runCatching {
+            val parsed = parser.parse(text, receivedAt)
+            when (parsed.kind) {
+                ParsedKind.APPROVAL -> {
+                    val entry = entryRepository.save(parsed.toEntry(user))
+                    record(user, text, InboundStatus.SAVED, entry.requiredId)
+                }
 
-            ParsedKind.CANCEL -> {
-                cancel(user, text, parsed, receivedAt)
+                ParsedKind.CANCEL -> {
+                    cancel(user, text, parsed, receivedAt)
+                }
             }
+        }.getOrElse { e ->
+            log.error(e) { "파싱 실패: user=$username, parser=${parser::class.simpleName}, length=${text.length}" }
+            record(user, text, InboundStatus.PARSE_FAILED, entryId = null)
         }
     }
 
