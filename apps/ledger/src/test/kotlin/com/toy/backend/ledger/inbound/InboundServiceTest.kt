@@ -223,16 +223,30 @@ class InboundServiceTest :
                 every { inboundRepository.findByIdOrNull(100L) } returns message
                 every { entryRepository.save(any()) } answers { (firstArg() as LedgerEntry).withId(11L) }
 
-                val result = service.retry("testuser", 100L)
+                service.retry("testuser", 100L)
 
                 Then("내역이 생성되고 기존 로그의 상태가 SAVED로 갱신된다") {
-                    result.status shouldBe InboundStatus.SAVED
-                    result.entryId shouldBe 11L
                     verify {
                         inboundRepository.save(
                             match { it.requiredId == 100L && it.status == InboundStatus.SAVED && it.entryId == 11L },
                         )
                     }
+                }
+            }
+
+            When("재처리해도 파싱이 실패하면") {
+                val message =
+                    InboundMessage(
+                        user = user,
+                        rawText = "여전히 파싱 불가능한 원문",
+                        status = InboundStatus.PARSE_FAILED,
+                    ).withId(103L)
+                every { inboundRepository.findByIdOrNull(103L) } returns message
+
+                Then("MESSAGE_PARSE_FAILED 예외(400), 로그 상태는 PARSE_FAILED 유지") {
+                    val e = shouldThrow<CustomException> { service.retry("testuser", 103L) }
+                    e.errorCode shouldBe LedgerErrorCode.MESSAGE_PARSE_FAILED
+                    message.status shouldBe InboundStatus.PARSE_FAILED
                 }
             }
 

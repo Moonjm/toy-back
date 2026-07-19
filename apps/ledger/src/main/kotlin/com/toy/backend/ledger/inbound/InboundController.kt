@@ -1,7 +1,6 @@
 package com.toy.backend.ledger.inbound
 
 import com.toy.backend.common.annotation.ResponseCreated
-import com.toy.backend.common.response.DataResponseBody
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
@@ -28,9 +27,12 @@ class InboundController(
     ): ResponseEntity<Long> = ResponseEntity.ok(service.process(authentication.name, request.text))
 
     @PostMapping("/{id}/retry")
-    @Operation(summary = "실패(PARSE_FAILED) 건의 보존된 원문 재처리")
+    @Operation(summary = "실패(PARSE_FAILED) 건의 보존된 원문 재처리 — 성공 204, 재실패 400")
     fun retry(
         @PathVariable id: Long,
         authentication: Authentication,
-    ): ResponseEntity<DataResponseBody<InboundResponse>> = ResponseEntity.ok(DataResponseBody(service.retry(authentication.name, id)))
+    ): ResponseEntity<Void> {
+        service.retry(authentication.name, id)
+        return ResponseEntity.noContent().build()
+    }
 }

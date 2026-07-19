@@ -45,11 +45,15 @@ class InboundService(
         return saved.requiredId
     }
 
-    /** PARSE_FAILED로 보존된 원문을 다시 처리하고, 해당 수신 로그의 상태를 결과로 갱신한다. */
+    /**
+     * PARSE_FAILED로 보존된 원문을 다시 처리하고, 수신 로그의 상태를 갱신한다.
+     * 재처리도 실패하면 상태를 그대로 두고 MESSAGE_PARSE_FAILED(400)를 던진다 —
+     * 성공/실패는 HTTP 상태코드(204/400)로 구분된다.
+     */
     fun retry(
         username: String,
         id: Long,
-    ): InboundResponse {
+    ) {
         val user = findUser(username)
         val message =
             inboundRepository.findByIdOrNull(id)
@@ -61,10 +65,12 @@ class InboundService(
             throw CustomException(LedgerErrorCode.INBOUND_NOT_RETRYABLE, id)
         }
         val outcome = handle(user, message.rawText)
+        if (outcome.status == InboundStatus.PARSE_FAILED) {
+            throw CustomException(LedgerErrorCode.MESSAGE_PARSE_FAILED, id)
+        }
         message.status = outcome.status
         message.entryId = outcome.entryId
         inboundRepository.save(message)
-        return InboundResponse(status = outcome.status, entryId = outcome.entryId)
     }
 
     /** 파싱~내역 저장을 자체 트랜잭션에서 수행하고, 어떤 실패든 PARSE_FAILED로 흡수한다. */
