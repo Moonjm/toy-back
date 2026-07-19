@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import java.net.URI
 
 @Tag(name = "가계부 API 키", description = "단축어용 API 키 관리")
 @RestController
@@ -30,8 +31,13 @@ class ApiKeyController(
     fun issue(
         @Valid @RequestBody request: ApiKeyCreateRequest,
         authentication: Authentication,
-    ): ResponseEntity<DataResponseBody<ApiKeyIssueResponse>> =
-        ResponseEntity.ok(DataResponseBody(service.issue(authentication.name, request)))
+    ): ResponseEntity<DataResponseBody<ApiKeyIssueResponse>> {
+        val issued = service.issue(authentication.name, request)
+        // 원본 키를 1회 노출해야 하므로 @ResponseCreated(바디 폐기) 대신 수동 201 + Location + 바디로 응답한다.
+        return ResponseEntity
+            .created(URI.create("/api-keys/${issued.id}"))
+            .body(DataResponseBody(issued))
+    }
 
     @DeleteMapping("/{id}")
     @Operation(summary = "API 키 폐기")
