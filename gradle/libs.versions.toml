@@ -1,16 +1,16 @@
 [versions]
-kotlin = "2.3.10"
-spring-boot = "4.0.3"
+kotlin = "2.4.10"
+spring-boot = "4.1.0"
 spring-dependency-management = "1.1.7"
-spotless = "8.2.1"
-springdoc = "3.0.1"
-kotlin-logging = "8.0.01"
-kotlin-jdsl = "3.8.0"
-aws-s3 = "2.42.3"
-p6spy-starter = "2.0.0"
-logbook = "4.0.2"
-kotest = "6.1.4"
-mockk = "1.14.9"
+spotless = "8.8.0"
+springdoc = "3.0.3"
+kotlin-logging = "8.0.4"
+kotlin-jdsl = "3.9.0"
+aws-s3 = "2.48.3"
+p6spy-starter = "2.0.1"
+logbook = "4.0.4"
+kotest = "6.2.2"
+mockk = "1.14.11"
 
 [libraries]
 # Spring Boot starters

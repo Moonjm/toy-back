@@ -239,7 +239,13 @@ class StorageService(
         val targetSection =
             sectionRepository.findByIdAndStorage(request.sectionId, storage)
                 ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, request.sectionId)
-        item.updateDetails(name = request.name, quantity = request.quantity, expiryDate = request.expiryDate, category = request.category, section = targetSection)
+        item.updateDetails(
+            name = request.name,
+            quantity = request.quantity,
+            expiryDate = request.expiryDate,
+            category = request.category,
+            section = targetSection,
+        )
     }
 
     @Transactional

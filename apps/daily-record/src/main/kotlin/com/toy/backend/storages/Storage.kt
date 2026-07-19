@@ -35,7 +35,10 @@ class Storage(
     @OneToMany(mappedBy = "storage", cascade = [CascadeType.REMOVE], orphanRemoval = true)
     val sections: MutableList<StorageSection> = mutableListOf(),
 ) : BaseEntity() {
-    fun update(name: String, storageType: String?) {
+    fun update(
+        name: String,
+        storageType: String?,
+    ) {
         this.name = name
         this.storageType = storageType
     }

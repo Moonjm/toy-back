@@ -488,7 +488,12 @@ class StorageServiceTest :
                 every { itemRepository.findByIdOrNull(10L) } returns item
                 every { sectionRepository.findByIdAndStorage(1L, storage) } returns section
 
-                service.updateItem(username, 1L, 10L, dummyItemRequest(name = "두유", quantity = 3, category = "dairy_soymilk", sectionId = 1L))
+                service.updateItem(
+                    username,
+                    1L,
+                    10L,
+                    dummyItemRequest(name = "두유", quantity = 3, category = "dairy_soymilk", sectionId = 1L),
+                )
 
                 Then("이름, 수량, 카테고리 변경") {
                     item.name shouldBe "두유"
