@@ -81,16 +81,18 @@ class RecurringRuleServiceTest :
             }
         }
 
-        Given("스케줄러 생성 — generateDueEntries") {
+        Given("스케줄러 생성 — findDueRuleIds / generateForRule") {
             When("반복일이 지났고 이번 달 미생성이면") {
-                val rule = dummyRule(dayOfMonth = 25, lastGeneratedMonth = "2026-06")
+                val rule = dummyRule(dayOfMonth = 25, lastGeneratedMonth = "2026-06", id = 1L)
                 every { repository.findAllByActiveTrue() } returns listOf(rule)
+                every { repository.findByIdOrNull(1L) } returns rule
                 every { entryRepository.save(any()) } answers { (firstArg() as LedgerEntry).withId(20L) }
 
-                val count = service.generateDueEntries(LocalDate.of(2026, 7, 26))
+                val dueIds = service.findDueRuleIds(LocalDate.of(2026, 7, 26))
+                service.generateForRule(1L, LocalDate.of(2026, 7, 26))
 
-                Then("entry 생성(source=RECURRING), lastGeneratedMonth 갱신") {
-                    count shouldBe 1
+                Then("findDueRuleIds가 해당 id 반환, entry 생성(source=RECURRING), lastGeneratedMonth 갱신") {
+                    dueIds shouldBe listOf(1L)
                     rule.lastGeneratedMonth shouldBe "2026-07"
                     verify {
                         entryRepository.save(
@@ -104,32 +106,34 @@ class RecurringRuleServiceTest :
             }
 
             When("이번 달 이미 생성했으면") {
-                val rule = dummyRule(dayOfMonth = 25, lastGeneratedMonth = "2026-07")
+                val rule = dummyRule(dayOfMonth = 25, lastGeneratedMonth = "2026-07", id = 2L)
                 every { repository.findAllByActiveTrue() } returns listOf(rule)
 
-                val count = service.generateDueEntries(LocalDate.of(2026, 7, 26))
+                val dueIds = service.findDueRuleIds(LocalDate.of(2026, 7, 26))
 
-                Then("생성하지 않음") { count shouldBe 0 }
+                Then("빈 목록") { dueIds shouldBe emptyList() }
             }
 
             When("반복일이 아직 안 됐으면") {
-                val rule = dummyRule(dayOfMonth = 25, lastGeneratedMonth = "2026-06")
+                val rule = dummyRule(dayOfMonth = 25, lastGeneratedMonth = "2026-06", id = 3L)
                 every { repository.findAllByActiveTrue() } returns listOf(rule)
 
-                val count = service.generateDueEntries(LocalDate.of(2026, 7, 10))
+                val dueIds = service.findDueRuleIds(LocalDate.of(2026, 7, 10))
 
-                Then("생성하지 않음") { count shouldBe 0 }
+                Then("빈 목록") { dueIds shouldBe emptyList() }
             }
 
             When("31일 규칙을 2월에 실행하면") {
-                val rule = dummyRule(dayOfMonth = 31, lastGeneratedMonth = "2026-01")
+                val rule = dummyRule(dayOfMonth = 31, lastGeneratedMonth = "2026-01", id = 4L)
                 every { repository.findAllByActiveTrue() } returns listOf(rule)
+                every { repository.findByIdOrNull(4L) } returns rule
                 every { entryRepository.save(any()) } answers { (firstArg() as LedgerEntry).withId(21L) }
 
-                val count = service.generateDueEntries(LocalDate.of(2026, 2, 28))
+                val dueIds = service.findDueRuleIds(LocalDate.of(2026, 2, 28))
+                service.generateForRule(4L, LocalDate.of(2026, 2, 28))
 
                 Then("말일(2/28)로 보정해 생성") {
-                    count shouldBe 1
+                    dueIds shouldBe listOf(4L)
                     verify {
                         entryRepository.save(
                             match { it.entryAt == LocalDateTime.of(2026, 2, 28, 0, 0) },

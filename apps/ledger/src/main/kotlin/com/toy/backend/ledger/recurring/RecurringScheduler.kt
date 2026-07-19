@@ -13,7 +13,14 @@ class RecurringScheduler(
 ) {
     @Scheduled(cron = "0 30 0 * * *")
     fun generate() {
-        runCatching { service.generateDueEntries(LocalDate.now()) }
-            .onFailure { e -> log.error(e) { "반복 내역 생성 실패" } }
+        val today = LocalDate.now()
+        val dueRuleIds =
+            runCatching { service.findDueRuleIds(today) }
+                .onFailure { e -> log.error(e) { "반복 규칙 조회 실패" } }
+                .getOrDefault(emptyList())
+        dueRuleIds.forEach { ruleId ->
+            runCatching { service.generateForRule(ruleId, today) }
+                .onFailure { e -> log.error(e) { "반복 내역 생성 실패: ruleId=$ruleId" } }
+        }
     }
 }

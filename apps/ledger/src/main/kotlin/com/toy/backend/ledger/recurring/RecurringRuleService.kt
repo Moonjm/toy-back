@@ -78,36 +78,45 @@ class RecurringRuleService(
         repository.delete(rule)
     }
 
+    /** 오늘 생성 대상인 규칙 ID 목록. effectiveDay = min(dayOfMonth, 말일), 생성일 ≤ 오늘 && 이번 달 미생성. */
+    fun findDueRuleIds(today: LocalDate): List<Long> {
+        val currentMonth = today.format(MONTH_FORMAT)
+        return repository
+            .findAllByActiveTrue()
+            .filter { rule ->
+                val effectiveDay = minOf(rule.dayOfMonth, today.lengthOfMonth())
+                today.dayOfMonth >= effectiveDay && rule.lastGeneratedMonth != currentMonth
+            }.map { it.requiredId }
+    }
+
     /**
-     * 반복일이 지났는데 이번 달 미생성인 규칙의 entry를 생성한다.
-     * "<= today" 조건이라 서버가 며칠 중단돼도 다음 실행에서 밀린 건이 생성된다(캐치업).
-     * 해당 월에 없는 날짜(예: 31일)는 말일로 보정한다.
+     * 규칙 하나의 이번 달 반복 내역을 생성한다. 규칙별 트랜잭션이라 한 규칙의 실패가
+     * 다른 규칙 처리에 영향을 주지 않는다. 생성 조건을 재검증하므로 중복 생성 없이 멱등하다.
      */
     @Transactional
-    fun generateDueEntries(today: LocalDate): Int {
+    fun generateForRule(
+        ruleId: Long,
+        today: LocalDate,
+    ) {
         val currentMonth = today.format(MONTH_FORMAT)
-        var created = 0
-        repository.findAllByActiveTrue().forEach { rule ->
-            val effectiveDay = minOf(rule.dayOfMonth, today.lengthOfMonth())
-            if (today.dayOfMonth < effectiveDay || rule.lastGeneratedMonth == currentMonth) return@forEach
+        val rule = repository.findByIdOrNull(ruleId) ?: return
+        val effectiveDay = minOf(rule.dayOfMonth, today.lengthOfMonth())
+        if (!rule.active || today.dayOfMonth < effectiveDay || rule.lastGeneratedMonth == currentMonth) return
 
-            entryRepository.save(
-                LedgerEntry(
-                    user = rule.user,
-                    entryAt = today.withDayOfMonth(effectiveDay).atStartOfDay(),
-                    amount = rule.amount,
-                    currency = rule.currency,
-                    type = rule.type,
-                    merchant = rule.merchant,
-                    description = rule.description,
-                    source = EntrySource.RECURRING,
-                ),
-            )
-            rule.lastGeneratedMonth = currentMonth
-            created++
-        }
-        if (created > 0) log.info { "반복 내역 생성: $created 건 ($currentMonth)" }
-        return created
+        entryRepository.save(
+            LedgerEntry(
+                user = rule.user,
+                entryAt = today.withDayOfMonth(effectiveDay).atStartOfDay(),
+                amount = rule.amount,
+                currency = rule.currency,
+                type = rule.type,
+                merchant = rule.merchant,
+                description = rule.description,
+                source = EntrySource.RECURRING,
+            ),
+        )
+        rule.lastGeneratedMonth = currentMonth
+        log.info { "반복 내역 생성: ruleId=$ruleId ($currentMonth)" }
     }
 
     private fun authorizedRule(
