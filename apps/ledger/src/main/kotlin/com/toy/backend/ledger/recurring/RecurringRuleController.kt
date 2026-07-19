@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController
 
 @Tag(name = "가계부 반복 규칙", description = "월 반복 입력 규칙 관리")
 @RestController
-@RequestMapping("/api/ledger/recurring-rules")
+@RequestMapping("/recurring-rules")
 class RecurringRuleController(
     private val service: RecurringRuleService,
 ) {
@@ -28,7 +28,7 @@ class RecurringRuleController(
         ResponseEntity.ok(DataResponseBody(service.list(authentication.name)))
 
     @PostMapping
-    @ResponseCreated("/api/ledger/recurring-rules/{id}")
+    @ResponseCreated("/recurring-rules/{id}")
     @Operation(summary = "반복 규칙 등록 — 내역 상세의 반복 버튼 (entry 값 복사)")
     fun create(
         @Valid @RequestBody request: RecurringRuleCreateRequest,

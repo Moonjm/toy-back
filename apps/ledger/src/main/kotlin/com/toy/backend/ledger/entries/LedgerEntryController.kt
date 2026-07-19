@@ -21,7 +21,7 @@ import java.time.LocalDate
 
 @Tag(name = "가계부 내역", description = "가계부 내역 API")
 @RestController
-@RequestMapping("/api/ledger/entries")
+@RequestMapping("/entries")
 class LedgerEntryController(
     private val service: LedgerEntryService,
 ) {
@@ -35,7 +35,7 @@ class LedgerEntryController(
         ResponseEntity.ok(DataResponseBody(service.list(authentication.name, from, to)))
 
     @PostMapping
-    @ResponseCreated("/api/ledger/entries/{id}")
+    @ResponseCreated("/entries/{id}")
     @Operation(summary = "내역 생성")
     fun create(
         @Valid @RequestBody request: LedgerEntryRequest,

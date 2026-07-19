@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController
 
 @Tag(name = "가계부 수신", description = "문자/카카오페이 원문 수신 API (X-API-Key 또는 JWT)")
 @RestController
-@RequestMapping("/api/ledger/inbound")
+@RequestMapping("/inbound")
 class InboundController(
     private val service: InboundService,
 ) {

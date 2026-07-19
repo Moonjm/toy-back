@@ -89,7 +89,8 @@ daily-record와 동일한 패턴의 Spring Boot 앱 모듈:
 
 ## API
 
-베이스 경로 `/api/ledger`. 응답 형식은 common-core의 `DataResponseBody`/`ErrorResponseBody` 관례를 따른다.
+경로는 기존 앱 관례대로 루트 기준이다(별도 prefix 없음 — daily-record의 `/daily-records`와 동일한 방식).
+응답 형식은 common-core의 `DataResponseBody`/`ErrorResponseBody` 관례를 따른다.
 
 | 메서드/경로 | 인증 | 설명 |
 |---|---|---|
@@ -112,7 +113,7 @@ daily-record와 동일한 패턴의 Spring Boot 앱 모듈:
 
 ### API 키 인증
 
-`/api/ledger/inbound`에 한해 `X-API-Key` 헤더를 허용하는 필터를 추가한다.
+`/inbound`에 한해 `X-API-Key` 헤더를 허용하는 필터를 추가한다.
 키 해시로 `api_key`를 조회해 `user_id`를 확정한다. 그 외 엔드포인트는 common-auth JWT 필터를 그대로 사용.
 
 ## 메시지 파싱

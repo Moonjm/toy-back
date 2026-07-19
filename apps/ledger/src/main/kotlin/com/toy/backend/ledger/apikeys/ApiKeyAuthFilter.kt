@@ -10,7 +10,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 
-/** 단축어 전용: X-API-Key 헤더로 /api/ledger/inbound 요청을 인증한다. */
+/** 단축어 전용: X-API-Key 헤더로 /inbound 요청을 인증한다. */
 @Component
 class ApiKeyAuthFilter(
     private val repository: ApiKeyRepository,
@@ -38,6 +38,6 @@ class ApiKeyAuthFilter(
 
     companion object {
         private const val API_KEY_HEADER = "X-API-Key"
-        private const val INBOUND_PATH = "/api/ledger/inbound"
+        private const val INBOUND_PATH = "/inbound"
     }
 }

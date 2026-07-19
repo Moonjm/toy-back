@@ -22,8 +22,8 @@ class ApiKeyAuthFilterTest :
         afterContainer { SecurityContextHolder.clearContext() }
 
         fun inboundRequest(apiKey: String?): MockHttpServletRequest =
-            MockHttpServletRequest("POST", "/api/ledger/inbound").apply {
-                requestURI = "/api/ledger/inbound"
+            MockHttpServletRequest("POST", "/inbound").apply {
+                requestURI = "/inbound"
                 apiKey?.let { addHeader("X-API-Key", it) }
             }
 
@@ -55,8 +55,8 @@ class ApiKeyAuthFilterTest :
         Given("inbound 외 경로에 API 키") {
             When("필터 통과") {
                 val request =
-                    MockHttpServletRequest("GET", "/api/ledger/entries").apply {
-                        requestURI = "/api/ledger/entries"
+                    MockHttpServletRequest("GET", "/entries").apply {
+                        requestURI = "/entries"
                         addHeader("X-API-Key", "valid-key")
                     }
 

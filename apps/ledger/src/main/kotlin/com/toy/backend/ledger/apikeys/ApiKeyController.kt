@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController
 
 @Tag(name = "가계부 API 키", description = "단축어용 API 키 관리")
 @RestController
-@RequestMapping("/api/ledger/api-keys")
+@RequestMapping("/api-keys")
 class ApiKeyController(
     private val service: ApiKeyService,
 ) {
