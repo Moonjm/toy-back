@@ -52,7 +52,10 @@ class KakaoPayParser : MessageParser {
         )
     }
 
-    /** "- 상품명:" 라벨부터 다음 "- " 라벨 전까지의 줄을 이어붙인다 (OCR/복붙 줄바꿈 대응). */
+    /**
+     * "- 상품명:" 라벨부터 다음 "- "/"*" 라벨 전까지의 줄을 이어붙인다 (OCR/복붙 줄바꿈 대응).
+     * OCR이 상품명 중간에 넣는 빈 줄은 끝이 아니므로 건너뛴다.
+     */
     private fun extractProductName(text: String): String? {
         val lines = text.lines().map { it.trim() }
         val startIndex = lines.indexOfFirst { PRODUCT_REGEX.containsMatchIn(it) }
@@ -68,7 +71,8 @@ class KakaoPayParser : MessageParser {
         val parts = mutableListOf(firstPart)
         for (i in startIndex + 1 until lines.size) {
             val line = lines[i]
-            if (line.isEmpty() || line.startsWith("- ") || line.startsWith("*")) break
+            if (line.isEmpty()) continue
+            if (line.startsWith("- ") || line.startsWith("*")) break
             parts += line
         }
         return parts.joinToString(" ").take(500)

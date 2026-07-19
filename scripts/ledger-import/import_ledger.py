@@ -46,8 +46,8 @@ def parse_old_xls(path):
                 "amount": Decimal(cells[4].replace(",", "")),
                 "currency": "KRW",
                 "type": "INCOME" if cells[5] == "수입" else "EXPENSE",
-                "merchant": cells[3] or None,
-                "description": (cells[6] or None) if len(cells) > 6 else None,
+                "merchant": cells[3][:100] or None,
+                "description": (cells[6][:500] or None) if len(cells) > 6 else None,
             }
         )
     return entries
@@ -70,8 +70,8 @@ def parse_new_xlsx(path):
                 "amount": Decimal(str(amount)),
                 "currency": (currency or "KRW").strip(),
                 "type": "INCOME" if io_type == "수입" else "EXPENSE",
-                "merchant": (str(content).strip() or None) if content else None,
-                "description": (str(extra).strip() or None) if extra else None,
+                "merchant": (str(content).strip()[:100] or None) if content else None,
+                "description": (str(extra).strip()[:500] or None) if extra else None,
             }
         )
     return entries

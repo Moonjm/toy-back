@@ -65,13 +65,13 @@ class InboundService(
     ): InboundResponse {
         val matched =
             parsed.merchant?.let { merchant ->
-                entryRepository.findFirstByUserAndAmountAndCurrencyAndMerchantAndSourceAndEntryAtAfterOrderByEntryAtDesc(
-                    user,
-                    parsed.amount,
-                    parsed.currency,
-                    merchant,
-                    parsed.source,
-                    receivedAt.minusDays(CANCEL_MATCH_DAYS),
+                entryRepository.findLatestCancellable(
+                    user = user,
+                    amount = parsed.amount,
+                    currency = parsed.currency,
+                    merchant = merchant,
+                    source = parsed.source,
+                    after = receivedAt.minusDays(CANCEL_MATCH_DAYS),
                 )
             }
         if (matched != null) {

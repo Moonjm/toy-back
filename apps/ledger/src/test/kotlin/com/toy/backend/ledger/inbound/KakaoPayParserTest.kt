@@ -76,4 +76,19 @@ class KakaoPayParserTest :
                 }
             }
         }
+
+        Given("OCR이 상품명 중간에 빈 줄을 넣은 경우") {
+            When("parse") {
+                val textWithBlank =
+                    pasteText.replace(
+                        "라임향355ml 48캔\n외 펩시BEST 모음전",
+                        "라임향355ml 48캔\n\n외 펩시BEST 모음전",
+                    )
+                val result = parser.parse(textWithBlank, receivedAt)
+                Then("빈 줄을 건너뛰고 다음 라벨 전까지 이어붙인다") {
+                    result.description shouldContain "라임향355ml 48캔"
+                    result.description shouldContain "외 펩시BEST 모음전"
+                }
+            }
+        }
     })
