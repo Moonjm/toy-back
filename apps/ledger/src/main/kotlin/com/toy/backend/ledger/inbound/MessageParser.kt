@@ -16,6 +16,12 @@ data class ParsedMessage(
     val description: String? = null,
 )
 
+/**
+ * 수신 문자/알림 텍스트 파서.
+ *
+ * 계약: [parse]는 [supports]가 true를 반환한 텍스트에 대해서만 호출해야 한다.
+ * 구현체는 이 전제 하에 형식이 보장된 것으로 간주하고 파싱한다 (파서 체인이 supports로 선별).
+ */
 interface MessageParser {
     fun supports(text: String): Boolean
 
