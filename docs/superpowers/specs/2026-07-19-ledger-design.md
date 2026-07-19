@@ -101,10 +101,14 @@ daily-record와 동일한 패턴의 Spring Boot 앱 모듈:
 | `GET /api-keys` | JWT | 키 목록 (해시 제외, 이름·생성일만) |
 | `POST /api-keys` | JWT | 키 발급 — 원본 키는 이 응답에서만 노출 |
 | `DELETE /api-keys/{id}` | JWT | 키 폐기 |
-| `GET /recurring-rules` | JWT | 규칙 목록 |
-| `POST /recurring-rules` | JWT | 규칙 생성 |
-| `PUT /recurring-rules/{id}` | JWT | 규칙 수정 |
-| `DELETE /recurring-rules/{id}` | JWT | 규칙 삭제(또는 비활성화) |
+| `GET /recurring-rules` | JWT | 규칙 목록 (관리 페이지용) |
+| `POST /recurring-rules` | JWT | 규칙 등록 — `{ entryId, dayOfMonth? }`. 내역 상세의 "반복" 버튼에서 호출하며, 해당 entry의 금액·통화·구매처·내용을 복사한다. `dayOfMonth` 생략 시 entry 날짜의 일(日) 사용 |
+| `PUT /recurring-rules/{id}` | JWT | 규칙 수정 (금액·구매처·내용·반복일·활성 여부) |
+| `DELETE /recurring-rules/{id}` | JWT | 규칙 삭제 |
+
+반복 규칙 생성 진입점은 내역 상세 화면의 "반복" 버튼 하나다(빈 폼으로 새로 만드는 UI 없음).
+관리 페이지는 목록·수정·삭제만 담당한다. 규칙은 entry 값의 복사본이므로 이후 원본 entry를
+수정·삭제해도 규칙에는 영향이 없다.
 
 ### API 키 인증
 
