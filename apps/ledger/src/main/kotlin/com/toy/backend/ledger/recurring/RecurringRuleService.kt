@@ -25,11 +25,16 @@ class RecurringRuleService(
 ) {
     fun list(username: String): List<RecurringRuleResponse> = repository.findAllByUser(findUser(username)).map { it.toResponse() }
 
-    /** 내역 상세의 "반복" 버튼: entry 값을 복사해 규칙을 만든다. */
+    /**
+     * 내역 상세의 "반복" 버튼: entry 값을 복사해 규칙을 만든다.
+     * 이번 달 반복일이 이미 지났으면(오늘 포함) 원본 entry가 이번 달 발생분이므로
+     * 이번 달을 생성 완료로 초기화해 스케줄러의 중복 생성을 막는다.
+     */
     @Transactional
     fun create(
         username: String,
         request: RecurringRuleCreateRequest,
+        today: LocalDate = LocalDate.now(),
     ): Long {
         val user = findUser(username)
         val entry =
@@ -38,15 +43,18 @@ class RecurringRuleService(
         if (entry.user.requiredId != user.requiredId) {
             throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, request.entryId)
         }
+        val dayOfMonth = request.dayOfMonth ?: entry.entryAt.dayOfMonth
+        val effectiveDay = minOf(dayOfMonth, today.lengthOfMonth())
         val rule =
             RecurringRule(
                 user = user,
-                dayOfMonth = request.dayOfMonth ?: entry.entryAt.dayOfMonth,
+                dayOfMonth = dayOfMonth,
                 amount = entry.amount,
                 currency = entry.currency,
                 type = entry.type,
                 merchant = entry.merchant,
                 description = entry.description,
+                lastGeneratedMonth = if (today.dayOfMonth >= effectiveDay) today.format(MONTH_FORMAT) else null,
             )
         return repository.save(rule).requiredId
     }

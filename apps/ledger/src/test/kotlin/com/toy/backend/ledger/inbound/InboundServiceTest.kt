@@ -77,10 +77,11 @@ class InboundServiceTest :
             When("같은 금액·가맹점 승인 건이 7일 내에 있으면") {
                 val existing = dummyLedgerEntry(user = user, id = 11L)
                 every {
-                    entryRepository.findFirstByUserAndAmountAndMerchantAndEntryAtAfterOrderByEntryAtDesc(
+                    entryRepository.findFirstByUserAndAmountAndMerchantAndSourceAndEntryAtAfterOrderByEntryAtDesc(
                         user,
                         BigDecimal("18920"),
                         "제주특별자치도개발",
+                        EntrySource.SMS,
                         any(),
                     )
                 } returns existing
@@ -99,8 +100,9 @@ class InboundServiceTest :
         Given("취소 문자 수신 — 매칭 실패") {
             When("매칭되는 승인 건이 없으면") {
                 every {
-                    entryRepository.findFirstByUserAndAmountAndMerchantAndEntryAtAfterOrderByEntryAtDesc(
+                    entryRepository.findFirstByUserAndAmountAndMerchantAndSourceAndEntryAtAfterOrderByEntryAtDesc(
                         user,
+                        any(),
                         any(),
                         any(),
                         any(),

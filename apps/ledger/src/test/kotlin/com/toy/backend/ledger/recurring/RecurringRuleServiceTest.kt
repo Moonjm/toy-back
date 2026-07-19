@@ -52,7 +52,7 @@ class RecurringRuleServiceTest :
         }
 
         Given("규칙 등록 (entry 기반)") {
-            When("dayOfMonth 생략 시") {
+            When("dayOfMonth 생략, 이번 달 반복일이 이미 지났으면") {
                 val entry =
                     dummyLedgerEntry(
                         user = user,
@@ -63,9 +63,9 @@ class RecurringRuleServiceTest :
                 every { entryRepository.findByIdOrNull(5L) } returns entry
                 every { repository.save(any()) } answers { (firstArg() as RecurringRule).withId(2L) }
 
-                val id = service.create("testuser", RecurringRuleCreateRequest(entryId = 5L))
+                val id = service.create("testuser", RecurringRuleCreateRequest(entryId = 5L), today = LocalDate.of(2026, 7, 26))
 
-                Then("entry 값 복사, 반복일은 entry 날짜의 일") {
+                Then("entry 값 복사, 반복일은 entry 날짜의 일, 이번 달은 생성 완료로 초기화(원본 중복 방지)") {
                     id shouldBe 2L
                     verify {
                         repository.save(
@@ -73,8 +73,31 @@ class RecurringRuleServiceTest :
                                 it.dayOfMonth == 25 &&
                                     it.amount == BigDecimal("18920") &&
                                     it.merchant == "넷플릭스" &&
-                                    it.type == EntryType.EXPENSE
+                                    it.type == EntryType.EXPENSE &&
+                                    it.lastGeneratedMonth == "2026-07"
                             },
+                        )
+                    }
+                }
+            }
+
+            When("이번 달 반복일이 아직 안 왔으면") {
+                val entry =
+                    dummyLedgerEntry(
+                        user = user,
+                        entryAt = LocalDateTime.of(2026, 6, 25, 0, 0),
+                        merchant = "넷플릭스",
+                        id = 6L,
+                    )
+                every { entryRepository.findByIdOrNull(6L) } returns entry
+                every { repository.save(any()) } answers { (firstArg() as RecurringRule).withId(3L) }
+
+                service.create("testuser", RecurringRuleCreateRequest(entryId = 6L), today = LocalDate.of(2026, 7, 10))
+
+                Then("lastGeneratedMonth는 null — 이번 달 반복일에 정상 생성되도록 둔다") {
+                    verify {
+                        repository.save(
+                            match { it.dayOfMonth == 25 && it.lastGeneratedMonth == null },
                         )
                     }
                 }
