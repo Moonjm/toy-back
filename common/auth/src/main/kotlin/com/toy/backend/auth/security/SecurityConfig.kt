@@ -1,6 +1,7 @@
 package com.toy.backend.auth.security
 
 import com.toy.backend.auth.security.JwtAuthFilter
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpMethod
@@ -17,7 +18,10 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableMethodSecurity
 class SecurityConfig(
     private val jwtAuthFilter: JwtAuthFilter,
+    additionalAuthFilters: ObjectProvider<AdditionalAuthFilter>,
 ) {
+    private val additionalAuthFilters: List<AdditionalAuthFilter> = additionalAuthFilters.orderedStream().toList()
+
     @Bean
     fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
 
@@ -40,6 +44,10 @@ class SecurityConfig(
             }.exceptionHandling {
                 it.authenticationEntryPoint(HttpStatusEntryPoint(org.springframework.http.HttpStatus.UNAUTHORIZED))
             }.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
+
+        additionalAuthFilters.forEach { filter ->
+            http.addFilterBefore(filter, UsernamePasswordAuthenticationFilter::class.java)
+        }
 
         return http.build()
     }
