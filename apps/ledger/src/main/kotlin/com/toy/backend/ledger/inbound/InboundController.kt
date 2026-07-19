@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.Authentication
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -24,4 +25,11 @@ class InboundController(
         authentication: Authentication,
     ): ResponseEntity<DataResponseBody<InboundResponse>> =
         ResponseEntity.ok(DataResponseBody(service.process(authentication.name, request.text)))
+
+    @PostMapping("/{id}/retry")
+    @Operation(summary = "실패(PARSE_FAILED) 건의 보존된 원문 재처리")
+    fun retry(
+        @PathVariable id: Long,
+        authentication: Authentication,
+    ): ResponseEntity<DataResponseBody<InboundResponse>> = ResponseEntity.ok(DataResponseBody(service.retry(authentication.name, id)))
 }

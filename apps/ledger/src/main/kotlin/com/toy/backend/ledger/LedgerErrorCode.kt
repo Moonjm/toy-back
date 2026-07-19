@@ -9,6 +9,7 @@ enum class LedgerErrorCode(
 ) : Code {
     // ── Inbound ──
     MESSAGE_PARSE_FAILED(HttpStatus.BAD_REQUEST, "메시지를 파싱할 수 없습니다: %s"),
+    INBOUND_NOT_RETRYABLE(HttpStatus.BAD_REQUEST, "재처리할 수 없는 수신 메시지입니다: %s"),
     ;
 
     override fun getHttpStatus(): HttpStatus = httpStatus
