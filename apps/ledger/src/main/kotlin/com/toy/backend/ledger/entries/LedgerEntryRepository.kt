@@ -14,7 +14,10 @@ interface LedgerEntryRepository : JpaRepository<LedgerEntry, Long> {
         toExclusive: LocalDateTime,
     ): List<LedgerEntry>
 
-    /** 취소 매칭 대상: 같은 사용자·금액·통화·가맹점·source의 기간 내 최신 건. */
+    /**
+     * 취소 매칭 대상: 같은 사용자·금액·통화·가맹점·source의 [after, before] 구간 내 최신 건.
+     * 상한(before)은 취소 시각 — 취소보다 나중에 발생한 승인이 삭제되는 것을 막는다.
+     */
     @Query(
         """
         select e from LedgerEntry e
@@ -24,6 +27,7 @@ interface LedgerEntryRepository : JpaRepository<LedgerEntry, Long> {
           and e.merchant = :merchant
           and e.source = :source
           and e.entryAt > :after
+          and e.entryAt <= :before
         order by e.entryAt desc
         limit 1
         """,
@@ -35,5 +39,6 @@ interface LedgerEntryRepository : JpaRepository<LedgerEntry, Long> {
         @Param("merchant") merchant: String,
         @Param("source") source: EntrySource,
         @Param("after") after: LocalDateTime,
+        @Param("before") before: LocalDateTime,
     ): LedgerEntry?
 }

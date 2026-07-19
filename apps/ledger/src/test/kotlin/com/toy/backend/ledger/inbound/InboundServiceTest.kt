@@ -17,6 +17,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.PlatformTransactionManager
@@ -25,6 +26,7 @@ import org.springframework.transaction.TransactionStatus
 import org.springframework.transaction.support.SimpleTransactionStatus
 import org.springframework.transaction.support.TransactionTemplate
 import java.math.BigDecimal
+import java.time.LocalDateTime
 
 private val approvalText =
     """
@@ -97,6 +99,8 @@ class InboundServiceTest :
         Given("취소 문자 수신 — 매칭 성공") {
             When("같은 금액·가맹점 승인 건이 7일 내에 있으면") {
                 val existing = dummyLedgerEntry(user = user, id = 11L)
+                val afterSlot = slot<LocalDateTime>()
+                val beforeSlot = slot<LocalDateTime>()
                 every {
                     entryRepository.findLatestCancellable(
                         user,
@@ -104,17 +108,23 @@ class InboundServiceTest :
                         "KRW",
                         "제주특별자치도개발",
                         EntrySource.SMS,
-                        any(),
+                        capture(afterSlot),
+                        capture(beforeSlot),
                     )
                 } returns existing
                 justRun { entryRepository.delete(existing) }
 
                 val result = service.process("testuser", cancelText)
 
-                Then("기존 건 삭제, CANCEL_MATCHED 로그") {
+                Then("기존 건 삭제, CANCEL_MATCHED 로그, 매칭 창은 파싱된 취소 시각(07/14 07:38) 기준 직전 7일") {
                     result.status shouldBe InboundStatus.CANCEL_MATCHED
                     result.entryId shouldBe 11L
                     verify { entryRepository.delete(existing) }
+                    beforeSlot.captured.monthValue shouldBe 7
+                    beforeSlot.captured.dayOfMonth shouldBe 14
+                    beforeSlot.captured.hour shouldBe 7
+                    beforeSlot.captured.minute shouldBe 38
+                    afterSlot.captured shouldBe beforeSlot.captured.minusDays(7)
                 }
             }
         }
@@ -124,6 +134,7 @@ class InboundServiceTest :
                 every {
                     entryRepository.findLatestCancellable(
                         user,
+                        any(),
                         any(),
                         any(),
                         any(),

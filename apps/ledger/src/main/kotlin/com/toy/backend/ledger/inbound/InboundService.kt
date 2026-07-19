@@ -86,7 +86,7 @@ class InboundService(
                         }
 
                         ParsedKind.CANCEL -> {
-                            cancel(user, parsed, receivedAt)
+                            cancel(user, parsed)
                         }
                     }
                 },
@@ -98,13 +98,15 @@ class InboundService(
     }
 
     /**
-     * 같은 금액·통화·가맹점의 최근 7일 내 승인 건을 삭제하고, 없으면 음수 건으로 저장해 합계를 보정한다.
+     * 같은 금액·통화·가맹점의 승인 건 중 취소 시각 이전 7일 내 최신 건을 삭제하고,
+     * 없으면 음수 건으로 저장해 합계를 보정한다.
+     * 창의 기준이 수신(재처리) 시각이 아니라 파싱된 취소 시각이므로, 실패 건을 나중에
+     * 재처리해도 취소 이후에 발생한 새 승인이 삭제되지 않는다.
      * 취소 문자와 같은 source(SMS)로 저장된 건만 매칭한다 — 수동/반복/이관 건이 삭제되는 것을 막는다.
      */
     private fun cancel(
         user: User,
         parsed: ParsedMessage,
-        receivedAt: LocalDateTime,
     ): Outcome {
         val matched =
             parsed.merchant?.let { merchant ->
@@ -114,7 +116,8 @@ class InboundService(
                     currency = parsed.currency,
                     merchant = merchant,
                     source = parsed.source,
-                    after = receivedAt.minusDays(CANCEL_MATCH_DAYS),
+                    after = parsed.occurredAt.minusDays(CANCEL_MATCH_DAYS),
+                    before = parsed.occurredAt,
                 )
             }
         if (matched != null) {
