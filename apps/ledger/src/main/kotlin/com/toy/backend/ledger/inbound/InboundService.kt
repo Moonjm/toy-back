@@ -84,7 +84,7 @@ class InboundService(
             amount = amount,
             currency = currency,
             type = EntryType.EXPENSE,
-            merchant = merchant,
+            merchant = merchant?.take(100),
             description = description,
             source = source,
         )
