@@ -1,5 +1,6 @@
 package com.toy.backend.ledger.inbound
 
+import com.toy.backend.common.annotation.ResponseCreated
 import com.toy.backend.common.response.DataResponseBody
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
@@ -19,12 +20,12 @@ class InboundController(
     private val service: InboundService,
 ) {
     @PostMapping
-    @Operation(summary = "원문 텍스트 수신 — 파싱 실패도 200이며 원문은 항상 보존된다")
+    @ResponseCreated("/inbound/{id}/retry")
+    @Operation(summary = "원문 텍스트 수신 — 항상 수신 기록을 생성(201)하며 Location이 재처리 경로를 가리킨다")
     fun receive(
         @Valid @RequestBody request: InboundRequest,
         authentication: Authentication,
-    ): ResponseEntity<DataResponseBody<InboundResponse>> =
-        ResponseEntity.ok(DataResponseBody(service.process(authentication.name, request.text)))
+    ): ResponseEntity<Long> = ResponseEntity.ok(service.process(authentication.name, request.text))
 
     @PostMapping("/{id}/retry")
     @Operation(summary = "실패(PARSE_FAILED) 건의 보존된 원문 재처리")

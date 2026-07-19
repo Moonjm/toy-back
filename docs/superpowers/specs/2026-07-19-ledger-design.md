@@ -98,7 +98,7 @@ daily-record와 동일한 패턴의 Spring Boot 앱 모듈:
 | `POST /entries` | JWT | 수동 입력 |
 | `PUT /entries/{id}` | JWT | 수정 (본인 것만) |
 | `DELETE /entries/{id}` | JWT | 삭제 (본인 것만) |
-| `POST /inbound` | API 키 또는 JWT | `{ "text": "원문" }` — 파싱 후 저장/취소매칭. 내역 저장은 별도 트랜잭션이라 저장 실패 시에도 원문은 PARSE_FAILED로 보존됨 |
+| `POST /inbound` | API 키 또는 JWT | `{ "text": "원문" }` — 파싱 후 저장/취소매칭. 항상 수신 기록이 생성되므로 201 + `Location: /inbound/{id}/retry` 응답. 내역 저장은 별도 트랜잭션이라 저장 실패 시에도 원문은 PARSE_FAILED로 보존됨 |
 | `POST /inbound/{id}/retry` | JWT | PARSE_FAILED 건의 보존 원문 재처리 (문자는 재발송이 불가하므로 원문 보존 + 재처리가 유일한 복구 수단) |
 | `GET /api-keys` | JWT | 키 목록 (해시 제외, 이름·생성일만) |
 | `POST /api-keys` | JWT | 키 발급 — 원본 키는 이 응답에서만 노출 |

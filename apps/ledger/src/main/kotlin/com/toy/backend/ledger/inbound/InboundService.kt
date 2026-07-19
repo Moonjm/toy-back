@@ -29,17 +29,20 @@ class InboundService(
      * 내역 저장은 별도 트랜잭션(TransactionTemplate)에서 수행하므로 저장이 실패해도
      * rollback-only 오염 없이 PARSE_FAILED 원문 기록이 남고, 이후 [retry]로 재처리할 수 있다.
      * (문자는 카드사가 재발송해 주지 않으므로 원문 보존이 최우선이다)
+     *
+     * @return 저장된 수신 기록의 id — 컨트롤러가 Location(/inbound/{id}/retry)으로 노출한다.
      */
     fun process(
         username: String,
         text: String,
-    ): InboundResponse {
+    ): Long {
         val user = findUser(username)
         val outcome = handle(user, text)
-        inboundRepository.save(
-            InboundMessage(user = user, rawText = text, status = outcome.status, entryId = outcome.entryId),
-        )
-        return InboundResponse(status = outcome.status, entryId = outcome.entryId)
+        val saved =
+            inboundRepository.save(
+                InboundMessage(user = user, rawText = text, status = outcome.status, entryId = outcome.entryId),
+            )
+        return saved.requiredId
     }
 
     /** PARSE_FAILED로 보존된 원문을 다시 처리하고, 해당 수신 로그의 상태를 결과로 갱신한다. */

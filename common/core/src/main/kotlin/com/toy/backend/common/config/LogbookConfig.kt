@@ -38,7 +38,8 @@ class LogbookConfig {
                 HeaderFilters.replaceHeaders(
                     { name, _ ->
                         name.equals("Cookie", ignoreCase = true) ||
-                            name.equals("Set-Cookie", ignoreCase = true)
+                            name.equals("Set-Cookie", ignoreCase = true) ||
+                            name.equals("X-API-Key", ignoreCase = true)
                     },
                     "<obfuscated>",
                 ),

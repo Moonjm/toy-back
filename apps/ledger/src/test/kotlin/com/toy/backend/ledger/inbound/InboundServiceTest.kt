@@ -76,11 +76,10 @@ class InboundServiceTest :
             When("process") {
                 every { entryRepository.save(any()) } answers { (firstArg() as LedgerEntry).withId(11L) }
 
-                val result = service.process("testuser", approvalText)
+                val inboundId = service.process("testuser", approvalText)
 
-                Then("EXPENSE 내역 생성, SAVED 로그") {
-                    result.status shouldBe InboundStatus.SAVED
-                    result.entryId shouldBe 11L
+                Then("EXPENSE 내역 생성, SAVED 로그, 수신 기록 id 반환") {
+                    inboundId shouldBe 100L
                     verify {
                         entryRepository.save(
                             match {
@@ -91,7 +90,11 @@ class InboundServiceTest :
                             },
                         )
                     }
-                    verify { inboundRepository.save(match { it.status == InboundStatus.SAVED && it.rawText == approvalText }) }
+                    verify {
+                        inboundRepository.save(
+                            match { it.status == InboundStatus.SAVED && it.entryId == 11L && it.rawText == approvalText },
+                        )
+                    }
                 }
             }
         }
@@ -114,12 +117,12 @@ class InboundServiceTest :
                 } returns existing
                 justRun { entryRepository.delete(existing) }
 
-                val result = service.process("testuser", cancelText)
+                val inboundId = service.process("testuser", cancelText)
 
                 Then("기존 건 삭제, CANCEL_MATCHED 로그, 매칭 창은 파싱된 취소 시각(07/14 07:38) 기준 직전 7일") {
-                    result.status shouldBe InboundStatus.CANCEL_MATCHED
-                    result.entryId shouldBe 11L
+                    inboundId shouldBe 100L
                     verify { entryRepository.delete(existing) }
+                    verify { inboundRepository.save(match { it.status == InboundStatus.CANCEL_MATCHED && it.entryId == 11L }) }
                     beforeSlot.captured.monthValue shouldBe 7
                     beforeSlot.captured.dayOfMonth shouldBe 14
                     beforeSlot.captured.hour shouldBe 7
@@ -144,25 +147,28 @@ class InboundServiceTest :
                 } returns null
                 every { entryRepository.save(any()) } answers { (firstArg() as LedgerEntry).withId(12L) }
 
-                val result = service.process("testuser", cancelText)
+                service.process("testuser", cancelText)
 
                 Then("음수 금액 건으로 저장해 합계 보정") {
-                    result.status shouldBe InboundStatus.SAVED
                     verify {
                         entryRepository.save(match { it.amount == BigDecimal("-18920") })
                     }
+                    verify { inboundRepository.save(match { it.status == InboundStatus.SAVED && it.entryId == 12L }) }
                 }
             }
         }
 
         Given("파싱 불가 텍스트 수신") {
             When("process") {
-                val result = service.process("testuser", "그냥 광고 문자입니다")
+                val inboundId = service.process("testuser", "그냥 광고 문자입니다")
 
-                Then("PARSE_FAILED 로그로 원문 보존, 예외 없음") {
-                    result.status shouldBe InboundStatus.PARSE_FAILED
-                    result.entryId shouldBe null
-                    verify { inboundRepository.save(match { it.status == InboundStatus.PARSE_FAILED && it.rawText == "그냥 광고 문자입니다" }) }
+                Then("PARSE_FAILED 로그로 원문 보존, 재처리용 수신 기록 id 반환") {
+                    inboundId shouldBe 100L
+                    verify {
+                        inboundRepository.save(
+                            match { it.status == InboundStatus.PARSE_FAILED && it.entryId == null && it.rawText == "그냥 광고 문자입니다" },
+                        )
+                    }
                 }
             }
         }
@@ -184,11 +190,10 @@ class InboundServiceTest :
 
             When("process") {
                 val text = "supports는 통과하지만 parse에서 터지는 문자"
-                val result = brokenService.process("testuser", text)
+                val inboundId = brokenService.process("testuser", text)
 
                 Then("예외 전파 없이 PARSE_FAILED로 흡수하고 원문을 보존") {
-                    result.status shouldBe InboundStatus.PARSE_FAILED
-                    result.entryId shouldBe null
+                    inboundId shouldBe 100L
                     verify { inboundRepository.save(match { it.status == InboundStatus.PARSE_FAILED && it.rawText == text }) }
                 }
             }
@@ -198,11 +203,10 @@ class InboundServiceTest :
             When("process") {
                 every { entryRepository.save(any()) } throws RuntimeException("DB 저장 실패")
 
-                val result = service.process("testuser", approvalText)
+                val inboundId = service.process("testuser", approvalText)
 
                 Then("PARSE_FAILED로 원문 보존 — 문자는 재발송이 안 되므로 이후 재처리 가능해야 함") {
-                    result.status shouldBe InboundStatus.PARSE_FAILED
-                    result.entryId shouldBe null
+                    inboundId shouldBe 100L
                     verify { inboundRepository.save(match { it.status == InboundStatus.PARSE_FAILED && it.rawText == approvalText }) }
                 }
             }
