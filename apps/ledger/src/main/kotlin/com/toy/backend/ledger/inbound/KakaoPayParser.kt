@@ -26,9 +26,10 @@ class KakaoPayParser : MessageParser {
             AMOUNT_REGEX.find(text)?.let { BigDecimal(it.groupValues[1].replace(",", "")) }
                 ?: BigDecimal.ZERO
 
-        val merchant = MERCHANT_REGEX.find(text)!!.groupValues[1].trim()
+        val merchantMatch = MERCHANT_REGEX.find(text) ?: error("구매처 라벨을 찾을 수 없습니다")
+        val merchant = merchantMatch.groupValues[1].trim()
 
-        val dateMatch = DATE_REGEX.find(text)!!
+        val dateMatch = DATE_REGEX.find(text) ?: error("결제일시를 찾을 수 없습니다")
         val (year, month, day, hour, minute) = dateMatch.destructured
 
         return ParsedMessage(
@@ -53,9 +54,16 @@ class KakaoPayParser : MessageParser {
     private fun extractProductName(text: String): String? {
         val lines = text.lines().map { it.trim() }
         val startIndex = lines.indexOfFirst { PRODUCT_REGEX.containsMatchIn(it) }
-        if (startIndex < 0) return null
+        val firstPart =
+            lines
+                .getOrNull(startIndex)
+                ?.let { PRODUCT_REGEX.find(it) }
+                ?.groupValues
+                ?.get(1)
+                ?.trim()
+                ?: return null
 
-        val parts = mutableListOf(PRODUCT_REGEX.find(lines[startIndex])!!.groupValues[1].trim())
+        val parts = mutableListOf(firstPart)
         for (i in startIndex + 1 until lines.size) {
             val line = lines[i]
             if (line.isEmpty() || line.startsWith("- ") || line.startsWith("*")) break

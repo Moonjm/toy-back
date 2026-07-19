@@ -21,13 +21,11 @@ class ApiKeyAuthFilter(
         filterChain: FilterChain,
     ) {
         val key = request.getHeader(API_KEY_HEADER)
-        val applicable =
-            request.requestURI == INBOUND_PATH &&
-                !key.isNullOrBlank() &&
-                SecurityContextHolder.getContext().authentication == null
-
-        if (applicable) {
-            repository.findWithUserByKeyHash(TokenHasher.sha256(key!!))?.let { apiKey ->
+        if (request.requestURI == INBOUND_PATH &&
+            !key.isNullOrBlank() &&
+            SecurityContextHolder.getContext().authentication == null
+        ) {
+            repository.findWithUserByKeyHash(TokenHasher.sha256(key))?.let { apiKey ->
                 val authorities = listOf(SimpleGrantedAuthority(apiKey.user.authority.name))
                 SecurityContextHolder.getContext().authentication =
                     UsernamePasswordAuthenticationToken(apiKey.user.username, null, authorities)

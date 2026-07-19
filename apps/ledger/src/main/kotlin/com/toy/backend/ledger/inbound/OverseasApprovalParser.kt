@@ -36,10 +36,12 @@ class OverseasApprovalParser : MessageParser {
 
         val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
         val amountIndex = lines.indexOfFirst { AMOUNT_REGEX.containsMatchIn(it) }
-        val amountMatch = AMOUNT_REGEX.find(lines[amountIndex])!!
+        val amountMatch =
+            lines.getOrNull(amountIndex)?.let { AMOUNT_REGEX.find(it) }
+                ?: error("통화·금액 줄을 찾을 수 없습니다")
         val (currency, rawAmount) = amountMatch.destructured
 
-        val dateMatch = DATE_REGEX.find(text)!!
+        val dateMatch = DATE_REGEX.find(text) ?: error("일시를 찾을 수 없습니다")
         val (month, day, hour, minute) = dateMatch.destructured
 
         return ParsedMessage(

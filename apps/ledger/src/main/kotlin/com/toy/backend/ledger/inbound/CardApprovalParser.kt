@@ -33,16 +33,19 @@ class CardApprovalParser : MessageParser {
         text: String,
         receivedAt: LocalDateTime,
     ): ParsedMessage {
-        val kind = if (KIND_REGEX.find(text)!!.groupValues[1] == "취소") ParsedKind.CANCEL else ParsedKind.APPROVAL
+        val kindMatch = KIND_REGEX.find(text) ?: error("승인/취소 문구를 찾을 수 없습니다")
+        val kind = if (kindMatch.groupValues[1] == "취소") ParsedKind.CANCEL else ParsedKind.APPROVAL
 
         val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
-        val amount =
-            BigDecimal(
-                lines.firstNotNullOfOrNull { AMOUNT_LINE_REGEX.find(it) }!!.groupValues[1].replace(",", ""),
-            )
+        val amountMatch =
+            lines.firstNotNullOfOrNull { AMOUNT_LINE_REGEX.find(it) }
+                ?: error("금액 줄을 찾을 수 없습니다")
+        val amount = BigDecimal(amountMatch.groupValues[1].replace(",", ""))
 
         val dateIndex = lines.indexOfFirst { DATE_REGEX.containsMatchIn(it) }
-        val dateMatch = DATE_REGEX.find(lines[dateIndex])!!
+        val dateMatch =
+            lines.getOrNull(dateIndex)?.let { DATE_REGEX.find(it) }
+                ?: error("일시 줄을 찾을 수 없습니다")
         val (month, day, hour, minute) = dateMatch.destructured
         val merchant =
             lines
