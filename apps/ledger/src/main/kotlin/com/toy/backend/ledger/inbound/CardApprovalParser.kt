@@ -1,5 +1,7 @@
 package com.toy.backend.ledger.inbound
 
+import com.toy.backend.common.exception.CustomException
+import com.toy.backend.ledger.LedgerErrorCode
 import com.toy.backend.ledger.entries.EntrySource
 import org.springframework.core.annotation.Order
 import org.springframework.stereotype.Component
@@ -33,19 +35,19 @@ class CardApprovalParser : MessageParser {
         text: String,
         receivedAt: LocalDateTime,
     ): ParsedMessage {
-        val kindMatch = KIND_REGEX.find(text) ?: error("승인/취소 문구를 찾을 수 없습니다")
+        val kindMatch = KIND_REGEX.find(text) ?: throw CustomException(LedgerErrorCode.MESSAGE_PARSE_FAILED, "승인/취소 문구 없음")
         val kind = if (kindMatch.groupValues[1] == "취소") ParsedKind.CANCEL else ParsedKind.APPROVAL
 
         val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
         val amountMatch =
             lines.firstNotNullOfOrNull { AMOUNT_LINE_REGEX.find(it) }
-                ?: error("금액 줄을 찾을 수 없습니다")
+                ?: throw CustomException(LedgerErrorCode.MESSAGE_PARSE_FAILED, "금액 줄 없음")
         val amount = BigDecimal(amountMatch.groupValues[1].replace(",", ""))
 
         val dateIndex = lines.indexOfFirst { DATE_REGEX.containsMatchIn(it) }
         val dateMatch =
             lines.getOrNull(dateIndex)?.let { DATE_REGEX.find(it) }
-                ?: error("일시 줄을 찾을 수 없습니다")
+                ?: throw CustomException(LedgerErrorCode.MESSAGE_PARSE_FAILED, "일시 줄 없음")
         val (month, day, hour, minute) = dateMatch.destructured
         val merchant =
             lines

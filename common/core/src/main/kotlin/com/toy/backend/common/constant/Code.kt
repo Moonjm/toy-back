@@ -8,4 +8,6 @@ interface Code {
     fun getMessage(): String
 
     fun getStatusName(): String
+
+    fun getCodeName(): String
 }

@@ -1,5 +1,7 @@
 package com.toy.backend.ledger.inbound
 
+import com.toy.backend.common.exception.CustomException
+import com.toy.backend.ledger.LedgerErrorCode
 import com.toy.backend.ledger.entries.EntrySource
 import org.springframework.core.annotation.Order
 import org.springframework.stereotype.Component
@@ -26,10 +28,10 @@ class KakaoPayParser : MessageParser {
             AMOUNT_REGEX.find(text)?.let { BigDecimal(it.groupValues[1].replace(",", "")) }
                 ?: BigDecimal.ZERO
 
-        val merchantMatch = MERCHANT_REGEX.find(text) ?: error("구매처 라벨을 찾을 수 없습니다")
+        val merchantMatch = MERCHANT_REGEX.find(text) ?: throw CustomException(LedgerErrorCode.MESSAGE_PARSE_FAILED, "구매처 라벨 없음")
         val merchant = merchantMatch.groupValues[1].trim()
 
-        val dateMatch = DATE_REGEX.find(text) ?: error("결제일시를 찾을 수 없습니다")
+        val dateMatch = DATE_REGEX.find(text) ?: throw CustomException(LedgerErrorCode.MESSAGE_PARSE_FAILED, "결제일시 없음")
         val (year, month, day, hour, minute) = dateMatch.destructured
 
         return ParsedMessage(

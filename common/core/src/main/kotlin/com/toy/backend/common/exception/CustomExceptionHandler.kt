@@ -50,7 +50,7 @@ class CustomExceptionHandler {
                             .getHttpStatus()
                             .value()
                             .toString(),
-                    error = e.errorCode.name,
+                    error = e.errorCode.getCodeName(),
                 ),
             ).also { log.error(e) { "CustomException: ${e.message}" } }
 

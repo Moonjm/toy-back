@@ -1,5 +1,7 @@
 package com.toy.backend.ledger.inbound
 
+import com.toy.backend.common.exception.CustomException
+import com.toy.backend.ledger.LedgerErrorCode
 import com.toy.backend.ledger.entries.EntrySource
 import org.springframework.core.annotation.Order
 import org.springframework.stereotype.Component
@@ -38,10 +40,10 @@ class OverseasApprovalParser : MessageParser {
         val amountIndex = lines.indexOfFirst { AMOUNT_REGEX.containsMatchIn(it) }
         val amountMatch =
             lines.getOrNull(amountIndex)?.let { AMOUNT_REGEX.find(it) }
-                ?: error("통화·금액 줄을 찾을 수 없습니다")
+                ?: throw CustomException(LedgerErrorCode.MESSAGE_PARSE_FAILED, "통화·금액 줄 없음")
         val (currency, rawAmount) = amountMatch.destructured
 
-        val dateMatch = DATE_REGEX.find(text) ?: error("일시를 찾을 수 없습니다")
+        val dateMatch = DATE_REGEX.find(text) ?: throw CustomException(LedgerErrorCode.MESSAGE_PARSE_FAILED, "일시 없음")
         val (month, day, hour, minute) = dateMatch.destructured
 
         return ParsedMessage(

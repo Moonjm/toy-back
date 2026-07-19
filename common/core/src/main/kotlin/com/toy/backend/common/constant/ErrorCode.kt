@@ -29,4 +29,6 @@ enum class ErrorCode(
     override fun getMessage(): String = message
 
     override fun getStatusName(): String = httpStatus.name
+
+    override fun getCodeName(): String = name
 }

@@ -14,4 +14,6 @@ enum class SuccessCode(
     override fun getMessage(): String = this.message
 
     override fun getStatusName(): String = this.httpStatus.name
+
+    override fun getCodeName(): String = name
 }
