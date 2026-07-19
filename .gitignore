@@ -67,3 +67,6 @@ CLAUDE.md
 *.swp
 *.swo
 *~
+
+# Python venv
+scripts/ledger-import/venv
