@@ -14,7 +14,9 @@ import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.servlet.resource.NoResourceFoundException
+import java.sql.SQLException
 
 private val log = KotlinLogging.logger {}
 
@@ -22,6 +24,7 @@ private val log = KotlinLogging.logger {}
 class CustomExceptionHandler {
     companion object {
         private val IGNORE_PATHS = listOf("stomp/publish", "favicon.ico")
+        private val KNOWN_INTEGRITY_SQL_STATES = setOf("23505", "23503", "23502")
     }
 
     @ExceptionHandler(Exception::class)
@@ -52,7 +55,15 @@ class CustomExceptionHandler {
                             .toString(),
                     error = e.errorCode.getCodeName(),
                 ),
-            ).also { log.error(e) { "CustomException: ${e.message}" } }
+            ).also {
+                // 4xx 는 클라이언트 요인이고 원인 상세는 던진 쪽에서 이미 로깅한다 — 여기서 또 error+스택을 남기면
+                // 같은 실패가 2회 기록되고 모니터링 노이즈가 된다. 5xx(서버 결함)만 error 로 남긴다.
+                if (e.errorCode.getHttpStatus().is5xxServerError) {
+                    log.error(e) { "CustomException: ${e.message}" }
+                } else {
+                    log.warn { "CustomException: ${e.message}" }
+                }
+            }
 
     @ExceptionHandler(EntityNotFoundException::class)
     fun handleEntityNotFoundException(e: EntityNotFoundException): ResponseEntity<ErrorResponseBody> =
@@ -65,7 +76,7 @@ class CustomExceptionHandler {
                     code = HttpStatus.NOT_FOUND.value().toString(),
                     error = HttpStatus.NOT_FOUND.name,
                 ),
-            ).also { log.error(e) { "EntityNotFoundException" } }
+            ).also { log.warn { "EntityNotFoundException: ${e.message}" } }
 
     @ExceptionHandler(NoResourceFoundException::class)
     fun handleNoResourceFoundException(
@@ -83,19 +94,18 @@ class CustomExceptionHandler {
                 ),
             ).also {
                 if (IGNORE_PATHS.none { request?.requestURI?.contains(it) == true }) {
-                    log.error(e) { "NoResourceFoundException" }
+                    log.warn { "NoResourceFoundException: ${request?.requestURI}" }
                 }
             }
 
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleMethodArgumentNotValid(e: MethodArgumentNotValidException): ResponseEntity<ErrorResponseBody> {
-        log.error(e) { "Validation Error" }
-
         val fieldErrors = e.bindingResult.fieldErrors
         val errorMessage =
             fieldErrors.joinToString { error: FieldError -> "${error.field}: ${error.defaultMessage}" }
+        log.warn { "Validation Error: $errorMessage" }
 
-        return ResponseEntity<ErrorResponseBody>(
+        return ResponseEntity(
             ErrorResponseBody(
                 status = HttpStatus.BAD_REQUEST,
                 message = errorMessage,
@@ -108,7 +118,7 @@ class CustomExceptionHandler {
 
     @ExceptionHandler(HttpMessageNotReadableException::class)
     fun handleHttpMessageNotReadableException(e: HttpMessageNotReadableException): ResponseEntity<ErrorResponseBody> =
-        ResponseEntity<ErrorResponseBody>(
+        ResponseEntity(
             ErrorResponseBody(
                 status = HttpStatus.BAD_REQUEST,
                 message =
@@ -116,12 +126,11 @@ class CustomExceptionHandler {
                         ?.takeIf { "Required request body is missing" in it }
                         ?.let { "필수 요청 본문(Request Body)이 누락되었습니다." }
                         ?: "필수 요청 본문이 누락되었거나 형식이 잘못되었습니다.",
-                // 클라이언트에게 보여줄 메시지
                 code = HttpStatus.BAD_REQUEST.value().toString(),
                 error = HttpStatus.BAD_REQUEST.name,
             ),
             HttpStatus.BAD_REQUEST,
-        ).also { log.error(e) { "HttpMessageNotReadableException: ${e.message}" } }
+        ).also { log.warn { "HttpMessageNotReadableException: ${e.message}" } }
 
     @ExceptionHandler(MissingServletRequestParameterException::class)
     fun handleMissingServletRequestParameterException(e: MissingServletRequestParameterException): ResponseEntity<ErrorResponseBody> =
@@ -134,22 +143,78 @@ class CustomExceptionHandler {
                     code = HttpStatus.BAD_REQUEST.value().toString(),
                     error = HttpStatus.BAD_REQUEST.name,
                 ),
-            ).also { log.error(e) { "handleMissingServletRequestParameterException: ${e.message}" } }
+            ).also { log.warn { "MissingServletRequestParameterException: ${e.message}" } }
 
-    @ExceptionHandler(DataIntegrityViolationException::class)
-    fun handleDataIntegrityViolationException(e: DataIntegrityViolationException): ResponseEntity<ErrorResponseBody> =
+    @ExceptionHandler(MethodArgumentTypeMismatchException::class)
+    fun handleMethodArgumentTypeMismatchException(e: MethodArgumentTypeMismatchException): ResponseEntity<ErrorResponseBody> =
         ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
             .body(
                 ErrorResponseBody(
-                    status = ErrorCode.DUPLICATE_RESOURCE_ID.getHttpStatus(),
-                    message = ErrorCode.DUPLICATE_RESOURCE_ID.getMessage(),
-                    code =
-                        ErrorCode.DUPLICATE_RESOURCE_ID
-                            .getHttpStatus()
-                            .value()
-                            .toString(),
-                    error = ErrorCode.DUPLICATE_RESOURCE_ID.getStatusName(),
+                    status = HttpStatus.BAD_REQUEST,
+                    message = "요청 파라미터(${e.name})의 형식이 잘못되었습니다.",
+                    code = HttpStatus.BAD_REQUEST.value().toString(),
+                    error = HttpStatus.BAD_REQUEST.name,
                 ),
-            ).also { log.error(e) { "handleDataIntegrityViolationException: ${e.message}" } }
+            ).also { log.warn { "MethodArgumentTypeMismatchException: ${e.message}" } }
+
+    @ExceptionHandler(DataIntegrityViolationException::class)
+    fun handleDataIntegrityViolationException(e: DataIntegrityViolationException): ResponseEntity<ErrorResponseBody> {
+        val sqlState = extractSqlState(e)
+        val errorCode =
+            when (sqlState) {
+                "23505" -> {
+                    ErrorCode.DUPLICATE_RESOURCE_ID
+                }
+
+                "23503" -> {
+                    if (isStillReferenced(e)) {
+                        ErrorCode.RESOURCE_STILL_REFERENCED
+                    } else {
+                        ErrorCode.REFERENCED_RESOURCE_NOT_FOUND
+                    }
+                }
+
+                "23502" -> {
+                    ErrorCode.MISSING_REQUIRED_VALUE
+                }
+
+                else -> {
+                    ErrorCode.DATA_INTEGRITY_VIOLATION
+                }
+            }
+
+        return ResponseEntity
+            .status(errorCode.getHttpStatus())
+            .body(
+                ErrorResponseBody(
+                    status = errorCode.getHttpStatus(),
+                    message = errorCode.getMessage(),
+                    code = errorCode.getHttpStatus().value().toString(),
+                    error = errorCode.getCodeName(),
+                ),
+            ).also {
+                // 인식된 무결성 위반(중복 키·참조 위반·필수값 누락)은 클라이언트 요인이라 warn 으로 충분하지만,
+                // 미인식 sqlState 는 스키마·드라이버 등 서버 요인일 수 있어 원인 추적용 스택트레이스를 error 로 남긴다.
+                if (sqlState in KNOWN_INTEGRITY_SQL_STATES) {
+                    log.warn { "DataIntegrityViolationException [$sqlState]: ${e.mostSpecificCause.message}" }
+                } else {
+                    log.error(e) { "DataIntegrityViolationException [$sqlState]: ${e.message}" }
+                }
+            }
+    }
+
+    private fun isStillReferenced(e: DataIntegrityViolationException): Boolean {
+        val message = e.mostSpecificCause.message ?: return false
+        return "is still referenced" in message || "여전히 참조" in message
+    }
+
+    private fun extractSqlState(e: DataIntegrityViolationException): String? {
+        var cause: Throwable? = e.cause
+        while (cause != null) {
+            if (cause is SQLException) return cause.sqlState
+            cause = cause.cause
+        }
+        return null
+    }
 }

@@ -4,7 +4,7 @@ import com.toy.backend.common.constant.Code
 
 class CustomException(
     val errorCode: Code,
-    vararg val params: Any?,
+    @Transient vararg val params: Any?,
 ) : RuntimeException(formatMessage(errorCode, params)) {
     companion object {
         private fun formatMessage(

@@ -22,6 +22,10 @@ enum class ErrorCode(
     INVALID_DATE_RANGE(HttpStatus.BAD_REQUEST, "생년월일이 사망일보다 이후일 수 없습니다."),
     STORAGE_ACCESS_DENIED(HttpStatus.FORBIDDEN, "보관함에 대한 접근 권한이 없습니다."),
     ACCOUNT_LOCKED(HttpStatus.FORBIDDEN, "계정이 잠겨 있습니다: %s"),
+    REFERENCED_RESOURCE_NOT_FOUND(HttpStatus.BAD_REQUEST, "참조 대상이 존재하지 않습니다."),
+    RESOURCE_STILL_REFERENCED(HttpStatus.CONFLICT, "다른 데이터에서 참조 중이므로 삭제할 수 없습니다."),
+    MISSING_REQUIRED_VALUE(HttpStatus.BAD_REQUEST, "필수 값이 누락되었습니다."),
+    DATA_INTEGRITY_VIOLATION(HttpStatus.BAD_REQUEST, "데이터 무결성 제약 조건 위반입니다."),
     ;
 
     override fun getHttpStatus(): HttpStatus = httpStatus
