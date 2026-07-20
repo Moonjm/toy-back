@@ -25,9 +25,8 @@ class InboundService(
     private val transactionTemplate: TransactionTemplate,
 ) {
     /**
-     * 수신 원문을 파싱해 내역으로 저장하고, 처리 결과와 무관하게 원문을 항상 보존한다.
-     * 내역 저장은 별도 트랜잭션(TransactionTemplate)에서 수행하므로 저장이 실패해도
-     * rollback-only 오염 없이 PARSE_FAILED 원문 기록이 남고, 이후 [retry]로 재처리할 수 있다.
+     * 수신 원문을 파싱해 내역으로 저장한다. 원문 기록을 PENDING으로 **먼저** 저장한 뒤 처리하므로,
+     * 처리 중 프로세스가 죽거나 결과 갱신이 실패해도 커밋된 원장 변경은 항상 되짚을 원본 기록을 갖는다.
      * (문자는 카드사가 재발송해 주지 않으므로 원문 보존이 최우선이다)
      *
      * @return 저장된 수신 기록의 id — 컨트롤러가 Location(/inbound/{id}/retry)으로 노출한다.
@@ -37,18 +36,20 @@ class InboundService(
         text: String,
     ): Long {
         val user = findUser(username)
-        val outcome = handle(user, text)
-        val saved =
+        val message =
             inboundRepository.save(
-                InboundMessage(user = user, rawText = text, status = outcome.status, entryId = outcome.entryId),
+                InboundMessage(user = user, rawText = text, status = InboundStatus.PENDING),
             )
-        return saved.requiredId
+        val outcome = handle(user, text)
+        applyOutcome(message, outcome)
+        return message.requiredId
     }
 
     /**
      * PARSE_FAILED로 보존된 원문을 다시 처리하고, 수신 로그의 상태를 갱신한다.
-     * 재처리도 실패하면 상태를 그대로 두고 MESSAGE_PARSE_FAILED(400)를 던진다 —
-     * 성공/실패는 HTTP 상태코드(204/400)로 구분된다.
+     * 처리 전에 PARSE_FAILED → PENDING 조건부 갱신으로 대상을 선점하므로 동시 재처리 요청 중
+     * 하나만 실제 처리를 수행한다. 재처리도 실패하면 PARSE_FAILED로 되돌리고
+     * MESSAGE_PARSE_FAILED(400)를 던진다 — 성공/실패는 HTTP 상태코드(204/400)로 구분된다.
      */
     fun retry(
         username: String,
@@ -61,13 +62,24 @@ class InboundService(
         if (message.user.requiredId != user.requiredId) {
             throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
         }
-        if (message.status != InboundStatus.PARSE_FAILED) {
+        if (message.status != InboundStatus.PARSE_FAILED || inboundRepository.claimForRetry(id) == 0) {
             throw CustomException(LedgerErrorCode.INBOUND_NOT_RETRYABLE, id)
         }
-        val outcome = handle(user, message.rawText)
+
+        val claimed =
+            inboundRepository.findByIdOrNull(id)
+                ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
+        val outcome = handle(user, claimed.rawText)
+        applyOutcome(claimed, outcome)
         if (outcome.status == InboundStatus.PARSE_FAILED) {
             throw CustomException(LedgerErrorCode.MESSAGE_PARSE_FAILED, id)
         }
+    }
+
+    private fun applyOutcome(
+        message: InboundMessage,
+        outcome: Outcome,
+    ) {
         message.status = outcome.status
         message.entryId = outcome.entryId
         inboundRepository.save(message)

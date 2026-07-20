@@ -81,11 +81,15 @@ daily-record와 동일한 패턴의 Spring Boot 앱 모듈:
 |---|---|
 | `user_id` | 수신자 |
 | `raw_text` | 수신 원문 (문자/OCR 텍스트) |
-| `status` | `SAVED` / `CANCEL_MATCHED` / `PARSE_FAILED` |
+| `status` | `PENDING`(처리 전 선저장) / `SAVED` / `CANCEL_MATCHED` / `PARSE_FAILED` |
 | `entry_id` | 생성된 entry 참조 (nullable) |
 
 파싱 실패해도 원문이 보존되므로 파서 수정 후 재처리할 수 있다. 단축어 전송 건이
 조용히 유실되는 것을 막는 핵심 장치.
+
+원문은 **처리 전에 `PENDING`으로 먼저 저장**한다. 처리 도중 프로세스가 죽거나 결과 갱신이
+실패해도 이미 커밋된 원장 변경을 되짚을 원본 기록이 항상 남는다(PENDING으로 방치된 건이
+추적 단서가 된다).
 
 ## API
 
@@ -99,8 +103,8 @@ daily-record와 동일한 패턴의 Spring Boot 앱 모듈:
 | `POST /entries` | JWT | 수동 입력 |
 | `PUT /entries/{id}` | JWT | 수정 (본인 것만) |
 | `DELETE /entries/{id}` | JWT | 삭제 (본인 것만) |
-| `POST /inbound` | API 키 또는 JWT | `{ "text": "원문" }` — 파싱 후 저장/취소매칭. 항상 수신 기록이 생성되므로 201 + `Location: /inbound/{id}/retry` 응답. 내역 저장은 별도 트랜잭션이라 저장 실패 시에도 원문은 PARSE_FAILED로 보존됨 |
-| `POST /inbound/{id}/retry` | JWT | PARSE_FAILED 건의 보존 원문 재처리 — 성공 204, 재실패 400 (문자는 재발송이 불가하므로 원문 보존 + 재처리가 유일한 복구 수단) |
+| `POST /inbound` | API 키 또는 JWT | `{ "text": "원문" }` — 원문을 PENDING으로 먼저 저장한 뒤 파싱·저장/취소매칭하고 결과로 상태 갱신. 항상 수신 기록이 생성되므로 201 + `Location: /inbound/{id}/retry` 응답 |
+| `POST /inbound/{id}/retry` | JWT | PARSE_FAILED 건의 보존 원문 재처리 — 성공 204, 재실패 400. 처리 전 `PARSE_FAILED → PENDING` 조건부 갱신으로 대상을 선점해 동시 요청 중 하나만 처리한다 (문자는 재발송이 불가하므로 원문 보존 + 재처리가 유일한 복구 수단) |
 | `GET /api-keys` | JWT | 키 목록 (해시 제외, 이름·생성일만) |
 | `POST /api-keys` | JWT | 키 발급 — 원본 키는 이 응답에서만 노출 |
 | `DELETE /api-keys/{id}` | JWT | 키 폐기 |

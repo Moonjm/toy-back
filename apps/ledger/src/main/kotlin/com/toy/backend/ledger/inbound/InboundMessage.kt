@@ -11,7 +11,12 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 
-enum class InboundStatus { SAVED, CANCEL_MATCHED, PARSE_FAILED }
+/**
+ * 수신 처리 상태.
+ * [PENDING]은 원문만 저장되고 아직 처리 결과가 확정되지 않은 상태 — 처리 도중 프로세스가 죽으면
+ * 이 상태로 남아, 어떤 원장 변경이든 항상 되짚을 수 있는 원본 기록을 갖는다.
+ */
+enum class InboundStatus { PENDING, SAVED, CANCEL_MATCHED, PARSE_FAILED }
 
 /** 수신 원문 로그. 파싱 실패해도 원문을 보존해 파서 수정 후 재처리를 가능하게 한다. */
 @Entity
