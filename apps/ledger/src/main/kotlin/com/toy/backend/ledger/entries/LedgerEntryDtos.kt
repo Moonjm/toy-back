@@ -1,15 +1,17 @@
 package com.toy.backend.ledger.entries
 
-import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
+/** ISO 4217 3자리 대문자. 저장 값이 갈리면 취소 매칭·통화별 집계가 쪼개진다. */
+const val CURRENCY_PATTERN = "^[A-Z]{3}$"
+
 data class LedgerEntryRequest(
     val entryAt: LocalDateTime,
     val amount: BigDecimal,
-    @field:NotBlank
-    @field:Size(max = 3)
+    @field:Pattern(regexp = CURRENCY_PATTERN, message = "통화는 ISO 4217 3자리 대문자여야 합니다")
     val currency: String = "KRW",
     val type: EntryType = EntryType.EXPENSE,
     @field:Size(max = 100)

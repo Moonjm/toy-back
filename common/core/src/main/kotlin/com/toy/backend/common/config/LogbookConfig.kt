@@ -44,8 +44,9 @@ class LogbookConfig {
                     "<obfuscated>",
                 ),
             ).bodyFilter(
+                // key: API 키 발급 응답의 원본 키 — 1회 노출 보장이 로그로 깨지지 않게 한다
                 JacksonJsonFieldBodyFilter(
-                    listOf("password"),
+                    listOf("password", "key"),
                     "<obfuscated>",
                 ),
             ).sink(

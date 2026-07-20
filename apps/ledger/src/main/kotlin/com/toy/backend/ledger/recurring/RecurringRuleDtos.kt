@@ -1,9 +1,10 @@
 package com.toy.backend.ledger.recurring
 
+import com.toy.backend.ledger.entries.CURRENCY_PATTERN
 import com.toy.backend.ledger.entries.EntryType
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
-import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
 import java.math.BigDecimal
 
@@ -19,8 +20,7 @@ data class RecurringRuleUpdateRequest(
     @field:Max(31)
     val dayOfMonth: Int,
     val amount: BigDecimal,
-    @field:NotBlank
-    @field:Size(max = 3)
+    @field:Pattern(regexp = CURRENCY_PATTERN, message = "통화는 ISO 4217 3자리 대문자여야 합니다")
     val currency: String,
     val type: EntryType,
     @field:Size(max = 100)
