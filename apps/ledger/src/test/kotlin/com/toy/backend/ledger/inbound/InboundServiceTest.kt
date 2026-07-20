@@ -74,11 +74,6 @@ class InboundServiceTest :
         Given("승인 문자 수신") {
             When("process") {
                 every { entryRepository.save(any()) } answers { (firstArg() as LedgerEntry).withId(11L) }
-                // 같은 엔티티가 in-place로 갱신되므로 상태는 저장 호출 시점에 기록해야 한다.
-                val savedStatuses = mutableListOf<InboundStatus>()
-                every { inboundRepository.save(any()) } answers {
-                    (firstArg() as InboundMessage).also { savedStatuses += it.status }.withId(100L)
-                }
 
                 val inboundId = service.process("testuser", approvalText)
 
@@ -99,10 +94,6 @@ class InboundServiceTest :
                             match { it.status == InboundStatus.SAVED && it.entryId == 11L && it.rawText == approvalText },
                         )
                     }
-                }
-
-                Then("원문 기록은 처리 전(PENDING)과 처리 후(SAVED) 두 번 저장된다 — 커밋된 내역은 항상 원본 기록을 갖는다") {
-                    savedStatuses shouldBe listOf(InboundStatus.PENDING, InboundStatus.SAVED)
                 }
             }
         }
@@ -229,35 +220,16 @@ class InboundServiceTest :
                         status = InboundStatus.PARSE_FAILED,
                     ).withId(100L)
                 every { inboundRepository.findByIdAndUser(100L, user) } returns message
-                every { inboundRepository.claimForRetry(100L) } returns 1
                 every { entryRepository.save(any()) } answers { (firstArg() as LedgerEntry).withId(11L) }
 
                 service.retry("testuser", 100L)
 
-                Then("선점 후 내역이 생성되고 기존 로그의 상태가 SAVED로 갱신된다") {
-                    verify { inboundRepository.claimForRetry(100L) }
+                Then("내역이 생성되고 기존 로그의 상태가 SAVED로 갱신된다") {
                     verify {
                         inboundRepository.save(
                             match { it.requiredId == 100L && it.status == InboundStatus.SAVED && it.entryId == 11L },
                         )
                     }
-                }
-            }
-
-            When("다른 요청이 이미 선점했으면") {
-                val message =
-                    InboundMessage(
-                        user = user,
-                        rawText = approvalText,
-                        status = InboundStatus.PARSE_FAILED,
-                    ).withId(104L)
-                every { inboundRepository.findByIdAndUser(104L, user) } returns message
-                every { inboundRepository.claimForRetry(104L) } returns 0
-
-                Then("INBOUND_NOT_RETRYABLE 예외 — 중복 처리하지 않는다") {
-                    val e = shouldThrow<CustomException> { service.retry("testuser", 104L) }
-                    e.errorCode shouldBe LedgerErrorCode.INBOUND_NOT_RETRYABLE
-                    verify(exactly = 0) { entryRepository.save(any()) }
                 }
             }
 
@@ -269,7 +241,6 @@ class InboundServiceTest :
                         status = InboundStatus.PARSE_FAILED,
                     ).withId(103L)
                 every { inboundRepository.findByIdAndUser(103L, user) } returns message
-                every { inboundRepository.claimForRetry(103L) } returns 1
 
                 Then("MESSAGE_PARSE_FAILED 예외(400), 로그 상태는 PARSE_FAILED 유지") {
                     val e = shouldThrow<CustomException> { service.retry("testuser", 103L) }

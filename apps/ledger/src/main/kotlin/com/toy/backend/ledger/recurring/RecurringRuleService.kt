@@ -103,10 +103,7 @@ class RecurringRuleService(
 
     /**
      * 규칙 하나의 이번 달 반복 내역을 생성한다. 규칙별 트랜잭션이라 한 규칙의 실패가
-     * 다른 규칙 처리에 영향을 주지 않는다.
-     *
-     * 생성 전에 [RecurringRuleRepository.claimMonth]로 해당 달을 원자적으로 선점하므로,
-     * 스케줄러가 동시에 돌거나 같은 규칙을 중복 호출해도 내역은 한 번만 생성된다.
+     * 다른 규칙 처리에 영향을 주지 않고, lastGeneratedMonth 검사로 같은 달 중복 생성을 막는다.
      */
     @Transactional
     fun generateForRule(
@@ -117,23 +114,21 @@ class RecurringRuleService(
         val rule = repository.findByIdOrNull(ruleId) ?: return
         val effectiveDay = minOf(rule.dayOfMonth, today.lengthOfMonth())
         if (!rule.active || today.dayOfMonth < effectiveDay || rule.lastGeneratedMonth == currentMonth) return
-        if (repository.claimMonth(ruleId, currentMonth) == 0) return
 
-        // claimMonth가 영속성 컨텍스트를 비우므로(clearAutomatically) 재조회해 사용한다.
-        val claimed = repository.findByIdOrNull(ruleId) ?: return
         entryRepository.save(
             LedgerEntry(
-                user = claimed.user,
+                user = rule.user,
                 entryAt = today.withDayOfMonth(effectiveDay).atStartOfDay(),
-                amount = claimed.amount,
-                currency = claimed.currency,
-                type = claimed.type,
-                merchant = claimed.merchant,
-                description = claimed.description,
-                category = claimed.category,
+                amount = rule.amount,
+                currency = rule.currency,
+                type = rule.type,
+                merchant = rule.merchant,
+                description = rule.description,
+                category = rule.category,
                 source = EntrySource.RECURRING,
             ),
         )
+        rule.lastGeneratedMonth = currentMonth
         log.info { "반복 내역 생성: ruleId=$ruleId ($currentMonth)" }
     }
 

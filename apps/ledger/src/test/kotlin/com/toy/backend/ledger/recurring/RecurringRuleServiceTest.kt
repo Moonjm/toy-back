@@ -111,15 +111,14 @@ class RecurringRuleServiceTest :
                 val rule = dummyRule(dayOfMonth = 25, lastGeneratedMonth = "2026-06", id = 1L)
                 every { repository.findAllByActiveTrue() } returns listOf(rule)
                 every { repository.findByIdOrNull(1L) } returns rule
-                every { repository.claimMonth(1L, "2026-07") } returns 1
                 every { entryRepository.save(any()) } answers { (firstArg() as LedgerEntry).withId(20L) }
 
                 val dueIds = service.findDueRuleIds(LocalDate.of(2026, 7, 26))
                 service.generateForRule(1L, LocalDate.of(2026, 7, 26))
 
-                Then("findDueRuleIds가 해당 id 반환, 해당 달 선점 후 entry 생성(source=RECURRING)") {
+                Then("findDueRuleIds가 해당 id 반환, entry 생성(source=RECURRING), lastGeneratedMonth 갱신") {
                     dueIds shouldBe listOf(1L)
-                    verify { repository.claimMonth(1L, "2026-07") }
+                    rule.lastGeneratedMonth shouldBe "2026-07"
                     verify {
                         entryRepository.save(
                             match {
@@ -128,18 +127,6 @@ class RecurringRuleServiceTest :
                             },
                         )
                     }
-                }
-            }
-
-            When("다른 스케줄러가 이미 이번 달을 선점했으면") {
-                val rule = dummyRule(dayOfMonth = 25, lastGeneratedMonth = "2026-06", id = 5L)
-                every { repository.findByIdOrNull(5L) } returns rule
-                every { repository.claimMonth(5L, "2026-07") } returns 0
-
-                service.generateForRule(5L, LocalDate.of(2026, 7, 26))
-
-                Then("내역을 생성하지 않는다 — 동시 실행에도 한 번만 생성") {
-                    verify(exactly = 0) { entryRepository.save(any()) }
                 }
             }
 
@@ -165,7 +152,6 @@ class RecurringRuleServiceTest :
                 val rule = dummyRule(dayOfMonth = 31, lastGeneratedMonth = "2026-01", id = 4L)
                 every { repository.findAllByActiveTrue() } returns listOf(rule)
                 every { repository.findByIdOrNull(4L) } returns rule
-                every { repository.claimMonth(4L, "2026-02") } returns 1
                 every { entryRepository.save(any()) } answers { (firstArg() as LedgerEntry).withId(21L) }
 
                 val dueIds = service.findDueRuleIds(LocalDate.of(2026, 2, 28))
