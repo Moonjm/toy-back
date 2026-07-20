@@ -5,7 +5,8 @@
 - 신형 .xlsx: openpyxl 파싱 (기간, 자산, 분류, 소분류, 내용, KRW, 수입/지출, 추가입력, 금액, 화폐, 자산)
 
 두 파일에서 겹치는 건은 (일자, 금액, 내용) 기준으로 중복 제거하며, 시간 정보가 있는
-신형 파일 쪽을 우선한다. 분류/계좌 값은 버린다 (설계 문서 참고).
+신형 파일 쪽을 우선한다. 엑셀의 분류 값은 ledger_categories에 없으면 새로 만들어 연결한다
+(계좌/자산 값은 버린다).
 
 사용법:
   python import_ledger.py --xls 2026-07-19.xls --xlsx 2026-07-19_new.xlsx \
@@ -23,6 +24,20 @@ from decimal import Decimal
 import psycopg2
 
 import openpyxl
+
+CATEGORY_MAX_LENGTH = 50
+# 구형 파일이 미분류를 문자열로 내보낸 값들 — 분류 없음으로 취급한다.
+BLANK_CATEGORY_VALUES = {"(null)", "null", "-"}
+
+
+def normalize_category(value):
+    """분류명을 정규화한다. 빈 값·미분류 표기는 None(분류 없음)."""
+    if not value:
+        return None
+    name = str(value).strip()[:CATEGORY_MAX_LENGTH]
+    if not name or name.lower() in BLANK_CATEGORY_VALUES:
+        return None
+    return name
 
 
 def parse_old_xls(path):
@@ -48,6 +63,7 @@ def parse_old_xls(path):
                 "type": "INCOME" if cells[5] == "수입" else "EXPENSE",
                 "merchant": cells[3][:100] or None,
                 "description": (cells[6][:500] or None) if len(cells) > 6 else None,
+                "category": normalize_category(cells[2]),  # 대분류
             }
         )
     return entries
@@ -61,7 +77,7 @@ def parse_new_xlsx(path):
     for row in sheet.iter_rows(min_row=2, values_only=True):
         if not row or row[0] is None:
             continue
-        entry_at, _asset, _cat, _subcat, content, _krw, io_type, extra, amount, currency = row[:10]
+        entry_at, _asset, category, _subcat, content, _krw, io_type, extra, amount, currency = row[:10]
         if not isinstance(entry_at, datetime):
             continue
         entries.append(
@@ -72,6 +88,7 @@ def parse_new_xlsx(path):
                 "type": "INCOME" if io_type == "수입" else "EXPENSE",
                 "merchant": (str(content).strip()[:100] or None) if content else None,
                 "description": (str(extra).strip()[:500] or None) if extra else None,
+                "category": normalize_category(category),
             }
         )
     return entries
@@ -99,6 +116,32 @@ def merge(old_entries, new_entries):
     return unique_old + new_entries
 
 
+def ensure_categories(cur, user_id, names):
+    """분류명 → id 맵을 만든다. 기존 것은 재사용하고 없는 것만 생성한다."""
+    if not names:
+        return {}
+    cur.execute(
+        "select id, name from ledger_categories where user_id = %s and name = any(%s)",
+        (user_id, list(names)),
+    )
+    mapping = {name: category_id for category_id, name in cur.fetchall()}
+
+    missing = sorted(names - mapping.keys())
+    for name in missing:
+        cur.execute(
+            """
+            insert into ledger_categories (user_id, name, created_at, updated_at)
+            values (%s, %s, now(), now())
+            returning id
+            """,
+            (user_id, name),
+        )
+        mapping[name] = cur.fetchone()[0]
+    if missing:
+        print(f"분류 생성: {len(missing)}개 ({', '.join(missing)})")
+    return mapping
+
+
 def main():
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--xls", required=True, help="구형 .xls (HTML) 파일 경로")
@@ -112,7 +155,9 @@ def main():
     new_entries = parse_new_xlsx(args.xlsx)
     merged = merge(old_entries, new_entries)
     dropped = len(old_entries) + len(new_entries) - len(merged)
+    category_names = {e["category"] for e in merged if e["category"]}
     print(f"구형 {len(old_entries)}건 + 신형 {len(new_entries)}건 → 병합 {len(merged)}건 (중복 제거 {dropped}건)")
+    print(f"분류 {len(category_names)}종: {', '.join(sorted(category_names)) or '(없음)'}")
 
     if args.dry_run:
         for entry in merged[:5]:
@@ -128,13 +173,15 @@ def main():
                 sys.exit(f"사용자를 찾을 수 없습니다: {args.username}")
             user_id = row[0]
 
+            categories = ensure_categories(cur, user_id, category_names)
+
             for entry in merged:
                 cur.execute(
                     """
                     insert into ledger_entries
                         (user_id, entry_at, amount, currency, type, merchant, description,
-                         source, created_at, updated_at)
-                    values (%s, %s, %s, %s, %s, %s, %s, 'IMPORT', now(), now())
+                         category_id, source, created_at, updated_at)
+                    values (%s, %s, %s, %s, %s, %s, %s, %s, 'IMPORT', now(), now())
                     """,
                     (
                         user_id,
@@ -144,6 +191,7 @@ def main():
                         entry["type"],
                         entry["merchant"],
                         entry["description"],
+                        categories.get(entry["category"]),
                     ),
                 )
         print(f"이관 완료: {len(merged)}건 (username={args.username})")

@@ -1,6 +1,7 @@
 package com.toy.backend.ledger.recurring
 
 import com.toy.backend.common.entity.withId
+import com.toy.backend.ledger.categories.CategoryRepository
 import com.toy.backend.ledger.dummyLedgerEntry
 import com.toy.backend.ledger.entries.EntrySource
 import com.toy.backend.ledger.entries.EntryType
@@ -42,8 +43,9 @@ class RecurringRuleServiceTest :
     BehaviorSpec({
         val repository = mockk<RecurringRuleRepository>()
         val entryRepository = mockk<LedgerEntryRepository>()
+        val categoryRepository = mockk<CategoryRepository>()
         val userRepository = mockk<UserRepository>()
-        val service = RecurringRuleService(repository, entryRepository, userRepository)
+        val service = RecurringRuleService(repository, entryRepository, categoryRepository, userRepository)
 
         val user = dummyUser()
 

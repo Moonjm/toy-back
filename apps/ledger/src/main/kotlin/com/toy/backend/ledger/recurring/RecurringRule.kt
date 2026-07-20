@@ -1,6 +1,7 @@
 package com.toy.backend.ledger.recurring
 
 import com.toy.backend.common.entity.BaseEntity
+import com.toy.backend.ledger.categories.Category
 import com.toy.backend.ledger.entries.EntryType
 import com.toy.backend.user.User
 import jakarta.persistence.Column
@@ -33,6 +34,9 @@ class RecurringRule(
     var merchant: String? = null,
     @Column(length = 500)
     var description: String? = null,
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id")
+    var category: Category? = null,
     @Column(nullable = false)
     var active: Boolean = true,
     @Column(name = "last_generated_month", length = 7)
@@ -45,6 +49,7 @@ class RecurringRule(
         type: EntryType,
         merchant: String?,
         description: String?,
+        category: Category?,
         active: Boolean,
     ) {
         this.dayOfMonth = dayOfMonth
@@ -53,6 +58,7 @@ class RecurringRule(
         this.type = type
         this.merchant = merchant
         this.description = description
+        this.category = category
         this.active = active
     }
 }

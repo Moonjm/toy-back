@@ -27,6 +27,7 @@ data class RecurringRuleUpdateRequest(
     val merchant: String? = null,
     @field:Size(max = 500)
     val description: String? = null,
+    val categoryId: Long? = null,
     val active: Boolean,
 )
 
@@ -38,6 +39,8 @@ data class RecurringRuleResponse(
     val type: EntryType,
     val merchant: String?,
     val description: String?,
+    val categoryId: Long?,
+    val categoryName: String?,
     val active: Boolean,
 )
 
@@ -50,5 +53,7 @@ fun RecurringRule.toResponse(): RecurringRuleResponse =
         type = type,
         merchant = merchant,
         description = description,
+        categoryId = category?.requiredId,
+        categoryName = category?.name,
         active = active,
     )

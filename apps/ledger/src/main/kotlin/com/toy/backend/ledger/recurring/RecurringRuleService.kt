@@ -2,6 +2,8 @@ package com.toy.backend.ledger.recurring
 
 import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.exception.CustomException
+import com.toy.backend.ledger.categories.Category
+import com.toy.backend.ledger.categories.CategoryRepository
 import com.toy.backend.ledger.entries.EntrySource
 import com.toy.backend.ledger.entries.LedgerEntry
 import com.toy.backend.ledger.entries.LedgerEntryRepository
@@ -21,6 +23,7 @@ private val log = KotlinLogging.logger {}
 class RecurringRuleService(
     private val repository: RecurringRuleRepository,
     private val entryRepository: LedgerEntryRepository,
+    private val categoryRepository: CategoryRepository,
     private val userRepository: UserRepository,
 ) {
     fun list(username: String): List<RecurringRuleResponse> = repository.findAllByUser(findUser(username)).map { it.toResponse() }
@@ -52,6 +55,7 @@ class RecurringRuleService(
                 type = entry.type,
                 merchant = entry.merchant,
                 description = entry.description,
+                category = entry.category,
                 lastGeneratedMonth = entry.entryAt.format(MONTH_FORMAT),
             )
         return repository.save(rule).requiredId
@@ -63,7 +67,8 @@ class RecurringRuleService(
         id: Long,
         request: RecurringRuleUpdateRequest,
     ) {
-        val rule = authorizedRule(findUser(username), id)
+        val user = findUser(username)
+        val rule = authorizedRule(user, id)
         rule.updateDetails(
             dayOfMonth = request.dayOfMonth,
             amount = request.amount,
@@ -71,6 +76,7 @@ class RecurringRuleService(
             type = request.type,
             merchant = request.merchant,
             description = request.description,
+            category = resolveCategory(user, request.categoryId),
             active = request.active,
         )
     }
@@ -118,12 +124,27 @@ class RecurringRuleService(
                 type = rule.type,
                 merchant = rule.merchant,
                 description = rule.description,
+                category = rule.category,
                 source = EntrySource.RECURRING,
             ),
         )
         rule.lastGeneratedMonth = currentMonth
         log.info { "반복 내역 생성: ruleId=$ruleId ($currentMonth)" }
     }
+
+    private fun resolveCategory(
+        user: User,
+        categoryId: Long?,
+    ): Category? =
+        categoryId?.let { id ->
+            val category =
+                categoryRepository.findByIdOrNull(id)
+                    ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
+            if (category.user.requiredId != user.requiredId) {
+                throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
+            }
+            category
+        }
 
     private fun authorizedRule(
         user: User,

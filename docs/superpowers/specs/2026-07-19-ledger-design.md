@@ -16,7 +16,7 @@
 |---|---|
 | 저장 위치 | toy-back `apps/ledger` 앱 모듈 (common-core, common-auth 재사용) |
 | 데이터 공유 | 각자 개인 가계부 — `user_id`로 완전 분리 |
-| 분류(카테고리) | 없음 — 날짜·금액·구매처·내용만 관리 |
+| 분류(카테고리) | 사용자별 분류 테이블(`ledger_categories`), 내역·반복규칙에서 선택적으로 참조 |
 | 단축어 인증 | 사용자별 고정 API 키 (`X-API-Key` 헤더) |
 | 취소 문자 | 자동 매칭 삭제, 매칭 실패 시 음수 건으로 저장 |
 | 외화 | 환산 없이 통화·금액 그대로 저장 |
@@ -94,7 +94,8 @@ daily-record와 동일한 패턴의 Spring Boot 앱 모듈:
 
 | 메서드/경로 | 인증 | 설명 |
 |---|---|---|
-| `GET /entries?from=&to=` | JWT | 기간 조회 (본인 것만), `entry_at` 내림차순 |
+| `GET /entries?yearMonth=&keyword=` | JWT | 연월(`yyyy-MM`) 조회가 기본, `keyword`로 구매처·내용 부분 일치 검색(연월과 조합 가능). 둘 다 없으면 400 — 전체 조회 방지. `entry_at` 내림차순 |
+| `GET/POST/PUT/DELETE /categories` | JWT | 분류 관리 (이름은 사용자 내 유일, 내역이 참조 중이면 삭제 시 409) |
 | `POST /entries` | JWT | 수동 입력 |
 | `PUT /entries/{id}` | JWT | 수정 (본인 것만) |
 | `DELETE /entries/{id}` | JWT | 삭제 (본인 것만) |
@@ -192,7 +193,8 @@ HolidayScheduler 패턴의 `@Scheduled(cron = "매일 새벽")` 잡:
   컬럼: `날짜, 계좌, 대분류, 내용, 금액, 수입/지출, 상세내역`
 - `2026-07-19_new.xlsx`: openpyxl 파싱.
   컬럼: `기간, 자산, 분류, 소분류, 내용, KRW, 수입/지출, 추가입력, 금액, 화폐, 자산`
-- 병합: `(일시, 금액, 내용)` 기준 중복 제거. 분류/계좌 값은 버린다
+- 병합: `(일시, 금액, 내용)` 기준 중복 제거(같은 키의 정당한 별개 거래를 잃지 않도록 개수 기반). 계좌/자산 값은 버린다
+- 분류: 엑셀의 분류 값을 `ledger_categories`에서 찾고 없으면 생성해 연결한다(`(null)` 등 미분류 표기는 분류 없음)
   (필요 시 `description`에 병기하는 옵션 제공)
 - `수입/지출` → `type` 매핑, `화폐` → `currency` (구형 파일은 전부 `KRW`)
 - DB 직접 INSERT, `source = IMPORT`
@@ -217,6 +219,5 @@ HolidayScheduler 패턴의 `@Scheduled(cron = "매일 새벽")` 잡:
 ## 범위 제외 (추후)
 
 - 프론트엔드 화면
-- 분류(카테고리) — 필요해지면 컬럼 추가
 - 외화 원화 환산 / 환율 연동
 - 엑셀 업로드 API

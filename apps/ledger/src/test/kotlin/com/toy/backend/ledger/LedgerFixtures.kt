@@ -1,6 +1,7 @@
 package com.toy.backend.ledger
 
 import com.toy.backend.common.entity.withId
+import com.toy.backend.ledger.categories.Category
 import com.toy.backend.ledger.entries.EntrySource
 import com.toy.backend.ledger.entries.EntryType
 import com.toy.backend.ledger.entries.LedgerEntry
@@ -17,6 +18,7 @@ fun dummyLedgerEntry(
     type: EntryType = EntryType.EXPENSE,
     merchant: String? = "제주특별자치도개발",
     description: String? = null,
+    category: Category? = null,
     source: EntrySource = EntrySource.SMS,
     id: Long = 1L,
 ): LedgerEntry =
@@ -28,5 +30,12 @@ fun dummyLedgerEntry(
         type = type,
         merchant = merchant,
         description = description,
+        category = category,
         source = source,
     ).withId(id)
+
+fun dummyCategory(
+    user: User = dummyUser(),
+    name: String = "식비",
+    id: Long = 1L,
+): Category = Category(user = user, name = name).withId(id)

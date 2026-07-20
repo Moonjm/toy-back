@@ -8,10 +8,24 @@ import java.math.BigDecimal
 import java.time.LocalDateTime
 
 interface LedgerEntryRepository : JpaRepository<LedgerEntry, Long> {
-    fun findAllByUserAndEntryAtGreaterThanEqualAndEntryAtLessThanOrderByEntryAtDesc(
-        user: User,
-        from: LocalDateTime,
-        toExclusive: LocalDateTime,
+    /**
+     * 내역 조회: 연월 구간([start, end))과 검색어(구매처/내용 부분 일치)는 각각 선택 조건이다.
+     * 둘 다 null이면 전체가 나오므로 서비스에서 최소 한 조건을 강제한다.
+     */
+    @Query(
+        """
+        select e from LedgerEntry e
+        where e.user = :user
+          and (:start is null or (e.entryAt >= :start and e.entryAt < :end))
+          and (:keyword is null or e.merchant like concat('%', :keyword, '%') or e.description like concat('%', :keyword, '%'))
+        order by e.entryAt desc, e.id desc
+        """,
+    )
+    fun search(
+        @Param("user") user: User,
+        @Param("start") start: LocalDateTime?,
+        @Param("end") end: LocalDateTime?,
+        @Param("keyword") keyword: String?,
     ): List<LedgerEntry>
 
     /**

@@ -118,7 +118,8 @@ class InboundService(
         parsed: ParsedMessage,
     ): Outcome {
         val matched =
-            parsed.merchant?.let { merchant ->
+            // 저장 시 컬럼 길이로 절단하므로(toEntry) 조회 키도 동일하게 정규화해야 매칭된다.
+            parsed.merchant?.take(MERCHANT_MAX_LENGTH)?.let { merchant ->
                 entryRepository.findLatestCancellable(
                     user = user,
                     amount = parsed.amount,
@@ -144,7 +145,7 @@ class InboundService(
             amount = amount,
             currency = currency,
             type = EntryType.EXPENSE,
-            merchant = merchant?.take(100),
+            merchant = merchant?.take(MERCHANT_MAX_LENGTH),
             description = description,
             source = source,
         )
@@ -160,5 +161,8 @@ class InboundService(
 
     companion object {
         private const val CANCEL_MATCH_DAYS = 7L
+
+        /** ledger_entries.merchant 컬럼 길이 — 저장·조회 양쪽에 동일하게 적용한다. */
+        private const val MERCHANT_MAX_LENGTH = 100
     }
 }
