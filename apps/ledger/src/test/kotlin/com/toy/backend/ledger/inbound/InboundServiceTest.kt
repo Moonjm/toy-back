@@ -19,7 +19,6 @@ import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
-import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.TransactionStatus
@@ -229,7 +228,7 @@ class InboundServiceTest :
                         rawText = approvalText,
                         status = InboundStatus.PARSE_FAILED,
                     ).withId(100L)
-                every { inboundRepository.findByIdOrNull(100L) } returns message
+                every { inboundRepository.findByIdAndUser(100L, user) } returns message
                 every { inboundRepository.claimForRetry(100L) } returns 1
                 every { entryRepository.save(any()) } answers { (firstArg() as LedgerEntry).withId(11L) }
 
@@ -252,7 +251,7 @@ class InboundServiceTest :
                         rawText = approvalText,
                         status = InboundStatus.PARSE_FAILED,
                     ).withId(104L)
-                every { inboundRepository.findByIdOrNull(104L) } returns message
+                every { inboundRepository.findByIdAndUser(104L, user) } returns message
                 every { inboundRepository.claimForRetry(104L) } returns 0
 
                 Then("INBOUND_NOT_RETRYABLE 예외 — 중복 처리하지 않는다") {
@@ -269,7 +268,7 @@ class InboundServiceTest :
                         rawText = "여전히 파싱 불가능한 원문",
                         status = InboundStatus.PARSE_FAILED,
                     ).withId(103L)
-                every { inboundRepository.findByIdOrNull(103L) } returns message
+                every { inboundRepository.findByIdAndUser(103L, user) } returns message
                 every { inboundRepository.claimForRetry(103L) } returns 1
 
                 Then("MESSAGE_PARSE_FAILED 예외(400), 로그 상태는 PARSE_FAILED 유지") {
@@ -287,7 +286,7 @@ class InboundServiceTest :
                         status = InboundStatus.SAVED,
                         entryId = 11L,
                     ).withId(101L)
-                every { inboundRepository.findByIdOrNull(101L) } returns message
+                every { inboundRepository.findByIdAndUser(101L, user) } returns message
 
                 Then("INBOUND_NOT_RETRYABLE 예외") {
                     val e = shouldThrow<CustomException> { service.retry("testuser", 101L) }
@@ -296,14 +295,8 @@ class InboundServiceTest :
             }
 
             When("타인 소유 건이면") {
-                val other = dummyUser(username = "other", id = 2L)
-                val message =
-                    InboundMessage(
-                        user = other,
-                        rawText = approvalText,
-                        status = InboundStatus.PARSE_FAILED,
-                    ).withId(102L)
-                every { inboundRepository.findByIdOrNull(102L) } returns message
+                // 소유자를 조건에 넣어 조회하므로 타인 건은 애초에 나오지 않는다.
+                every { inboundRepository.findByIdAndUser(102L, user) } returns null
 
                 Then("RESOURCE_NOT_FOUND 예외 (존재 숨김)") {
                     val e = shouldThrow<CustomException> { service.retry("testuser", 102L) }

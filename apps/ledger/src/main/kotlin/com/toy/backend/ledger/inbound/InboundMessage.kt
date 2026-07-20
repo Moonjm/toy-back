@@ -27,8 +27,10 @@ class InboundMessage(
     var user: User,
     @Column(name = "raw_text", nullable = false, columnDefinition = "text")
     var rawText: String,
+    // columnDefinition을 명시해 Hibernate의 enum CHECK 제약 생성을 막는다 —
+    // ddl-auto:update는 기존 제약을 갱신하지 않아 enum 값을 추가하면 기존 DB에서 INSERT가 실패한다.
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(nullable = false, columnDefinition = "varchar(20)")
     var status: InboundStatus,
     @Column(name = "entry_id")
     var entryId: Long? = null,

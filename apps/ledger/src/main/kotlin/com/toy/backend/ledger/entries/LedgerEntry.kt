@@ -36,8 +36,9 @@ class LedgerEntry(
     var amount: BigDecimal,
     @Column(nullable = false, length = 3)
     var currency: String = "KRW",
+    // columnDefinition 명시로 enum CHECK 제약 생성을 막는다 (ddl-auto:update가 제약을 갱신하지 못함)
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
+    @Column(nullable = false, columnDefinition = "varchar(10)")
     var type: EntryType = EntryType.EXPENSE,
     @Column(length = 100)
     var merchant: String? = null,
@@ -47,7 +48,7 @@ class LedgerEntry(
     @JoinColumn(name = "category_id")
     var category: Category? = null,
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(nullable = false, columnDefinition = "varchar(20)")
     var source: EntrySource = EntrySource.MANUAL,
 ) : BaseEntity() {
     fun updateDetails(

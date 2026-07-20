@@ -9,7 +9,6 @@ import com.toy.backend.ledger.entries.LedgerEntryRepository
 import com.toy.backend.user.User
 import com.toy.backend.user.UserRepository
 import io.github.oshai.kotlinlogging.KotlinLogging
-import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.LocalDateTime
@@ -57,17 +56,15 @@ class InboundService(
     ) {
         val user = findUser(username)
         val message =
-            inboundRepository.findByIdOrNull(id)
+            inboundRepository.findByIdAndUser(id, user)
                 ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
-        if (message.user.requiredId != user.requiredId) {
-            throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
-        }
         if (message.status != InboundStatus.PARSE_FAILED || inboundRepository.claimForRetry(id) == 0) {
             throw CustomException(LedgerErrorCode.INBOUND_NOT_RETRYABLE, id)
         }
 
+        // 선점 쿼리가 영속성 컨텍스트를 비우므로(clearAutomatically) 재조회해 사용한다.
         val claimed =
-            inboundRepository.findByIdOrNull(id)
+            inboundRepository.findByIdAndUser(id, user)
                 ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
         val outcome = handle(user, claimed.rawText)
         applyOutcome(claimed, outcome)
