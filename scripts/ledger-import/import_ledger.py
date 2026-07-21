@@ -5,8 +5,8 @@
 - 신형 .xlsx: openpyxl 파싱 (기간, 자산, 분류, 소분류, 내용, KRW, 수입/지출, 추가입력, 금액, 화폐, 자산)
 
 두 파일에서 겹치는 건은 (일자, 금액, 내용) 기준으로 중복 제거하며, 시간 정보가 있는
-신형 파일 쪽을 우선한다. 엑셀의 분류 값은 ledger_categories에 없으면 새로 만들어 연결한다
-(계좌/자산 값은 버린다).
+신형 파일 쪽을 우선한다. 지출(EXPENSE)만 이관하고 수입(INCOME)은 제외한다.
+엑셀의 분류 값은 ledger_categories에 없으면 새로 만들어 연결한다 (계좌/자산 값은 버린다).
 
 사용법:
   python import_ledger.py --xls 2026-07-19.xls --xlsx 2026-07-19_new.xlsx \
@@ -153,10 +153,14 @@ def main():
 
     old_entries = parse_old_xls(args.xls)
     new_entries = parse_new_xlsx(args.xlsx)
-    merged = merge(old_entries, new_entries)
-    dropped = len(old_entries) + len(new_entries) - len(merged)
+    all_merged = merge(old_entries, new_entries)
+    # 지출만 이관한다 — 수입(INCOME) 항목은 제외.
+    merged = [e for e in all_merged if e["type"] == "EXPENSE"]
+    income_dropped = len(all_merged) - len(merged)
+    dropped = len(old_entries) + len(new_entries) - len(all_merged)
     category_names = {e["category"] for e in merged if e["category"]}
-    print(f"구형 {len(old_entries)}건 + 신형 {len(new_entries)}건 → 병합 {len(merged)}건 (중복 제거 {dropped}건)")
+    print(f"구형 {len(old_entries)}건 + 신형 {len(new_entries)}건 → 병합 {len(all_merged)}건 (중복 제거 {dropped}건)")
+    print(f"지출만 이관: {len(merged)}건 (수입 {income_dropped}건 제외)")
     print(f"분류 {len(category_names)}종: {', '.join(sorted(category_names)) or '(없음)'}")
 
     if args.dry_run:
