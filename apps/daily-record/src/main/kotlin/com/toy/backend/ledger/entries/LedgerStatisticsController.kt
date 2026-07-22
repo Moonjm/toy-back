@@ -29,4 +29,14 @@ class LedgerStatisticsController(
         authentication: Authentication,
     ): ResponseEntity<DataResponseBody<LedgerStatisticsResponse>> =
         ResponseEntity.ok(DataResponseBody(service.statistics(authentication.name, yearMonth)))
+
+    @GetMapping("/yearly")
+    @Operation(summary = "기준연 통계 — 12개월 추이, 지난해 비교, 출처별·가맹점별 집계, 외화, 최대 단건, 일평균")
+    fun yearlyStatistics(
+        @Parameter(description = "기준 연도", example = "2026")
+        @RequestParam
+        year: Int,
+        authentication: Authentication,
+    ): ResponseEntity<DataResponseBody<LedgerStatisticsResponse>> =
+        ResponseEntity.ok(DataResponseBody(service.yearlyStatistics(authentication.name, year)))
 }
