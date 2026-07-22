@@ -51,7 +51,7 @@ daily-record와 동일한 패턴의 Spring Boot 앱 모듈:
 | `type` | varchar | `EXPENSE` / `INCOME` — 기존 데이터의 수입 행 이관 손실 방지용 |
 | `merchant` | varchar | 구매처 |
 | `description` | varchar | 내용 |
-| `source` | varchar | `MANUAL` / `SMS` / `KAKAO_PAY` / `RECURRING` / `IMPORT` |
+| `source` | varchar | `MANUAL` / `SMS` / `KAKAO_PAY` / `RECURRING` |
 
 인덱스: `(user_id, entry_at)` — 월별 조회용.
 
@@ -203,7 +203,7 @@ HolidayScheduler 패턴의 `@Scheduled(cron = "매일 새벽")` 잡:
 - 분류: 엑셀의 분류 값을 `ledger_categories`에서 찾고 없으면 생성해 연결한다(`(null)` 등 미분류 표기는 분류 없음)
   (필요 시 `description`에 병기하는 옵션 제공)
 - `수입/지출` → `type` 매핑, `화폐` → `currency` (구형 파일은 전부 `KRW`)
-- DB 직접 INSERT, `source = IMPORT`
+- DB 직접 INSERT, `source = MANUAL`
 
 ## 에러 처리
 

@@ -16,7 +16,7 @@ import java.time.LocalDateTime
 
 enum class EntryType { EXPENSE, INCOME }
 
-enum class EntrySource { MANUAL, SMS, KAKAO_PAY, RECURRING, IMPORT }
+enum class EntrySource { MANUAL, SMS, KAKAO_PAY, RECURRING }
 
 @Entity
 @Table(
