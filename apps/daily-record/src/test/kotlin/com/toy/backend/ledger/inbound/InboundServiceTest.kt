@@ -55,6 +55,11 @@ class InboundServiceTest :
         val entryRepository = mockk<LedgerEntryRepository>()
         val inboundRepository = mockk<InboundMessageRepository>()
         val userRepository = mockk<UserRepository>()
+        // 환율은 부가 정보 — 단위 테스트에서는 조회 실패(null)로 두어 외부 호출 없이 검증한다.
+        val fxRateClient =
+            mockk<FxRateClient> {
+                every { rateToKrw(any()) } returns null
+            }
         val service =
             InboundService(
                 parsers = listOf(CardApprovalParser(), OverseasApprovalParser(), KakaoPayParser()),
@@ -62,6 +67,7 @@ class InboundServiceTest :
                 inboundRepository = inboundRepository,
                 userRepository = userRepository,
                 transactionTemplate = TransactionTemplate(noopTransactionManager),
+                fxRateClient = fxRateClient,
             )
 
         val user = dummyUser()
@@ -185,6 +191,7 @@ class InboundServiceTest :
                     inboundRepository = inboundRepository,
                     userRepository = userRepository,
                     transactionTemplate = TransactionTemplate(noopTransactionManager),
+                    fxRateClient = fxRateClient,
                 )
 
             When("process") {
@@ -272,6 +279,42 @@ class InboundServiceTest :
                 Then("RESOURCE_NOT_FOUND 예외 (존재 숨김)") {
                     val e = shouldThrow<CustomException> { service.retry("testuser", 102L) }
                     e.errorCode shouldBe ErrorCode.RESOURCE_NOT_FOUND
+                }
+            }
+        }
+
+        Given("해외승인 문자 + 환율 조회 성공") {
+            val overseasText =
+                """
+                [Web발신]
+                [현대카드] 해외승인
+                문*민님
+                07/21 20:29
+                JPY 1,000.00
+                SUICAMOBILEPAYMENT
+                """.trimIndent()
+            val fxService =
+                InboundService(
+                    parsers = listOf(CardApprovalParser(), OverseasApprovalParser(), KakaoPayParser()),
+                    entryRepository = entryRepository,
+                    inboundRepository = inboundRepository,
+                    userRepository = userRepository,
+                    transactionTemplate = TransactionTemplate(noopTransactionManager),
+                    fxRateClient =
+                        mockk {
+                            every { rateToKrw("JPY") } returns BigDecimal("9.15")
+                        },
+                )
+
+            When("process") {
+                val saved = slot<LedgerEntry>()
+                every { entryRepository.save(capture(saved)) } answers { saved.captured.withId(11L) }
+
+                fxService.process("testuser", overseasText)
+
+                Then("결제 시점 환율과 원화 환산액이 메모에 남는다") {
+                    saved.captured.currency shouldBe "JPY"
+                    saved.captured.description shouldBe "환율 1 JPY ≈ 9.15원 (약 9,150원)"
                 }
             }
         }

@@ -11,6 +11,7 @@ import com.toy.backend.user.UserRepository
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
+import java.text.DecimalFormat
 import java.time.LocalDateTime
 
 private val log = KotlinLogging.logger {}
@@ -22,6 +23,7 @@ class InboundService(
     private val inboundRepository: InboundMessageRepository,
     private val userRepository: UserRepository,
     private val transactionTemplate: TransactionTemplate,
+    private val fxRateClient: FxRateClient,
 ) {
     /**
      * 수신 원문을 파싱해 내역으로 저장하고, 처리 결과와 함께 원문을 기록한다.
@@ -143,9 +145,26 @@ class InboundService(
             currency = currency,
             type = EntryType.EXPENSE,
             merchant = merchant?.take(MERCHANT_MAX_LENGTH),
-            description = description,
+            description =
+                listOfNotNull(description, fxNote())
+                    .joinToString(" · ")
+                    .ifEmpty { null }
+                    ?.take(DESCRIPTION_MAX_LENGTH),
             source = source,
         )
+
+    /**
+     * 외화 결제면 결제 시점 환율과 원화 환산액을 메모로 남긴다.
+     * 예) "환율 1 JPY ≈ 9.15원 (약 9,150원)". 조회 실패 시 null — 저장을 막지 않는다.
+     */
+    private fun ParsedMessage.fxNote(): String? {
+        if (currency.uppercase() == "KRW") return null
+        val rate = fxRateClient.rateToKrw(currency) ?: return null
+        val converted = amount.abs().multiply(rate).setScale(0, java.math.RoundingMode.HALF_UP)
+        val rateText = DecimalFormat("#,##0.##").format(rate)
+        val convertedText = DecimalFormat("#,##0").format(converted)
+        return "환율 1 ${currency.uppercase()} ≈ ${rateText}원 (약 ${convertedText}원)"
+    }
 
     private fun findUser(username: String): User =
         userRepository.findByUsername(username)
@@ -161,5 +180,8 @@ class InboundService(
 
         /** ledger_entries.merchant 컬럼 길이 — 저장·조회 양쪽에 동일하게 적용한다. */
         private const val MERCHANT_MAX_LENGTH = 100
+
+        /** ledger_entries.description 컬럼 길이 — 환율 메모를 붙여도 넘지 않게 절단한다. */
+        private const val DESCRIPTION_MAX_LENGTH = 500
     }
 }
