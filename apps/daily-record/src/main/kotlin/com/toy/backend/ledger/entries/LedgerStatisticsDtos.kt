@@ -12,11 +12,11 @@ data class LedgerStatisticsResponse(
     val sourceBreakdown: List<SourceTotal>,
     /** 기준월 통화별 외화 지출 (통화 오름차순, 환산 없음) */
     val foreignTotals: List<CurrencyTotal>,
-    /** 기준월 가맹점 TOP 5 (원화, 금액 내림차순) */
+    /** 기준월 가맹점 TOP 5 (원화, 금액 내림차순, 반복 지출 제외) */
     val topMerchants: List<MerchantTotal>,
     /** 기준월 원화 최대 단건 지출 */
     val maxEntry: MaxEntry?,
-    /** 기준월 일평균 원화 지출 (지출이 있었던 날 기준) */
+    /** 기준월 일평균 원화 지출 — 지출이 있었던 날 기준, 원 단위 반올림(HALF_UP) */
     val dailyAverage: BigDecimal,
 )
 

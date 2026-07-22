@@ -63,7 +63,8 @@ class LedgerStatisticsService(
 
         val topMerchants =
             currentKrw
-                .filter { !it.merchant.isNullOrBlank() }
+                // 반복(고정비)은 "어디에 많이 썼나"를 보는 순위라 제외한다.
+                .filter { it.source != EntrySource.RECURRING && !it.merchant.isNullOrBlank() }
                 .groupBy { it.merchant!! }
                 .map { (merchant, list) ->
                     MerchantTotal(merchant = merchant, krwTotal = list.sumOf { it.amount }, count = list.size)
