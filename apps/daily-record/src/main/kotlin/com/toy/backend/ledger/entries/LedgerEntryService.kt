@@ -2,8 +2,6 @@ package com.toy.backend.ledger.entries
 
 import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.exception.CustomException
-import com.toy.backend.ledger.categories.Category
-import com.toy.backend.ledger.categories.CategoryRepository
 import com.toy.backend.user.User
 import com.toy.backend.user.UserRepository
 import org.springframework.data.repository.findByIdOrNull
@@ -15,7 +13,6 @@ import java.time.YearMonth
 @Transactional(readOnly = true)
 class LedgerEntryService(
     private val repository: LedgerEntryRepository,
-    private val categoryRepository: CategoryRepository,
     private val userRepository: UserRepository,
 ) {
     /** 기본은 연월 조회, 검색어가 있으면 구매처/내용 부분 일치 검색(연월과 조합 가능). 최소 한 조건은 필수. */
@@ -50,7 +47,6 @@ class LedgerEntryService(
                 type = request.type,
                 merchant = request.merchant,
                 description = request.description,
-                category = resolveCategory(user, request.categoryId),
                 source = EntrySource.MANUAL,
             )
         return repository.save(entity).requiredId
@@ -71,7 +67,6 @@ class LedgerEntryService(
             type = request.type,
             merchant = request.merchant,
             description = request.description,
-            category = resolveCategory(user, request.categoryId),
         )
     }
 
@@ -83,20 +78,6 @@ class LedgerEntryService(
         val entity = authorizedEntry(findUser(username), id)
         repository.delete(entity)
     }
-
-    private fun resolveCategory(
-        user: User,
-        categoryId: Long?,
-    ): Category? =
-        categoryId?.let { id ->
-            val category =
-                categoryRepository.findByIdOrNull(id)
-                    ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
-            if (category.user.requiredId != user.requiredId) {
-                throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
-            }
-            category
-        }
 
     private fun authorizedEntry(
         user: User,

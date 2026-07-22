@@ -6,11 +6,11 @@
 
 두 파일에서 겹치는 건은 (일자, 금액, 내용) 기준으로 중복 제거하며, 시간 정보가 있는
 신형 파일 쪽을 우선한다. 지출(EXPENSE)만 이관하고 수입(INCOME)은 제외한다.
-엑셀의 분류 값은 ledger_categories에 없으면 새로 만들어 연결한다 (계좌/자산 값은 버린다).
+분류는 사용하지 않으므로 엑셀의 분류/계좌/자산 값은 모두 버린다.
 
 사용법:
   python import_ledger.py --xls 2026-07-19.xls --xlsx 2026-07-19_new.xlsx \
-      --username moon --dsn "host=localhost port=5432 dbname=ledger user=toy password=toy00" \
+      --username moon --dsn "host=localhost port=5432 dbname=daily-record user=toy password=toy00" \
       [--dry-run]
 """
 import argparse
@@ -24,20 +24,6 @@ from decimal import Decimal
 import psycopg2
 
 import openpyxl
-
-CATEGORY_MAX_LENGTH = 50
-# 구형 파일이 미분류를 문자열로 내보낸 값들 — 분류 없음으로 취급한다.
-BLANK_CATEGORY_VALUES = {"(null)", "null", "-"}
-
-
-def normalize_category(value):
-    """분류명을 정규화한다. 빈 값·미분류 표기는 None(분류 없음)."""
-    if not value:
-        return None
-    name = str(value).strip()[:CATEGORY_MAX_LENGTH]
-    if not name or name.lower() in BLANK_CATEGORY_VALUES:
-        return None
-    return name
 
 
 def parse_old_xls(path):
@@ -55,6 +41,8 @@ def parse_old_xls(path):
         if not date_match:
             continue
         entry_at = datetime(*(int(g) for g in date_match.groups()))
+        # 상세내역은 카드 승인 문자 원문이다. 있으면 문자(SMS)에서 온 내역으로 본다.
+        detail = (cells[6][:500] or None) if len(cells) > 6 else None
         entries.append(
             {
                 "entry_at": entry_at,
@@ -62,8 +50,8 @@ def parse_old_xls(path):
                 "currency": "KRW",
                 "type": "INCOME" if cells[5] == "수입" else "EXPENSE",
                 "merchant": cells[3][:100] or None,
-                "description": (cells[6][:500] or None) if len(cells) > 6 else None,
-                "category": normalize_category(cells[2]),  # 대분류
+                "description": detail,
+                "source": "SMS" if detail else "MANUAL",
             }
         )
     return entries
@@ -77,9 +65,12 @@ def parse_new_xlsx(path):
     for row in sheet.iter_rows(min_row=2, values_only=True):
         if not row or row[0] is None:
             continue
-        entry_at, _asset, category, _subcat, content, _krw, io_type, extra, amount, currency = row[:10]
+        entry_at, _asset, _category, _subcat, content, _krw, io_type, extra, amount, currency = row[:10]
         if not isinstance(entry_at, datetime):
             continue
+        # 추가입력에는 (enrich_new_xlsx.py로 채운) 카드 승인 문자 원문이 들어 있다.
+        # 있으면 문자(SMS)에서 온 내역으로 본다.
+        detail = (str(extra).strip()[:500] or None) if extra else None
         entries.append(
             {
                 "entry_at": entry_at,
@@ -87,8 +78,8 @@ def parse_new_xlsx(path):
                 "currency": (currency or "KRW").strip(),
                 "type": "INCOME" if io_type == "수입" else "EXPENSE",
                 "merchant": (str(content).strip()[:100] or None) if content else None,
-                "description": (str(extra).strip()[:500] or None) if extra else None,
-                "category": normalize_category(category),
+                "description": detail,
+                "source": "SMS" if detail else "MANUAL",
             }
         )
     return entries
@@ -116,32 +107,6 @@ def merge(old_entries, new_entries):
     return unique_old + new_entries
 
 
-def ensure_categories(cur, user_id, names):
-    """분류명 → id 맵을 만든다. 기존 것은 재사용하고 없는 것만 생성한다."""
-    if not names:
-        return {}
-    cur.execute(
-        "select id, name from ledger_categories where user_id = %s and name = any(%s)",
-        (user_id, list(names)),
-    )
-    mapping = {name: category_id for category_id, name in cur.fetchall()}
-
-    missing = sorted(names - mapping.keys())
-    for name in missing:
-        cur.execute(
-            """
-            insert into ledger_categories (user_id, name, created_at, updated_at)
-            values (%s, %s, now(), now())
-            returning id
-            """,
-            (user_id, name),
-        )
-        mapping[name] = cur.fetchone()[0]
-    if missing:
-        print(f"분류 생성: {len(missing)}개 ({', '.join(missing)})")
-    return mapping
-
-
 def main():
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--xls", required=True, help="구형 .xls (HTML) 파일 경로")
@@ -158,10 +123,10 @@ def main():
     merged = [e for e in all_merged if e["type"] == "EXPENSE"]
     income_dropped = len(all_merged) - len(merged)
     dropped = len(old_entries) + len(new_entries) - len(all_merged)
-    category_names = {e["category"] for e in merged if e["category"]}
+    sms_count = sum(1 for e in merged if e["source"] == "SMS")
     print(f"구형 {len(old_entries)}건 + 신형 {len(new_entries)}건 → 병합 {len(all_merged)}건 (중복 제거 {dropped}건)")
     print(f"지출만 이관: {len(merged)}건 (수입 {income_dropped}건 제외)")
-    print(f"분류 {len(category_names)}종: {', '.join(sorted(category_names)) or '(없음)'}")
+    print(f"출처: 문자(SMS) {sms_count}건 / 수동(MANUAL) {len(merged) - sms_count}건")
 
     if args.dry_run:
         for entry in merged[:5]:
@@ -177,15 +142,13 @@ def main():
                 sys.exit(f"사용자를 찾을 수 없습니다: {args.username}")
             user_id = row[0]
 
-            categories = ensure_categories(cur, user_id, category_names)
-
             for entry in merged:
                 cur.execute(
                     """
                     insert into ledger_entries
                         (user_id, entry_at, amount, currency, type, merchant, description,
-                         category_id, source, created_at, updated_at)
-                    values (%s, %s, %s, %s, %s, %s, %s, %s, 'IMPORT', now(), now())
+                         source, created_at, updated_at)
+                    values (%s, %s, %s, %s, %s, %s, %s, %s, now(), now())
                     """,
                     (
                         user_id,
@@ -195,7 +158,7 @@ def main():
                         entry["type"],
                         entry["merchant"],
                         entry["description"],
-                        categories.get(entry["category"]),
+                        entry["source"],
                     ),
                 )
         print(f"이관 완료: {len(merged)}건 (username={args.username})")

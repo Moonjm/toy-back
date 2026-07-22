@@ -15,10 +15,11 @@ AI 에이전트(코드 작성·리뷰)가 이 저장소에서 작업할 때 알�
 common/core    공통 응답·예외·BaseEntity·설정 (Code, CustomException, ResponseCreated 등)
 common/auth    JWT 인증·사용자 관리 (User, SecurityConfig, AdditionalAuthFilter)
 common/file    파일 업로드
-apps/daily-record, apps/family-tree, apps/ledger   각 앱 (전용 DB 사용)
+apps/daily-record, apps/family-tree   각 앱 (전용 DB 사용)
 ```
 
-- 앱마다 자체 PostgreSQL DB를 쓴다 (`daily-record`, `family-tree`, `ledger`)
+- 앱마다 자체 PostgreSQL DB를 쓴다 (`daily-record`, `family-tree`)
+- 가계부(ledger) 기능은 `daily-record` 모듈 안 `com.toy.backend.ledger.*` 패키지에 있다(전용 앱에서 통합됨)
 - 앱 모듈은 `common-core`·`common-auth`를 의존하고, 앱끼리는 의존하지 않는다
 - 앱 전용 에러 코드는 앱 모듈에 `Code` 구현 enum으로 둔다(예: `LedgerErrorCode`).
   공통 인프라 성격만 `common-core`의 `ErrorCode`에 추가한다

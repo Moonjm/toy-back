@@ -18,7 +18,6 @@ data class LedgerEntryRequest(
     val merchant: String? = null,
     @field:Size(max = 500)
     val description: String? = null,
-    val categoryId: Long? = null,
 )
 
 data class LedgerEntryResponse(
@@ -29,8 +28,6 @@ data class LedgerEntryResponse(
     val type: EntryType,
     val merchant: String?,
     val description: String?,
-    val categoryId: Long?,
-    val categoryName: String?,
     val source: EntrySource,
 )
 
@@ -43,7 +40,5 @@ fun LedgerEntry.toResponse(): LedgerEntryResponse =
         type = type,
         merchant = merchant,
         description = description,
-        categoryId = category?.requiredId,
-        categoryName = category?.name,
         source = source,
     )

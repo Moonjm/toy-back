@@ -1,7 +1,6 @@
 package com.toy.backend.ledger.entries
 
 import com.toy.backend.common.entity.BaseEntity
-import com.toy.backend.ledger.categories.Category
 import com.toy.backend.user.User
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -44,9 +43,6 @@ class LedgerEntry(
     var merchant: String? = null,
     @Column(length = 500)
     var description: String? = null,
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "category_id")
-    var category: Category? = null,
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, columnDefinition = "varchar(20)")
     var source: EntrySource = EntrySource.MANUAL,
@@ -58,7 +54,6 @@ class LedgerEntry(
         type: EntryType,
         merchant: String?,
         description: String?,
-        category: Category?,
     ) {
         this.entryAt = entryAt
         this.amount = amount
@@ -66,6 +61,5 @@ class LedgerEntry(
         this.type = type
         this.merchant = merchant
         this.description = description
-        this.category = category
     }
 }
