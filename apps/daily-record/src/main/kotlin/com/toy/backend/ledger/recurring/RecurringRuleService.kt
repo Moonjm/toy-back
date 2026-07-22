@@ -43,10 +43,25 @@ class RecurringRuleService(
         if (entry.user.requiredId != user.requiredId) {
             throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, request.entryId)
         }
+        val dayOfMonth = request.dayOfMonth ?: entry.entryAt.dayOfMonth
+        // 같은 규칙이 2개 생기면 매달 같은 내역이 2건씩 자동 생성되므로 이중 등록을 막는다.
+        // 날짜가 다르면 별개 규칙으로 허용 (매월 1일·15일 같은 금액도 가능하니).
+        val duplicate =
+            repository.findAllByUser(user).any { rule ->
+                rule.active &&
+                    rule.dayOfMonth == dayOfMonth &&
+                    rule.type == entry.type &&
+                    rule.currency.equals(entry.currency, ignoreCase = true) &&
+                    rule.amount.compareTo(entry.amount) == 0 &&
+                    rule.merchant == entry.merchant
+            }
+        if (duplicate) {
+            throw CustomException(ErrorCode.DUPLICATE_RESOURCE, "매월 ${dayOfMonth}일 · ${entry.merchant ?: "반복 내역"}")
+        }
         val rule =
             RecurringRule(
                 user = user,
-                dayOfMonth = request.dayOfMonth ?: entry.entryAt.dayOfMonth,
+                dayOfMonth = dayOfMonth,
                 amount = entry.amount,
                 currency = entry.currency,
                 type = entry.type,

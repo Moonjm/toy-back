@@ -1,6 +1,8 @@
 package com.toy.backend.ledger.recurring
 
+import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.entity.withId
+import com.toy.backend.common.exception.CustomException
 import com.toy.backend.ledger.dummyLedgerEntry
 import com.toy.backend.ledger.entries.EntrySource
 import com.toy.backend.ledger.entries.EntryType
@@ -8,6 +10,7 @@ import com.toy.backend.ledger.entries.LedgerEntry
 import com.toy.backend.ledger.entries.LedgerEntryRepository
 import com.toy.backend.user.UserRepository
 import com.toy.backend.user.entity.dummyUser
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
@@ -22,6 +25,7 @@ private fun dummyRule(
     user: com.toy.backend.user.User = dummyUser(),
     dayOfMonth: Int = 25,
     amount: BigDecimal = BigDecimal("500000"),
+    merchant: String? = "데이트비용",
     active: Boolean = true,
     lastGeneratedMonth: String? = null,
     id: Long = 1L,
@@ -32,7 +36,7 @@ private fun dummyRule(
         amount = amount,
         currency = "KRW",
         type = EntryType.EXPENSE,
-        merchant = "데이트비용",
+        merchant = merchant,
         description = null,
         active = active,
         lastGeneratedMonth = lastGeneratedMonth,
@@ -61,6 +65,7 @@ class RecurringRuleServiceTest :
                         id = 5L,
                     )
                 every { entryRepository.findByIdOrNull(5L) } returns entry
+                every { repository.findAllByUser(user) } returns emptyList()
                 every { repository.save(any()) } answers { (firstArg() as RecurringRule).withId(2L) }
 
                 val id = service.create("testuser", RecurringRuleCreateRequest(entryId = 5L))
@@ -90,6 +95,7 @@ class RecurringRuleServiceTest :
                         id = 6L,
                     )
                 every { entryRepository.findByIdOrNull(6L) } returns entry
+                every { repository.findAllByUser(user) } returns emptyList()
                 every { repository.save(any()) } answers { (firstArg() as RecurringRule).withId(3L) }
 
                 service.create("testuser", RecurringRuleCreateRequest(entryId = 6L))
@@ -100,6 +106,63 @@ class RecurringRuleServiceTest :
                             match { it.dayOfMonth == 25 && it.lastGeneratedMonth == "2026-06" },
                         )
                     }
+                }
+            }
+
+            When("같은 금액·가맹점·날짜의 활성 규칙이 이미 있으면") {
+                val entry =
+                    dummyLedgerEntry(
+                        user = user,
+                        entryAt = LocalDateTime.of(2026, 7, 25, 0, 0),
+                        merchant = "넷플릭스",
+                        id = 7L,
+                    )
+                every { entryRepository.findByIdOrNull(7L) } returns entry
+                every { repository.findAllByUser(user) } returns
+                    listOf(dummyRule(dayOfMonth = 25, amount = BigDecimal("18920"), merchant = "넷플릭스"))
+
+                Then("중복 예외 — 매달 같은 내역이 2건씩 생기는 것을 막는다") {
+                    val exception =
+                        shouldThrow<CustomException> {
+                            service.create("testuser", RecurringRuleCreateRequest(entryId = 7L))
+                        }
+                    exception.errorCode shouldBe ErrorCode.DUPLICATE_RESOURCE
+                }
+            }
+
+            When("같은 금액·가맹점이라도 날짜가 다르면") {
+                val entry =
+                    dummyLedgerEntry(
+                        user = user,
+                        entryAt = LocalDateTime.of(2026, 7, 25, 0, 0),
+                        merchant = "넷플릭스",
+                        id = 8L,
+                    )
+                every { entryRepository.findByIdOrNull(8L) } returns entry
+                every { repository.findAllByUser(user) } returns
+                    listOf(dummyRule(dayOfMonth = 10, amount = BigDecimal("18920"), merchant = "넷플릭스"))
+                every { repository.save(any()) } answers { (firstArg() as RecurringRule).withId(9L) }
+
+                Then("별개 규칙으로 등록된다 (매월 1일·15일 같은 금액 케이스)") {
+                    service.create("testuser", RecurringRuleCreateRequest(entryId = 8L)) shouldBe 9L
+                }
+            }
+
+            When("같은 조건이라도 비활성 규칙뿐이면") {
+                val entry =
+                    dummyLedgerEntry(
+                        user = user,
+                        entryAt = LocalDateTime.of(2026, 7, 25, 0, 0),
+                        merchant = "넷플릭스",
+                        id = 10L,
+                    )
+                every { entryRepository.findByIdOrNull(10L) } returns entry
+                every { repository.findAllByUser(user) } returns
+                    listOf(dummyRule(dayOfMonth = 25, amount = BigDecimal("18920"), merchant = "넷플릭스", active = false))
+                every { repository.save(any()) } answers { (firstArg() as RecurringRule).withId(11L) }
+
+                Then("새 규칙으로 등록된다") {
+                    service.create("testuser", RecurringRuleCreateRequest(entryId = 10L)) shouldBe 11L
                 }
             }
         }
