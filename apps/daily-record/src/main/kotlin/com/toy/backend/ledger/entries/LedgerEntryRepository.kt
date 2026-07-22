@@ -22,8 +22,8 @@ interface LedgerEntryRepository : JpaRepository<LedgerEntry, Long> {
           and (cast(:start as timestamp) is null or (e.entryAt >= :start and e.entryAt < :end))
           and (
             cast(:keyword as string) is null
-            or e.merchant like concat('%', cast(:keyword as string), '%')
-            or e.description like concat('%', cast(:keyword as string), '%')
+            or lower(e.merchant) like concat('%', lower(cast(:keyword as string)), '%')
+            or lower(e.description) like concat('%', lower(cast(:keyword as string)), '%')
           )
         order by e.entryAt desc, e.id desc
         """,
