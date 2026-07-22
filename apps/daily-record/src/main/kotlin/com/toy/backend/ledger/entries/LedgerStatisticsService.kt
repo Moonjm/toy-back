@@ -59,6 +59,10 @@ class LedgerStatisticsService(
         username: String,
         year: Int,
     ): LedgerStatisticsResponse {
+        // year±1을 LocalDate로 만들기 전에 막는다 — Int.MAX_VALUE 같은 값이 오버플로우로 500을 내지 않게.
+        if (year !in YEAR_MIN..YEAR_MAX) {
+            throw CustomException(ErrorCode.INVALID_REQUEST, "year=$year")
+        }
         val user = findUser(username)
         // 지난해 합계(previousTotal)까지 한 번에 계산하려고 전년 1월부터 조회한다.
         val expenses =
@@ -166,5 +170,9 @@ class LedgerStatisticsService(
         private const val TREND_MONTHS = 6
         private const val MONTHS_IN_YEAR = 12
         private const val TOP_MERCHANT_COUNT = 5
+
+        // 공휴일 API(HolidayController)와 같은 서비스 허용 연도 범위
+        private const val YEAR_MIN = 2000
+        private const val YEAR_MAX = 2100
     }
 }

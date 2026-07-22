@@ -3,6 +3,7 @@ package com.toy.backend.ledger.recurring
 import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.exception.CustomException
 import com.toy.backend.ledger.entries.EntrySource
+import com.toy.backend.ledger.entries.EntryType
 import com.toy.backend.ledger.entries.LedgerEntry
 import com.toy.backend.ledger.entries.LedgerEntryRepository
 import com.toy.backend.user.User
@@ -11,6 +12,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -44,20 +46,14 @@ class RecurringRuleService(
             throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, request.entryId)
         }
         val dayOfMonth = request.dayOfMonth ?: entry.entryAt.dayOfMonth
-        // 같은 규칙이 2개 생기면 매달 같은 내역이 2건씩 자동 생성되므로 이중 등록을 막는다.
-        // 날짜가 다르면 별개 규칙으로 허용 (매월 1일·15일 같은 금액도 가능하니).
-        val duplicate =
-            repository.findAllByUser(user).any { rule ->
-                rule.active &&
-                    rule.dayOfMonth == dayOfMonth &&
-                    rule.type == entry.type &&
-                    rule.currency.equals(entry.currency, ignoreCase = true) &&
-                    rule.amount.compareTo(entry.amount) == 0 &&
-                    rule.merchant == entry.merchant
-            }
-        if (duplicate) {
-            throw CustomException(ErrorCode.DUPLICATE_RESOURCE, "매월 ${dayOfMonth}일 · ${entry.merchant ?: "반복 내역"}")
-        }
+        rejectDuplicate(
+            user = user,
+            dayOfMonth = dayOfMonth,
+            amount = entry.amount,
+            currency = entry.currency,
+            type = entry.type,
+            merchant = entry.merchant,
+        )
         val rule =
             RecurringRule(
                 user = user,
@@ -80,6 +76,19 @@ class RecurringRuleService(
     ) {
         val user = findUser(username)
         val rule = authorizedRule(user, id)
+        // 수정·재활성화로 다른 활성 규칙과 같아지는 경로도 막는다(생성 검사만으로는 우회 가능).
+        // 비활성으로 바꾸는 수정은 생성 대상이 아니므로 검사하지 않는다.
+        if (request.active) {
+            rejectDuplicate(
+                user = user,
+                dayOfMonth = request.dayOfMonth,
+                amount = request.amount,
+                currency = request.currency,
+                type = request.type,
+                merchant = request.merchant,
+                excludeId = rule.requiredId,
+            )
+        }
         rule.updateDetails(
             dayOfMonth = request.dayOfMonth,
             amount = request.amount,
@@ -139,6 +148,34 @@ class RecurringRuleService(
         )
         rule.lastGeneratedMonth = currentMonth
         log.info { "반복 내역 생성: ruleId=$ruleId ($currentMonth)" }
+    }
+
+    /**
+     * 같은 규칙이 2개면 매달 같은 내역이 2건씩 자동 생성되므로 활성 규칙 간 중복을 막는다.
+     * 날짜가 다르면 별개 규칙으로 허용 (매월 1일·15일 같은 금액도 가능하니). 수정 시엔 자기 자신을 제외한다.
+     */
+    private fun rejectDuplicate(
+        user: User,
+        dayOfMonth: Int,
+        amount: BigDecimal,
+        currency: String,
+        type: EntryType,
+        merchant: String?,
+        excludeId: Long? = null,
+    ) {
+        val duplicate =
+            repository.findAllByUser(user).any { rule ->
+                rule.requiredId != excludeId &&
+                    rule.active &&
+                    rule.dayOfMonth == dayOfMonth &&
+                    rule.type == type &&
+                    rule.currency.equals(currency, ignoreCase = true) &&
+                    rule.amount.compareTo(amount) == 0 &&
+                    rule.merchant == merchant
+            }
+        if (duplicate) {
+            throw CustomException(ErrorCode.DUPLICATE_RESOURCE, "매월 ${dayOfMonth}일 · ${merchant ?: "반복 내역"}")
+        }
     }
 
     private fun authorizedRule(

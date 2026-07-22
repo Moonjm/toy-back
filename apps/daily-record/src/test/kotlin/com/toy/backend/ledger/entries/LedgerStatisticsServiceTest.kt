@@ -1,8 +1,11 @@
 package com.toy.backend.ledger.entries
 
+import com.toy.backend.common.constant.ErrorCode
+import com.toy.backend.common.exception.CustomException
 import com.toy.backend.ledger.dummyLedgerEntry
 import com.toy.backend.user.UserRepository
 import com.toy.backend.user.entity.dummyUser
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
@@ -286,6 +289,28 @@ class LedgerStatisticsServiceTest :
 
                 Then("원 단위 HALF_UP 반올림 (201/2 = 100.5 → 101)") {
                     result.dailyAverage shouldBe BigDecimal("101")
+                }
+            }
+        }
+
+        Given("연별 통계의 연도가 허용 범위를 벗어나면") {
+            When("Int.MAX_VALUE 연도로 조회") {
+                Then("날짜 연산 전에 INVALID_REQUEST — year+1 오버플로우로 500이 나지 않는다") {
+                    val exception =
+                        shouldThrow<CustomException> {
+                            service.yearlyStatistics("testuser", Int.MAX_VALUE)
+                        }
+                    exception.errorCode shouldBe ErrorCode.INVALID_REQUEST
+                }
+            }
+
+            When("하한 미만 연도(1999)로 조회") {
+                Then("INVALID_REQUEST 예외") {
+                    val exception =
+                        shouldThrow<CustomException> {
+                            service.yearlyStatistics("testuser", 1999)
+                        }
+                    exception.errorCode shouldBe ErrorCode.INVALID_REQUEST
                 }
             }
         }
