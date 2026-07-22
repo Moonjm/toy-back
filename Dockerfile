@@ -12,7 +12,6 @@ COPY common/auth/build.gradle.kts ./common/auth/
 COPY common/file/build.gradle.kts ./common/file/
 COPY apps/daily-record/build.gradle.kts ./apps/daily-record/
 COPY apps/family-tree/build.gradle.kts ./apps/family-tree/
-COPY apps/ledger/build.gradle.kts ./apps/ledger/
 RUN chmod +x gradlew && ./gradlew :${MODULE}:dependencies --no-daemon
 COPY common/core ./common/core
 COPY common/auth ./common/auth

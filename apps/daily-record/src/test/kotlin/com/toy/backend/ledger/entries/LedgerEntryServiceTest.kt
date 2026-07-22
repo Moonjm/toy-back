@@ -3,8 +3,6 @@ package com.toy.backend.ledger.entries
 import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.entity.withId
 import com.toy.backend.common.exception.CustomException
-import com.toy.backend.ledger.categories.Category
-import com.toy.backend.ledger.categories.CategoryRepository
 import com.toy.backend.ledger.dummyLedgerEntry
 import com.toy.backend.user.UserRepository
 import com.toy.backend.user.entity.dummyUser
@@ -23,9 +21,8 @@ import java.time.YearMonth
 class LedgerEntryServiceTest :
     BehaviorSpec({
         val repository = mockk<LedgerEntryRepository>()
-        val categoryRepository = mockk<CategoryRepository>()
         val userRepository = mockk<UserRepository>()
-        val service = LedgerEntryService(repository, categoryRepository, userRepository)
+        val service = LedgerEntryService(repository, userRepository)
 
         val user = dummyUser()
 
@@ -72,51 +69,26 @@ class LedgerEntryServiceTest :
         }
 
         Given("내역 생성") {
-            When("분류를 지정하면") {
-                val category = Category(user = user, name = "식비").withId(3L)
+            When("요청으로 생성하면") {
                 val request =
                     LedgerEntryRequest(
                         entryAt = LocalDateTime.of(2026, 7, 19, 12, 0),
                         amount = BigDecimal("5000"),
                         merchant = "카페",
-                        categoryId = 3L,
                     )
-                every { categoryRepository.findByIdOrNull(3L) } returns category
                 every { repository.save(any()) } answers { (firstArg() as LedgerEntry).withId(10L) }
 
                 val id = service.create("testuser", request)
 
-                Then("저장된 ID 반환, source는 MANUAL, 분류 연결") {
+                Then("저장된 ID 반환, source는 MANUAL") {
                     id shouldBe 10L
                     verify {
                         repository.save(
                             match {
-                                it.source == EntrySource.MANUAL &&
-                                    it.amount == BigDecimal("5000") &&
-                                    it.category?.name == "식비"
+                                it.source == EntrySource.MANUAL && it.amount == BigDecimal("5000")
                             },
                         )
                     }
-                }
-            }
-
-            When("타인 소유 분류를 지정하면") {
-                val other = dummyUser(username = "other", id = 2L)
-                every { categoryRepository.findByIdOrNull(9L) } returns Category(user = other, name = "남의분류").withId(9L)
-
-                Then("RESOURCE_NOT_FOUND 예외") {
-                    val e =
-                        shouldThrow<CustomException> {
-                            service.create(
-                                "testuser",
-                                LedgerEntryRequest(
-                                    entryAt = LocalDateTime.of(2026, 7, 19, 12, 0),
-                                    amount = BigDecimal("5000"),
-                                    categoryId = 9L,
-                                ),
-                            )
-                        }
-                    e.errorCode shouldBe ErrorCode.RESOURCE_NOT_FOUND
                 }
             }
         }
