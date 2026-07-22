@@ -39,14 +39,14 @@ class FxRateClient(
 
     private fun fetch(currency: String): BigDecimal? =
         runCatching {
+            // v2 단일 통화쌍 응답: {"date":"2026-07-22","base":"JPY","quote":"KRW","rate":9.0854}
             webClient
                 .get()
-                .uri("/v1/latest?base={base}&symbols=KRW", currency)
+                .uri("/v2/rate/{base}/KRW", currency)
                 .retrieve()
                 .bodyToMono<JsonNode>()
                 .block(TIMEOUT)
-                ?.path("rates")
-                ?.path("KRW")
+                ?.path("rate")
                 ?.takeIf { it.isNumber }
                 ?.decimalValue()
         }.onFailure {
