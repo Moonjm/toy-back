@@ -21,7 +21,8 @@ class ApiKeyAuthFilter(
         filterChain: FilterChain,
     ) {
         val key = request.getHeader(API_KEY_HEADER)
-        if (request.requestURI == INBOUND_PATH &&
+        // requestURI는 컨텍스트 경로(/api)를 포함하므로, 컨텍스트와 무관한 servletPath로 비교한다.
+        if (request.servletPath == INBOUND_PATH &&
             !key.isNullOrBlank() &&
             SecurityContextHolder.getContext().authentication == null
         ) {
