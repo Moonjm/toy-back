@@ -21,9 +21,12 @@ class ApiKeyAuthFilterTest :
         beforeContainer { SecurityContextHolder.clearContext() }
         afterContainer { SecurityContextHolder.clearContext() }
 
+        // 실제 배포는 컨텍스트 경로(/api) 아래에서 서빙된다 — requestURI가 아닌 servletPath로 매칭해야 한다.
         fun inboundRequest(apiKey: String?): MockHttpServletRequest =
             MockHttpServletRequest("POST", "/inbound").apply {
-                requestURI = "/inbound"
+                contextPath = "/api"
+                requestURI = "/api/inbound"
+                servletPath = "/inbound"
                 apiKey?.let { addHeader("X-API-Key", it) }
             }
 
@@ -56,7 +59,9 @@ class ApiKeyAuthFilterTest :
             When("필터 통과") {
                 val request =
                     MockHttpServletRequest("GET", "/entries").apply {
-                        requestURI = "/entries"
+                        contextPath = "/api"
+                        requestURI = "/api/entries"
+                        servletPath = "/entries"
                         addHeader("X-API-Key", "valid-key")
                     }
 
