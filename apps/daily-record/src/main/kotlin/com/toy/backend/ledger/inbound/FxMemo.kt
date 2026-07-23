@@ -13,6 +13,8 @@ object FxMemo {
 
     private val MEMO_REGEX = Regex("""환율 1 [A-Z]{3} ≈ [\d,.]+원 \(약 [\d,]+원\)""")
 
+    private val CONVERTED_REGEX = Regex("""\(약 ([\d,]+)원\)""")
+
     fun build(
         currency: String,
         amount: BigDecimal,
@@ -22,6 +24,17 @@ object FxMemo {
         val rateText = DecimalFormat("#,##0.##").format(rate)
         val convertedText = DecimalFormat("#,##0").format(converted)
         return "환율 1 ${currency.uppercase()} ≈ ${rateText}원 (약 ${convertedText}원)"
+    }
+
+    /**
+     * description의 환율 메모에서 원화 환산액을 꺼낸다. 메모가 없으면 null.
+     * 메모의 환산액은 절대값이므로 취소(음수) 건은 호출한 쪽에서 부호를 입혀야 한다.
+     */
+    fun convertedKrw(description: String?): BigDecimal? {
+        description ?: return null
+        val memo = MEMO_REGEX.find(description)?.value ?: return null
+        val text = CONVERTED_REGEX.find(memo)?.groupValues?.get(1) ?: return null
+        return BigDecimal(text.replace(",", ""))
     }
 
     /** description에서 환율 메모 조각을 제거한다. 메모뿐이었다면 null. */

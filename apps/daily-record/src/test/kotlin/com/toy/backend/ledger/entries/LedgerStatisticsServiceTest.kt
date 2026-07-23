@@ -65,15 +65,27 @@ class LedgerStatisticsServiceTest :
                         source = EntrySource.RECURRING,
                         id = 4L,
                     ),
-                    // 기준월 외화·수입 — 원화 집계에서 제외
+                    // 기준월 외화·수입 — 원화 집계에서 제외, 환산 합계(fxKrwTotal)에는 메모 기준으로 포함
                     dummyLedgerEntry(
                         user = user,
                         entryAt = LocalDateTime.of(2026, 7, 12, 9, 0),
                         amount = BigDecimal("1000"),
                         currency = "JPY",
                         merchant = "세븐일레븐",
+                        description = "환율 1 JPY ≈ 9.15원 (약 9,150원)",
                         source = EntrySource.SMS,
                         id = 5L,
+                    ),
+                    // 외화 취소 보정(음수) — 환산 합계에서 부호를 입혀 뺀다
+                    dummyLedgerEntry(
+                        user = user,
+                        entryAt = LocalDateTime.of(2026, 7, 13, 9, 0),
+                        amount = BigDecimal("-500"),
+                        currency = "JPY",
+                        merchant = "세븐일레븐",
+                        description = "환율 1 JPY ≈ 9.15원 (약 4,575원)",
+                        source = EntrySource.SMS,
+                        id = 8L,
                     ),
                     dummyLedgerEntry(
                         user = user,
@@ -108,6 +120,12 @@ class LedgerStatisticsServiceTest :
                     result.monthlyTrend[0].krwTotal shouldBe BigDecimal.ZERO // 2월
                 }
 
+                Then("외화 환산 추이는 메모 기준, 취소(음수)는 부호를 입혀 뺀다") {
+                    // 7월: 9,150(승인) - 4,575(취소) = 4,575
+                    result.monthlyTrend.last().fxKrwTotal shouldBe BigDecimal("4575")
+                    result.monthlyTrend[4].fxKrwTotal shouldBe BigDecimal.ZERO // 6월은 외화 없음
+                }
+
                 Then("직전 기간(지난달) 합계") {
                     result.previousTotal shouldBe BigDecimal("40000")
                 }
@@ -118,10 +136,10 @@ class LedgerStatisticsServiceTest :
                     result.sourceBreakdown[0].krwTotal shouldBe BigDecimal("100000")
                 }
 
-                Then("외화는 통화별 합계") {
+                Then("외화는 통화별 합계 (음수 취소 포함 순액)") {
                     result.foreignTotals.size shouldBe 1
                     result.foreignTotals[0].currency shouldBe "JPY"
-                    result.foreignTotals[0].total shouldBe BigDecimal("1000")
+                    result.foreignTotals[0].total shouldBe BigDecimal("500")
                 }
 
                 Then("가맹점 TOP은 반복 제외, 금액순 + 횟수") {
@@ -214,13 +232,14 @@ class LedgerStatisticsServiceTest :
                         source = EntrySource.RECURRING,
                         id = 3L,
                     ),
-                    // 기준연 외화 — 원화 집계 제외, 외화 합계 포함
+                    // 기준연 외화 — 원화 집계 제외, 외화 합계·환산 추이 포함
                     dummyLedgerEntry(
                         user = user,
                         entryAt = LocalDateTime.of(2026, 5, 12, 9, 0),
                         amount = BigDecimal("2000"),
                         currency = "JPY",
                         merchant = "세븐일레븐",
+                        description = "환율 1 JPY ≈ 9.09원 (약 18,180원)",
                         source = EntrySource.SMS,
                         id = 4L,
                     ),
@@ -247,6 +266,8 @@ class LedgerStatisticsServiceTest :
                     result.monthlyTrend[2].krwTotal shouldBe BigDecimal("30000") // 3월
                     result.monthlyTrend[6].krwTotal shouldBe BigDecimal("150000") // 7월
                     result.monthlyTrend[0].krwTotal shouldBe BigDecimal.ZERO // 1월
+                    result.monthlyTrend[4].fxKrwTotal shouldBe BigDecimal("18180") // 5월 외화 환산
+                    result.monthlyTrend[6].fxKrwTotal shouldBe BigDecimal.ZERO
                 }
 
                 Then("직전 기간(지난해) 합계 — 기준연에는 미포함") {

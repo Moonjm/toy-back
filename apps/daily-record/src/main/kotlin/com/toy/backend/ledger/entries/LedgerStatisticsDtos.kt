@@ -6,9 +6,9 @@ import java.time.LocalDateTime
 data class LedgerStatisticsResponse(
     /** 조회 기준 기간 — 월별이면 "2026-07", 연별이면 "2026" */
     val yearMonth: String,
-    /** 원화 지출 추이 (과거 → 최신 순) — 월별이면 최근 6개월, 연별이면 기준연 12개월 */
+    /** 지출 추이 (과거 → 최신 순) — 월별이면 최근 6개월, 연별이면 기준연 12개월. 원화·외화 환산 분리 */
     val monthlyTrend: List<MonthlyTotal>,
-    /** 직전 기간 원화 지출 합계 — 월별이면 지난달, 연별이면 지난해 */
+    /** 직전 기간 총 지출(원화 + 외화 환산) — 월별이면 지난달, 연별이면 지난해 */
     val previousTotal: BigDecimal,
     /** 기준 기간 출처별 원화 지출 (금액 내림차순) */
     val sourceBreakdown: List<SourceTotal>,
@@ -24,7 +24,10 @@ data class LedgerStatisticsResponse(
 
 data class MonthlyTotal(
     val yearMonth: String,
+    /** 원화 지출 합계 */
     val krwTotal: BigDecimal,
+    /** 외화 지출의 원화 환산 합계 — 결제 시점 환율 메모 기준, 메모 없는 건 제외 */
+    val fxKrwTotal: BigDecimal,
 )
 
 data class SourceTotal(

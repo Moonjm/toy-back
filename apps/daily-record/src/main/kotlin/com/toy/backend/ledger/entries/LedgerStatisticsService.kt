@@ -2,6 +2,7 @@ package com.toy.backend.ledger.entries
 
 import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.exception.CustomException
+import com.toy.backend.ledger.inbound.FxMemo
 import com.toy.backend.user.User
 import com.toy.backend.user.UserRepository
 import org.springframework.stereotype.Service
@@ -42,6 +43,7 @@ class LedgerStatisticsService(
                 MonthlyTotal(
                     yearMonth = month.toString(),
                     krwTotal = krwTotal(expenses) { YearMonth.from(it.entryAt) == month },
+                    fxKrwTotal = fxKrwTotal(expenses) { YearMonth.from(it.entryAt) == month },
                 )
             }
 
@@ -50,7 +52,9 @@ class LedgerStatisticsService(
             periodLabel = yearMonth.toString(),
             monthlyTrend = monthlyTrend,
             current = expenses.filter { YearMonth.from(it.entryAt) == yearMonth },
-            previousTotal = krwTotal(expenses) { YearMonth.from(it.entryAt) == previousMonth },
+            previousTotal =
+                krwTotal(expenses) { YearMonth.from(it.entryAt) == previousMonth } +
+                    fxKrwTotal(expenses) { YearMonth.from(it.entryAt) == previousMonth },
         )
     }
 
@@ -78,6 +82,7 @@ class LedgerStatisticsService(
                 MonthlyTotal(
                     yearMonth = month.toString(),
                     krwTotal = krwTotal(expenses) { YearMonth.from(it.entryAt) == month },
+                    fxKrwTotal = fxKrwTotal(expenses) { YearMonth.from(it.entryAt) == month },
                 )
             }
 
@@ -85,7 +90,9 @@ class LedgerStatisticsService(
             periodLabel = year.toString(),
             monthlyTrend = monthlyTrend,
             current = expenses.filter { it.entryAt.year == year },
-            previousTotal = krwTotal(expenses) { it.entryAt.year == year - 1 },
+            previousTotal =
+                krwTotal(expenses) { it.entryAt.year == year - 1 } +
+                    fxKrwTotal(expenses) { it.entryAt.year == year - 1 },
         )
     }
 
@@ -159,6 +166,21 @@ class LedgerStatisticsService(
         expenses: List<LedgerEntry>,
         predicate: (LedgerEntry) -> Boolean,
     ): BigDecimal = expenses.filter { isKrw(it) && predicate(it) }.sumOf { it.amount }
+
+    /**
+     * 외화 지출의 원화 환산 합계 — 각 건의 결제 시점 환율 메모(fxNote) 기준.
+     * 메모의 환산액은 절대값이므로 취소(음수) 건은 부호를 입혀 빼고, 메모 없는 건은 0으로 취급한다.
+     */
+    private fun fxKrwTotal(
+        expenses: List<LedgerEntry>,
+        predicate: (LedgerEntry) -> Boolean,
+    ): BigDecimal =
+        expenses
+            .filter { !isKrw(it) && predicate(it) }
+            .sumOf { entry ->
+                val converted = FxMemo.convertedKrw(entry.description) ?: return@sumOf BigDecimal.ZERO
+                if (entry.amount.signum() < 0) converted.negate() else converted
+            }
 
     private fun isKrw(entry: LedgerEntry): Boolean = entry.currency.uppercase() == "KRW"
 
