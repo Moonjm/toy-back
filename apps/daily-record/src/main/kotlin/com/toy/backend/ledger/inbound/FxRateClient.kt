@@ -26,24 +26,39 @@ class FxRateClient(
     private val webClient = webClientBuilder.baseUrl(BASE_URL).build()
     private val cache = ConcurrentHashMap<String, BigDecimal>()
 
-    /** 1 [currency] 당 원화(KRW) 환율. 미지원 통화·실패 시 null. */
-    fun rateToKrw(currency: String): BigDecimal? {
+    /**
+     * 1 [currency] 당 원화(KRW) 환율. 미지원 통화·실패 시 null.
+     * [date]를 주면 해당 날짜 고시환율을 조회한다(null·오늘 이후는 최신 고시 — 아직 고시 전이므로).
+     */
+    fun rateToKrw(
+        currency: String,
+        date: LocalDate? = null,
+    ): BigDecimal? {
         val upper = currency.uppercase()
         if (upper == "KRW") return null
-        val key = "$upper:${LocalDate.now()}"
+        val historicalDate = date?.takeIf { it.isBefore(LocalDate.now()) }
+        val key = "$upper:${historicalDate ?: LocalDate.now()}"
         cache[key]?.let { return it }
-        val rate = fetch(upper) ?: return null
+        val rate = fetch(upper, historicalDate) ?: return null
         cache[key] = rate
         return rate
     }
 
-    private fun fetch(currency: String): BigDecimal? =
+    private fun fetch(
+        currency: String,
+        date: LocalDate?,
+    ): BigDecimal? =
         runCatching {
             // v2 단일 통화쌍 응답: {"date":"2026-07-22","base":"JPY","quote":"KRW","rate":9.0854}
+            // 과거 고시는 ?date=YYYY-MM-DD (주말·휴일은 직전 영업일 고시로 응답)
             webClient
                 .get()
-                .uri("/v2/rate/{base}/KRW", currency)
-                .retrieve()
+                .uri { builder ->
+                    builder
+                        .path("/v2/rate/{base}/KRW")
+                        .apply { if (date != null) queryParam("date", date.toString()) }
+                        .build(currency)
+                }.retrieve()
                 .bodyToMono<JsonNode>()
                 .block(TIMEOUT)
                 ?.path("rate")

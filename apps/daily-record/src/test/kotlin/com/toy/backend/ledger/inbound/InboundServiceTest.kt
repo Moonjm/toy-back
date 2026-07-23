@@ -58,7 +58,7 @@ class InboundServiceTest :
         // 환율은 부가 정보 — 단위 테스트에서는 조회 실패(null)로 두어 외부 호출 없이 검증한다.
         val fxRateClient =
             mockk<FxRateClient> {
-                every { rateToKrw(any()) } returns null
+                every { rateToKrw(any(), any()) } returns null
             }
         val service =
             InboundService(
@@ -293,6 +293,10 @@ class InboundServiceTest :
                 JPY 1,000.00
                 SUICAMOBILEPAYMENT
                 """.trimIndent()
+            val overseasFxClient =
+                mockk<FxRateClient> {
+                    every { rateToKrw("JPY", any()) } returns BigDecimal("9.15")
+                }
             val fxService =
                 InboundService(
                     parsers = listOf(CardApprovalParser(), OverseasApprovalParser(), KakaoPayParser()),
@@ -300,10 +304,7 @@ class InboundServiceTest :
                     inboundRepository = inboundRepository,
                     userRepository = userRepository,
                     transactionTemplate = TransactionTemplate(noopTransactionManager),
-                    fxRateClient =
-                        mockk {
-                            every { rateToKrw("JPY") } returns BigDecimal("9.15")
-                        },
+                    fxRateClient = overseasFxClient,
                 )
 
             When("process") {
@@ -315,6 +316,10 @@ class InboundServiceTest :
                 Then("결제 시점 환율과 원화 환산액이 메모에 남는다") {
                     saved.captured.currency shouldBe "JPY"
                     saved.captured.description shouldBe "환율 1 JPY ≈ 9.15원 (약 9,150원)"
+                }
+
+                Then("환율은 수신 시각이 아니라 거래일 기준으로 조회한다 — 늦게 재처리해도 결제 시점 환율") {
+                    verify { overseasFxClient.rateToKrw("JPY", saved.captured.entryAt.toLocalDate()) }
                 }
             }
         }
