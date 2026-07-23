@@ -62,7 +62,7 @@ class InboundServiceTest :
             }
         val service =
             InboundService(
-                parsers = listOf(CardApprovalParser(), OverseasApprovalParser(), KakaoPayParser()),
+                parsers = listOf(CardApprovalParser(), OverseasApprovalParser(), KakaoPayParser(), AutoPaymentParser()),
                 entryRepository = entryRepository,
                 inboundRepository = inboundRepository,
                 userRepository = userRepository,
@@ -237,6 +237,30 @@ class InboundServiceTest :
                             match { it.requiredId == 100L && it.status == InboundStatus.SAVED && it.entryId == 11L },
                         )
                     }
+                }
+            }
+
+            When("일시 없는 자동납부 문자를 재처리하면") {
+                val autoPayText =
+                    """
+                    [Web발신]
+                    [현대카드] 자동납부 승인 문*민님 SK브로드밴드 34,100원
+                    """.trimIndent()
+                val message =
+                    InboundMessage(
+                        user = user,
+                        rawText = autoPayText,
+                        status = InboundStatus.PARSE_FAILED,
+                    ).withId(104L)
+                message.createdAt = LocalDateTime.of(2026, 7, 1, 10, 0)
+                every { inboundRepository.findByIdAndUser(104L, user) } returns message
+                val saved = slot<LedgerEntry>()
+                every { entryRepository.save(capture(saved)) } answers { saved.captured.withId(13L) }
+
+                service.retry("testuser", 104L)
+
+                Then("내역 시각은 재처리 시점이 아니라 원래 수신 시각 — 과거 결제가 엉뚱한 달로 가지 않게") {
+                    saved.captured.entryAt shouldBe LocalDateTime.of(2026, 7, 1, 10, 0)
                 }
             }
 

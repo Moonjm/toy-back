@@ -37,7 +37,7 @@ class InboundService(
         text: String,
     ): Long {
         val user = findUser(username)
-        val outcome = handle(user, text)
+        val outcome = handle(user, text, receivedAt = LocalDateTime.now())
         val message =
             inboundRepository.save(
                 InboundMessage(user = user, rawText = text, status = outcome.status, entryId = outcome.entryId),
@@ -62,7 +62,9 @@ class InboundService(
             throw CustomException(LedgerErrorCode.INBOUND_NOT_RETRYABLE, id)
         }
 
-        val outcome = handle(user, message.rawText)
+        // 재처리 시각이 아니라 원문 수신 시각을 넘긴다 — 일시 없는 문자(자동납부)의 발생 시각과
+        // 연도 보정(resolveYear)이 재처리가 늦어져도 어긋나지 않게.
+        val outcome = handle(user, message.rawText, receivedAt = message.createdAt)
         if (outcome.status == InboundStatus.PARSE_FAILED) {
             throw CustomException(LedgerErrorCode.MESSAGE_PARSE_FAILED, id)
         }
@@ -75,8 +77,8 @@ class InboundService(
     private fun handle(
         user: User,
         text: String,
+        receivedAt: LocalDateTime,
     ): Outcome {
-        val receivedAt = LocalDateTime.now()
         val parser = parsers.firstOrNull { it.supports(text) }
         if (parser == null) {
             log.warn { "파싱 가능한 파서 없음: user=${user.username}, length=${text.length}" }
