@@ -11,7 +11,6 @@ import com.toy.backend.user.UserRepository
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
-import java.text.DecimalFormat
 import java.time.LocalDateTime
 
 private val log = KotlinLogging.logger {}
@@ -38,7 +37,7 @@ class InboundService(
         text: String,
     ): Long {
         val user = findUser(username)
-        val outcome = handle(user, text)
+        val outcome = handle(user, text, receivedAt = LocalDateTime.now())
         val message =
             inboundRepository.save(
                 InboundMessage(user = user, rawText = text, status = outcome.status, entryId = outcome.entryId),
@@ -63,7 +62,9 @@ class InboundService(
             throw CustomException(LedgerErrorCode.INBOUND_NOT_RETRYABLE, id)
         }
 
-        val outcome = handle(user, message.rawText)
+        // 재처리 시각이 아니라 원문 수신 시각을 넘긴다 — 일시 없는 문자(자동납부)의 발생 시각과
+        // 연도 보정(resolveYear)이 재처리가 늦어져도 어긋나지 않게.
+        val outcome = handle(user, message.rawText, receivedAt = message.createdAt)
         if (outcome.status == InboundStatus.PARSE_FAILED) {
             throw CustomException(LedgerErrorCode.MESSAGE_PARSE_FAILED, id)
         }
@@ -76,8 +77,8 @@ class InboundService(
     private fun handle(
         user: User,
         text: String,
+        receivedAt: LocalDateTime,
     ): Outcome {
-        val receivedAt = LocalDateTime.now()
         val parser = parsers.firstOrNull { it.supports(text) }
         if (parser == null) {
             log.warn { "파싱 가능한 파서 없음: user=${user.username}, length=${text.length}" }
@@ -145,25 +146,20 @@ class InboundService(
             currency = currency,
             type = EntryType.EXPENSE,
             merchant = merchant?.take(MERCHANT_MAX_LENGTH),
-            description =
-                listOfNotNull(description, fxNote())
-                    .joinToString(" · ")
-                    .ifEmpty { null }
-                    ?.take(DESCRIPTION_MAX_LENGTH),
+            // 환율 메모가 절단으로 깨지지 않게 기본 메모를 먼저 줄인다.
+            description = FxMemo.compose(description, fxNote(), DESCRIPTION_MAX_LENGTH),
             source = source,
         )
 
     /**
      * 외화 결제면 결제 시점 환율과 원화 환산액을 메모로 남긴다.
      * 예) "환율 1 JPY ≈ 9.15원 (약 9,150원)". 조회 실패 시 null — 저장을 막지 않는다.
+     * 거래일(occurredAt) 기준 고시환율을 쓴다 — 늦게 처리(재처리 포함)돼도 결제 시점 환율이 되게.
      */
     private fun ParsedMessage.fxNote(): String? {
         if (currency.uppercase() == "KRW") return null
-        val rate = fxRateClient.rateToKrw(currency) ?: return null
-        val converted = amount.abs().multiply(rate).setScale(0, java.math.RoundingMode.HALF_UP)
-        val rateText = DecimalFormat("#,##0.##").format(rate)
-        val convertedText = DecimalFormat("#,##0").format(converted)
-        return "환율 1 ${currency.uppercase()} ≈ ${rateText}원 (약 ${convertedText}원)"
+        val rate = fxRateClient.rateToKrw(currency, occurredAt.toLocalDate()) ?: return null
+        return FxMemo.build(currency, amount, rate)
     }
 
     private fun findUser(username: String): User =

@@ -4,6 +4,8 @@ import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.entity.withId
 import com.toy.backend.common.exception.CustomException
 import com.toy.backend.ledger.dummyLedgerEntry
+import com.toy.backend.ledger.inbound.FxMemo
+import com.toy.backend.ledger.inbound.FxRateClient
 import com.toy.backend.user.UserRepository
 import com.toy.backend.user.entity.dummyUser
 import io.kotest.assertions.throwables.shouldThrow
@@ -15,6 +17,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import org.springframework.data.repository.findByIdOrNull
 import java.math.BigDecimal
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.YearMonth
 
@@ -22,7 +25,8 @@ class LedgerEntryServiceTest :
     BehaviorSpec({
         val repository = mockk<LedgerEntryRepository>()
         val userRepository = mockk<UserRepository>()
-        val service = LedgerEntryService(repository, userRepository)
+        val fxRateClient = mockk<FxRateClient>()
+        val service = LedgerEntryService(repository, userRepository, fxRateClient)
 
         val user = dummyUser()
 
@@ -135,6 +139,152 @@ class LedgerEntryServiceTest :
                     entry.amount shouldBe BigDecimal("7000")
                     entry.merchant shouldBe "편의점"
                     entry.description shouldBe "간식"
+                }
+            }
+        }
+
+        Given("외화 내역 수정 — 환율 메모 갱신") {
+            When("날짜가 바뀌면") {
+                val entry =
+                    dummyLedgerEntry(
+                        user = user,
+                        entryAt = LocalDateTime.of(2026, 7, 10, 9, 0),
+                        currency = "JPY",
+                        description = "일시불 · 환율 1 JPY ≈ 9.15원 (약 9,150원)",
+                        id = 8L,
+                    )
+                every { repository.findByIdOrNull(8L) } returns entry
+                every { fxRateClient.rateToKrw("JPY", LocalDate.of(2026, 7, 21)) } returns BigDecimal("9.0914")
+
+                service.update(
+                    "testuser",
+                    8L,
+                    LedgerEntryRequest(
+                        entryAt = LocalDateTime.of(2026, 7, 21, 9, 0),
+                        amount = BigDecimal("1000"),
+                        currency = "JPY",
+                        description = "일시불 · 환율 1 JPY ≈ 9.15원 (약 9,150원)",
+                    ),
+                )
+
+                Then("낡은 메모를 걷어내고 새 날짜 고시환율로 다시 만든다") {
+                    entry.description shouldBe "일시불 · 환율 1 JPY ≈ 9.09원 (약 9,091원)"
+                }
+            }
+
+            When("시각만 바뀌고 날짜는 그대로면") {
+                val entry =
+                    dummyLedgerEntry(
+                        user = user,
+                        entryAt = LocalDateTime.of(2026, 7, 10, 9, 0),
+                        currency = "JPY",
+                        description = "환율 1 JPY ≈ 9.15원 (약 9,150원)",
+                        id = 9L,
+                    )
+                every { repository.findByIdOrNull(9L) } returns entry
+
+                service.update(
+                    "testuser",
+                    9L,
+                    LedgerEntryRequest(
+                        entryAt = LocalDateTime.of(2026, 7, 10, 21, 0),
+                        amount = BigDecimal("1000"),
+                        currency = "JPY",
+                        description = "환율 1 JPY ≈ 9.15원 (약 9,150원)",
+                    ),
+                )
+
+                Then("환율을 조회하지 않고 메모를 유지한다") {
+                    entry.description shouldBe "환율 1 JPY ≈ 9.15원 (약 9,150원)"
+                    verify(exactly = 0) { fxRateClient.rateToKrw(any(), any()) }
+                }
+            }
+
+            When("날짜가 바뀌었지만 환율 조회가 실패하면") {
+                val entry =
+                    dummyLedgerEntry(
+                        user = user,
+                        entryAt = LocalDateTime.of(2026, 7, 10, 9, 0),
+                        currency = "JPY",
+                        description = "환율 1 JPY ≈ 9.15원 (약 9,150원)",
+                        id = 10L,
+                    )
+                every { repository.findByIdOrNull(10L) } returns entry
+                every { fxRateClient.rateToKrw("JPY", LocalDate.of(2026, 7, 21)) } returns null
+
+                service.update(
+                    "testuser",
+                    10L,
+                    LedgerEntryRequest(
+                        entryAt = LocalDateTime.of(2026, 7, 21, 9, 0),
+                        amount = BigDecimal("1000"),
+                        currency = "JPY",
+                        description = "환율 1 JPY ≈ 9.15원 (약 9,150원)",
+                    ),
+                )
+
+                Then("옛 날짜 기준의 틀린 메모만 제거한다") {
+                    entry.description shouldBe null
+                }
+            }
+
+            When("원화 내역이면 날짜가 바뀌어도") {
+                val entry =
+                    dummyLedgerEntry(
+                        user = user,
+                        entryAt = LocalDateTime.of(2026, 7, 10, 9, 0),
+                        description = "간식",
+                        id = 11L,
+                    )
+                every { repository.findByIdOrNull(11L) } returns entry
+
+                service.update(
+                    "testuser",
+                    11L,
+                    LedgerEntryRequest(
+                        entryAt = LocalDateTime.of(2026, 7, 21, 9, 0),
+                        amount = BigDecimal("1000"),
+                        description = "간식",
+                    ),
+                )
+
+                Then("환율을 조회하지 않고 내용 그대로 저장한다") {
+                    entry.description shouldBe "간식"
+                    verify(exactly = 0) { fxRateClient.rateToKrw(any(), any()) }
+                }
+            }
+
+            When("기본 메모가 길이 제한(500자)에 가까우면") {
+                val longBase = "가".repeat(490)
+                val entry =
+                    dummyLedgerEntry(
+                        user = user,
+                        entryAt = LocalDateTime.of(2026, 7, 10, 9, 0),
+                        currency = "JPY",
+                        description = longBase,
+                        id = 12L,
+                    )
+                every { repository.findByIdOrNull(12L) } returns entry
+                every { fxRateClient.rateToKrw("JPY", LocalDate.of(2026, 7, 21)) } returns BigDecimal("9.0914")
+
+                service.update(
+                    "testuser",
+                    12L,
+                    LedgerEntryRequest(
+                        entryAt = LocalDateTime.of(2026, 7, 21, 9, 0),
+                        amount = BigDecimal("1000"),
+                        currency = "JPY",
+                        description = longBase,
+                    ),
+                )
+
+                Then("환율 메모가 잘리지 않게 기본 메모를 먼저 줄인다") {
+                    val description = entry.description!!
+                    description.length shouldBe 500
+                    description.endsWith("환율 1 JPY ≈ 9.09원 (약 9,091원)") shouldBe true
+                    // 메모가 온전해야 다음 수정 때 strip이 인식해 낡은 조각이 남지 않는다.
+                    // 500 - 메모(27자) - 구분자(3자) = 470자
+                    FxMemo.strip(description) shouldBe "가".repeat(470)
                 }
             }
         }

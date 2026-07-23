@@ -58,11 +58,11 @@ class InboundServiceTest :
         // 환율은 부가 정보 — 단위 테스트에서는 조회 실패(null)로 두어 외부 호출 없이 검증한다.
         val fxRateClient =
             mockk<FxRateClient> {
-                every { rateToKrw(any()) } returns null
+                every { rateToKrw(any(), any()) } returns null
             }
         val service =
             InboundService(
-                parsers = listOf(CardApprovalParser(), OverseasApprovalParser(), KakaoPayParser()),
+                parsers = listOf(CardApprovalParser(), OverseasApprovalParser(), KakaoPayParser(), AutoPaymentParser()),
                 entryRepository = entryRepository,
                 inboundRepository = inboundRepository,
                 userRepository = userRepository,
@@ -240,6 +240,30 @@ class InboundServiceTest :
                 }
             }
 
+            When("일시 없는 자동납부 문자를 재처리하면") {
+                val autoPayText =
+                    """
+                    [Web발신]
+                    [현대카드] 자동납부 승인 문*민님 SK브로드밴드 34,100원
+                    """.trimIndent()
+                val message =
+                    InboundMessage(
+                        user = user,
+                        rawText = autoPayText,
+                        status = InboundStatus.PARSE_FAILED,
+                    ).withId(104L)
+                message.createdAt = LocalDateTime.of(2026, 7, 1, 10, 0)
+                every { inboundRepository.findByIdAndUser(104L, user) } returns message
+                val saved = slot<LedgerEntry>()
+                every { entryRepository.save(capture(saved)) } answers { saved.captured.withId(13L) }
+
+                service.retry("testuser", 104L)
+
+                Then("내역 시각은 재처리 시점이 아니라 원래 수신 시각 — 과거 결제가 엉뚱한 달로 가지 않게") {
+                    saved.captured.entryAt shouldBe LocalDateTime.of(2026, 7, 1, 10, 0)
+                }
+            }
+
             When("재처리해도 파싱이 실패하면") {
                 val message =
                     InboundMessage(
@@ -293,6 +317,10 @@ class InboundServiceTest :
                 JPY 1,000.00
                 SUICAMOBILEPAYMENT
                 """.trimIndent()
+            val overseasFxClient =
+                mockk<FxRateClient> {
+                    every { rateToKrw("JPY", any()) } returns BigDecimal("9.15")
+                }
             val fxService =
                 InboundService(
                     parsers = listOf(CardApprovalParser(), OverseasApprovalParser(), KakaoPayParser()),
@@ -300,10 +328,7 @@ class InboundServiceTest :
                     inboundRepository = inboundRepository,
                     userRepository = userRepository,
                     transactionTemplate = TransactionTemplate(noopTransactionManager),
-                    fxRateClient =
-                        mockk {
-                            every { rateToKrw("JPY") } returns BigDecimal("9.15")
-                        },
+                    fxRateClient = overseasFxClient,
                 )
 
             When("process") {
@@ -315,6 +340,10 @@ class InboundServiceTest :
                 Then("결제 시점 환율과 원화 환산액이 메모에 남는다") {
                     saved.captured.currency shouldBe "JPY"
                     saved.captured.description shouldBe "환율 1 JPY ≈ 9.15원 (약 9,150원)"
+                }
+
+                Then("환율은 수신 시각이 아니라 거래일 기준으로 조회한다 — 늦게 재처리해도 결제 시점 환율") {
+                    verify { overseasFxClient.rateToKrw("JPY", saved.captured.entryAt.toLocalDate()) }
                 }
             }
         }

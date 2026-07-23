@@ -12,4 +12,10 @@ interface InboundMessageRepository : JpaRepository<InboundMessage, Long> {
         id: Long,
         user: User,
     ): InboundMessage?
+
+    /** 상태별 수신 기록 (최신 먼저) — 파싱 실패 건 목록 화면용. */
+    fun findAllByUserAndStatusOrderByIdDesc(
+        user: User,
+        status: InboundStatus,
+    ): List<InboundMessage>
 }
