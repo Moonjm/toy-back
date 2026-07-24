@@ -16,6 +16,8 @@ data class UserResponse(
     val gender: String? = null,
     @field:Schema(description = "생년월일", example = "1990-01-15")
     val birthDate: String? = null,
+    @field:Schema(description = "회원카드 바코드 번호", example = "220290031")
+    val membershipBarcode: String? = null,
     @field:Schema(description = "계정 잠금 여부", example = "false")
     val locked: Boolean = false,
 )
@@ -28,5 +30,6 @@ fun User.toResponse(): UserResponse =
         authority = authority,
         gender = gender?.name,
         birthDate = birthDate?.toString(),
+        membershipBarcode = membershipBarcode,
         locked = locked,
     )

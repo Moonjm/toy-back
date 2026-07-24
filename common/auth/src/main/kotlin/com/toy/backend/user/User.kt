@@ -25,6 +25,8 @@ class User(
     var gender: Gender? = null,
     @Column(name = "birth_date")
     var birthDate: LocalDate? = null,
+    @Column(name = "membership_barcode", length = 50)
+    var membershipBarcode: String? = null,
     @Column(nullable = false)
     var failedLoginAttempts: Int = 0,
     @Column(nullable = false)

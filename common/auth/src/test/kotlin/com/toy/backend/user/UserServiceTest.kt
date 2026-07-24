@@ -69,6 +69,42 @@ class UserServiceTest :
                 }
             }
 
+            When("회원카드 바코드 번호 등록") {
+                val user = dummyUser(username = "barcodeuser", id = 5L)
+                every { userRepository.findByUsername("barcodeuser") } returns user
+
+                val request = dummyUserUpdateRequest(membershipBarcode = " 220290031 ")
+                userService.updateMe("barcodeuser", request)
+
+                Then("공백이 제거되어 저장된다") {
+                    user.membershipBarcode shouldBe "220290031"
+                }
+            }
+
+            When("회원카드 바코드 미전송(null)") {
+                val user = dummyUser(username = "barcodeuser2", id = 6L)
+                user.membershipBarcode = "220290031"
+                every { userRepository.findByUsername("barcodeuser2") } returns user
+
+                userService.updateMe("barcodeuser2", dummyUserUpdateRequest(name = "이름만"))
+
+                Then("기존 바코드가 유지된다") {
+                    user.membershipBarcode shouldBe "220290031"
+                }
+            }
+
+            When("회원카드 바코드 빈 문자열 전송") {
+                val user = dummyUser(username = "barcodeuser3", id = 7L)
+                user.membershipBarcode = "220290031"
+                every { userRepository.findByUsername("barcodeuser3") } returns user
+
+                userService.updateMe("barcodeuser3", dummyUserUpdateRequest(membershipBarcode = "  "))
+
+                Then("바코드가 삭제된다") {
+                    user.membershipBarcode shouldBe null
+                }
+            }
+
             When("비밀번호 변경 (currentPassword 일치)") {
                 val user = dummyUser(username = "pwuser", passwordHash = "oldhash", id = 2L)
                 every { userRepository.findByUsername("pwuser") } returns user

@@ -13,6 +13,9 @@ data class UserUpdateRequest(
     val gender: String? = null,
     @field:Schema(description = "생년월일", example = "1990-01-15")
     val birthDate: LocalDate? = null,
+    @field:Schema(description = "회원카드 바코드 번호 — 미전송(null)이면 유지, 빈 문자열이면 삭제", example = "220290031")
+    @field:Size(max = 50)
+    val membershipBarcode: String? = null,
     @field:Schema(description = "기존 비밀번호", example = "oldPassword123")
     val currentPassword: String? = null,
     @field:Schema(description = "비밀번호", example = "password123")

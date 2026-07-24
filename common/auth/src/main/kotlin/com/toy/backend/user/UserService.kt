@@ -32,6 +32,8 @@ class UserService(
             gender = gender,
             birthDate = request.birthDate,
         )
+        // 미전송(null)이면 기존 값 유지 — 프로필 저장이 바코드를 지우지 않도록 한다. 빈 문자열은 삭제.
+        request.membershipBarcode?.let { user.membershipBarcode = it.trim().ifBlank { null } }
         request.password?.let { newPassword ->
             val currentPassword =
                 request.currentPassword
