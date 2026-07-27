@@ -130,7 +130,7 @@ S3 객체는 매일 04:00 정리 배치가 수거한다. 도메인 트랜잭션�
 
 `daily-record`는 아직 `common-file`을 의존하지 않으므로 `build.gradle.kts`에
 `implementation(project(":common-file"))`을 추가하고, `application.yml`에 `s3.*` 블록을
-`family-tree`에서 복사한다(버킷만 `daily-record`). `@SpringBootApplication`이 `com.toy.backend`에
+`family-tree`에서 복사한다(버킷만 `daily`). `@SpringBootApplication`이 `com.toy.backend`에
 있어 `com.toy.backend.file`의 빈·엔티티는 자동으로 스캔된다.
 
 **`POST /diet/meals`가 즉시 201을 반환하고 분석은 뒤에서 돌린다.** OpenRouter 이미지 호출이
@@ -301,13 +301,13 @@ dayScore   = round(0.4 × calorieScore + 0.6 × macroScore)
 ## 설정 (`application.yml`)
 
 ```yaml
-s3:   # family-tree에서 복사, bucket만 daily-record
+s3:   # family-tree에서 복사, bucket만 daily
   endpoint: ${S3_ENDPOINT:http://localhost:9000}
   public-endpoint: ${S3_PUBLIC_ENDPOINT:http://localhost:9000}
   region: ${S3_REGION:ap-northeast-2}
   access-key: ${S3_ACCESS_KEY:}
   secret-key: ${S3_SECRET_KEY:}
-  bucket: ${S3_BUCKET:daily-record}
+  bucket: ${S3_BUCKET:daily}
 
 openrouter:
   api-key: ${OPENROUTER_API_KEY:}

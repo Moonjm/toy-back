@@ -8,6 +8,7 @@ plugins {
 dependencies {
     implementation(project(":common-core"))
     implementation(project(":common-auth"))
+    implementation(project(":common-file"))
     implementation(libs.spring.boot.starter.webflux)
     implementation(libs.kotlinx.coroutines.reactor)
     testImplementation(testFixtures(project(":common-core")))
