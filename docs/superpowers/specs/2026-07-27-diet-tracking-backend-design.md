@@ -114,7 +114,19 @@ GET    /diet/foods?q=&size=       식품DB 검색 (iOS 항목 수정 화면용)
 POST /files (multipart)                    → fileId, temp/ 프리픽스에 저장
 POST /diet/meals {date, mealType, fileId}  → FileService.attachFile(fileId, "meals/")
 조회 시 FileService.getPresignedUrl(fileId) → 10분 만료 URL을 응답에 담는다
+DELETE /diet/meals/{id}                    → FileService.detachFile(fileId)
 ```
+
+**`Meal` 삭제 시 파일을 물리 삭제하지 않고 `detach`한다.** `2026-07-27-file-detach-and-temp-cleanup`
+변경으로 `FileService`는 `delete` 대신 `detach`를 제공한다 — 상태를 `TEMP`로 되돌리기만 하고
+S3 객체는 매일 04:00 정리 배치가 수거한다. 도메인 트랜잭션이 롤백되면 상태 변경도 함께
+되돌아가므로 "레코드는 살아났는데 객체는 사라진" 상태가 생기지 않는다.
+
+부수 효과로 **사용자가 사진만 올리고 끼니 등록을 취소한 경우도 자동 정리된다.**
+`POST /files`만 호출되고 `attachFile`이 안 된 파일은 TTL 24시간 뒤 배치가 수거한다.
+고아 파일 처리를 이 도메인에서 따로 만들 필요가 없다.
+
+`DailyRecordApplication`에는 `@EnableScheduling`이 이미 있어 정리 배치가 그대로 동작한다.
 
 `daily-record`는 아직 `common-file`을 의존하지 않으므로 `build.gradle.kts`에
 `implementation(project(":common-file"))`을 추가하고, `application.yml`에 `s3.*` 블록을
