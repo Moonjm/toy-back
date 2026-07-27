@@ -252,10 +252,37 @@ dayScore   = round(0.4 × calorieScore + 0.6 × macroScore)
 **외부 공공 API를 요청마다 호출하지 않는다.** 식약처 식품영양성분DB를 초기 1회 내려받아
 우리 DB에 적재한다. 매 분석마다 외부 API를 타면 지연·장애·트래픽 제한을 그대로 떠안는다.
 
-- `scripts/`에 CSV 정제 스크립트를 두고, 결과 CSV를 `daily-record` 리소스에 포함한다
-- `FoodSeeder`가 기동 시 `food` 테이블이 비어 있을 때만 적재한다.
-  수만 건이므로 **배치 삽입**으로 넣는다 (라즈베리파이 메모리)
-- `normalizedName`은 공백·특수문자 제거 + 소문자화
+### 데이터셋 선택 — `음식` 표준데이터만 쓴다
+
+`전국통합식품영양성분정보`는 `음식`·`가공식품`·`원재료성식품`으로 나뉜다.
+**`음식`**(<https://www.data.go.kr/data/15100070/standard.do>)만 적재한다. 국민건강영양조사의
+음식별 식품재료량 자료집 기반이라 "제육볶음"·"김치찌개" 같은 조리된 한식이 그대로 들어 있어
+식사 사진 인식 결과와 어휘가 맞는다.
+
+**`가공식품`은 넣지 않는다.** 건수가 훨씬 많은데 이름이 "농심 신라면 봉지면" 같은 브랜드명
+위주여서, LLM이 내놓는 "라면"과는 오히려 매칭되지 않는다. 테이블만 무거워지고 매칭률은
+떨어진다. 필요해지면 그때 추가한다.
+
+### 적재 절차
+
+1. 공공데이터포털에서 CSV를 내려받는다. 그리드 다운로드는 5만 건 제한이 있어 전량이 안 나오면
+   같은 페이지의 오픈API로 페이징해 덤프한다 — **준비 단계 1회이고 런타임 호출이 아니다**
+2. `scripts/build-food-csv.py`로 정제한다. 33개 컬럼 중 8개만 남긴다:
+   `식품코드`·`식품명`·`영양성분함량 기준량`·`에너지(kcal)`·`탄수화물(g)`·`단백질(g)`·`지방(g)`·`1인(회)분량 참고량`
+3. 결과를 `apps/daily-record/src/main/resources/food/food-nutrition.csv`로 커밋한다.
+   외부 다운로드 의존 없이 배포가 재현되고, SQL dump와 달리 diff가 보인다
+4. `FoodSeeder`가 기동 시 `food` 테이블이 비어 있을 때만 **배치 삽입**한다(라즈베리파이 메모리)
+
+### 정제 시 주의 — 기준량 정규화
+
+**`영양성분함량 기준량` 컬럼이 따로 있다는 것은 영양소 값이 항상 100g 기준이 아니라는 뜻이다.**
+기준량이 `200g`인 행의 값을 100g당으로 착각하면 그 음식만 칼로리가 2배로 잡힌다.
+정제 스크립트에서 기준량을 파싱해 **모든 값을 100g 기준으로 환산**한 뒤 저장한다.
+파싱할 수 없는 기준량은 행을 버린다 — 틀린 값을 넣는 것보다 매칭 실패로 LLM 추정에
+맡기는 편이 낫다.
+
+`normalizedName`은 공백·괄호·특수문자 제거 + 소문자화로 만든다.
+`servingSizeG`는 `1인(회)분량 참고량`에서 숫자만 추출한다.
 
 매칭 순서 (`FoodMatcher`):
 
@@ -285,10 +312,14 @@ s3:   # family-tree에서 복사, bucket만 daily-record
 openrouter:
   api-key: ${OPENROUTER_API_KEY:}
   base-url: https://openrouter.ai/api/v1
-  vision-model: ${OPENROUTER_VISION_MODEL:}
-  text-model: ${OPENROUTER_TEXT_MODEL:}
+  vision-model: ${OPENROUTER_VISION_MODEL:google/gemini-2.5-flash}
+  text-model: ${OPENROUTER_TEXT_MODEL:google/gemini-2.5-flash-lite}
   timeout-seconds: 60
 ```
+
+**모델을 이미지용·텍스트용으로 나눠 쓴다.** 음식 식별은 정확도가 결과 전체를 좌우하므로
+Flash를 쓰고, 피드백 문장 생성은 수치와 목표를 이미 다 넘겨받아 문장만 만드는 쉬운 작업이라
+Flash Lite로 충분하다.
 
 `OpenRouterClient`·`OpenRouterProperties`·`OpenRouterConfig`는 `HolidayApiClient` 패턴을
 복제한다. `webflux`와 `kotlinx-coroutines-reactor`가 이미 의존성에 있어 추가 라이브러리가 없다.
@@ -332,9 +363,10 @@ kotest `BehaviorSpec` + mockk, 픽스처는 `testFixtures`의 `dummyUser()`·`wi
 
 ## 리스크
 
-1. **`servingSizeG`(1인분 기준량) 결측** — 식약처 데이터에 이 값이 없는 항목이 많으면
-   `portion`을 g으로 환산할 수 없다. 결측 시 기본값 200g으로 두되, **실제 CSV를 받아본 뒤
-   결측률을 확인해 조정해야 한다.** 정확도에 가장 크게 영향을 주는 미지수다.
+1. **`servingSizeG`(1인분 기준량) 결측** — `음식` 표준데이터에 `1인(회)분량 참고량` 컬럼이
+   존재하는 것은 확인했으나, 행마다 비어 있을 수 있다. 이 값이 없으면 `portion`을 g으로
+   환산할 수 없다. 결측 시 기본값 200g으로 두되, **실제 CSV를 받아본 뒤 결측률을 확인해
+   조정해야 한다.**
 2. **음식명 매칭률** — LLM이 "제육볶음"을 주는데 DB에는 "돼지고기볶음"만 있을 수 있다.
    유사도 검색과 LLM fallback으로 완화하지만, 초기에는 매칭 성공률을 로그로 관찰하며
    정규화 규칙을 다듬어야 한다.
