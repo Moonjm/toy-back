@@ -103,14 +103,14 @@ class PersonService(
                 ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, personId)
 
         relationshipService.deleteAllByPersonId(personId)
-        person.profileImageId?.let { fileService.delete(it) }
+        person.profileImageId?.let { fileService.detachFile(it) }
         personRepository.delete(person)
     }
 
     @Transactional
     fun deleteAllByFamilyTree(tree: FamilyTree) {
         val persons = personRepository.findAllByFamilyTree(tree)
-        fileService.deleteAll(persons.mapNotNull { it.profileImageId })
+        fileService.detachFiles(persons.mapNotNull { it.profileImageId })
         personRepository.deleteAll(persons)
     }
 
@@ -120,8 +120,9 @@ class PersonService(
         treeId: Long,
     ) {
         if (newImageId == person.profileImageId) return
-        person.profileImageId?.let { fileService.delete(it) }
+        // 새 파일 첨부를 먼저 시도한다 — 실패해도 기존 파일이 그대로 남아야 한다.
         val attachedId = newImageId?.let { fileService.attachFile(it, profilePrefix(treeId)) }
+        person.profileImageId?.let { fileService.detachFile(it) }
         person.updateProfileImage(attachedId)
     }
 

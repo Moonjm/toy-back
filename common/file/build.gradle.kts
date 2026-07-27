@@ -13,6 +13,7 @@ tasks.named<Jar>("jar") {
 dependencies {
     api(project(":common-core"))
     api(libs.aws.s3)
+    testImplementation(testFixtures(project(":common-core")))
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.kotest.runner.junit5)
     testImplementation(libs.mockk)
