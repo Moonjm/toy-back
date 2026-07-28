@@ -28,4 +28,13 @@ class FileEntity(
         this.storedName = newStoredName
         this.status = FileStatus.ATTACHED
     }
+
+    /**
+     * 도메인 연결이 끊긴 파일을 수거 대상(TEMP)으로 되돌린다. 물리 삭제를 정리 배치로 미뤄
+     * 도메인 트랜잭션이 롤백되면 파일도 함께 살아나게 한다. 경로는 그대로 두므로 정리 배치는
+     * storedName 기준으로 지운다.
+     */
+    fun detach() {
+        this.status = FileStatus.TEMP
+    }
 }
