@@ -4,6 +4,11 @@
 모듈: `apps/daily-record`
 짝 문서: `woori-haru/docs/superpowers/specs/2026-07-27-diet-tracking-ios-design.md`
 
+> **2026-07-28 개정** — 끼니당 사진 여러 장을 허용하고, 인식 결과를 사용자가 확인·수정한 뒤
+> 저장하는 흐름으로 바꿨다. **iOS 짝 문서는 아직 개정 전이다** — 단일 사진과 확인 단계 없는
+> 흐름(`POST /diet/meals {fileId}` → 폴링 → 완료)을 전제하고 있어, 다중 선택·확인 화면·
+> `analyses` 폴링을 반영한 개정이 필요하다.
+
 ## 배경
 
 식사 사진을 올리면 음식을 인식해 탄단지를 산출하고, 개인 목표 대비 점수와 개선 피드백을
@@ -26,7 +31,9 @@
 | --- | --- | --- |
 | 영양소 출처 | 식품DB 조회 (실패 시 LLM 추정 fallback) | LLM 수치는 재현성이 없다 |
 | 점수 | 룰 기반 계산 | 결정적·테스트 가능·설명 가능 |
-| LLM 호출 | 끼니당 2회 (이미지 인식 + 텍스트 피드백) | 피드백은 DB 매칭 후 확정된 수치·목표·점수가 필요하다 |
+| LLM 호출 | 사진당 1회(이미지) + 확정 시 1회(텍스트 피드백) | 사진마다 따로 인식하고, 피드백은 사용자가 확정한 수치가 필요하다 |
+| 끼니당 사진 | 여러 장 (최대 5장) | 상을 나눠 찍거나 음식별로 따로 찍는다 |
+| 저장 시점 | 인식 결과를 사용자가 확인·수정한 뒤 확정 | 중복·오인식을 사람이 거른다. 서버가 음식명만으로 판단할 수 없다 |
 | 사진 저장 | `common-file` 재사용 (MinIO) | `family-tree`에서 검증된 경로. 새로 만들 게 없다 |
 | 사진 접근 제어 | presigned URL (10분) | `FileService`가 이미 제공한다 |
 | 분석 실행 | `@Async` (큐 없음) | 사용자 2명·하루 수십 건. 큐는 과하다 |
@@ -48,10 +55,24 @@ BMR을 계산할 수 없으므로 프로필 저장을 `INVALID_REQUEST`로 거�
 **목표치를 계산해서 저장하는 이유** — 몸무게를 갱신했을 때 과거 점수의 기준이 소급 변경되면
 안 된다. 점수는 `Meal`에 확정값으로 남고, 프로필은 현재 목표만 들고 있는다.
 
-### `Meal` — 끼니 1건 = 사진 1장
+### `Meal` — 확정된 끼니 1건
 
-`userId`, `date`, `mealType`, `fileId`, `status`, `score`, `totalKcal`,
-`carbsG`·`proteinG`·`fatG`, `feedback`, `items`(OneToMany).
+`userId`, `date`, `mealType`, `status`, `score`, `totalKcal`,
+`carbsG`·`proteinG`·`fatG`, `feedback`, `photos`(OneToMany), `items`(OneToMany).
+
+**`Meal`은 사용자가 확인·확정한 것만 존재한다.** 인식만 되고 확정되지 않은 결과는
+`MealAnalysis`에 있고 `Meal`이 되지 않는다. 덕분에 하루 집계·점수·음식 빈도 쿼리에
+"확정된 것만" 조건을 붙일 필요가 없다.
+
+`status`는 **피드백 생성 상태**다(`PENDING → COMPLETED`/`FAILED`). 확정 시점에 점수는
+동기로 계산되고 피드백만 뒤에서 생성되므로, iOS는 이 값으로 피드백 도착을 폴링한다.
+
+### `MealPhoto` — 끼니에 딸린 사진
+
+`mealId`, `fileId`, `sortOrder`.
+
+**끼니당 최대 5장으로 제한한다.** 사진마다 이미지 LLM을 호출하므로 장수가 곧 비용·지연이고,
+라즈베리파이에서 여러 장을 base64로 동시에 들고 있는 것도 부담이다. 초과 시 `INVALID_REQUEST`.
 
 ### `MealItem` — 끼니 안의 개별 음식
 
@@ -61,6 +82,22 @@ BMR을 계산할 수 없으므로 프로필 저장을 `INVALID_REQUEST`로 거�
 **`MealItem`을 별도 테이블로 쪼개는 게 이 설계의 핵심이다.** 영양소를 `Meal`에 뭉쳐 저장하면
 ① 음식별 빈도 집계("이번 주 제육볶음 3회")가 불가능하고 ② 인식이 틀렸을 때 항목 단위로
 수정·재계산할 수 없다. 두 기능 모두 이 도메인의 존재 이유에 해당한다.
+
+### `MealAnalysis` — 확정 전 인식 결과 (임시)
+
+`userId`, `status`, `resultJson`, `createdAt`.
+
+사진 목록·인식 결과·사진별 실패 여부를 `resultJson` 한 컬럼에 담는다.
+
+```
+{photos: [{fileId, failed, items: [{name, foodCode, quantityG, kcal, carbsG, proteinG, fatG, source}]}]}
+```
+
+**자식 테이블로 쪼개지 않는다.** 확인 전 임시 데이터라 이걸로 질의할 일이 없고, 확정되면
+`MealItem`으로 옮겨가며 통째로 버려진다. 반면 `MealItem`을 테이블로 쪼갠 이유(음식별 빈도
+집계·항목 단위 수정)는 확정된 데이터에만 해당한다.
+
+확정되면 삭제하고, 확인하지 않고 버려진 것은 TTL 24시간 배치가 지운다.
 
 ### `DailyDietFeedback` — 하루 마감 피드백 캐시
 
@@ -84,8 +121,20 @@ BMR을 계산할 수 없으므로 프로필 저장을 `INVALID_REQUEST`로 거�
 `ActivityLevel`(SEDENTARY/LIGHT/MODERATE/ACTIVE/VERY_ACTIVE), `DietGoal`(LOSE/MAINTAIN/GAIN),
 `NutritionSource`(DB_MATCHED/LLM_ESTIMATED).
 
-`ddl-auto: update`를 쓰므로 **5개 전부 `columnDefinition`을 명시**해 CHECK 제약이 생기지 않게
-한다(AGENTS.md). 제약이 생기면 나중에 enum 값을 추가할 때 기존 DB에서 INSERT가 깨진다.
+`AnalysisStatus`는 `MealAnalysis`(인식 진행 상태)와 `Meal`(피드백 생성 상태) 양쪽에서 쓴다.
+값 집합과 전이 모양이 같아 따로 만들 이유가 없다.
+
+**AGENTS.md의 `columnDefinition` 관례는 실제로는 CHECK 제약을 막지 못한다.** 2026-07-28에
+실측했다 — `columnDefinition = "varchar(20)"`을 명시하고 테이블을 드롭 후 새로 생성시켜도
+`files_status_check`가 그대로 붙었고, 이미 관례를 따르고 있는 `ledger_entries`의 `type`·`source`에도
+제약이 살아 있다. 즉 **이 도메인의 enum 5개에 값을 나중에 추가하면 기존 DB에서 INSERT가 깨진다.**
+
+**이 설계는 ②를 전제로 간다** — 제약이 생기는 것을 막지 못한다고 보고, enum 값을 추가할 때
+`ALTER TABLE ... DROP CONSTRAINT <표>_<컬럼>_check`를 배포 절차에 넣는다. 값 추가 가능성이 있는
+enum(`MealType`에 야식 추가 등)이 있어 그냥 넘어갈 수 없고, ②는 어떤 경우에도 동작한다.
+
+별개로 ① 현재 Hibernate 버전에서 제약 생성을 실제로 막는 방법을 찾아 AGENTS.md를 고치는 일은
+이 도메인과 무관하게 저장소 전체에 필요하다. 찾으면 ②는 불필요해진다.
 
 ## API
 
@@ -96,48 +145,70 @@ BMR을 계산할 수 없으므로 프로필 저장을 `INVALID_REQUEST`로 거�
 GET    /diet/profile              내 프로필 + 계산된 목표
 PUT    /diet/profile              키·몸무게·활동량·목표 저장 → 서버가 목표 재계산, 204
 
-POST   /diet/meals                {date, mealType, fileId} → 201 + Location, 분석은 @Async
-GET    /diet/meals/{id}           단건 (분석 완료 폴링용)
+POST   /diet/analyses             {fileIds} → 201 + Location, 사진별 인식은 @Async
+GET    /diet/analyses/{id}        상태 + 사진별 인식 결과 (확인 화면·폴링용)
+POST   /diet/analyses/{id}/retry  실패한 사진만 재인식, 204
+DELETE /diet/analyses/{id}        확인 취소, 204
+
+POST   /diet/meals                {date, mealType, analysisId, items} → 201 + Location
+GET    /diet/meals/{id}           단건 (피드백 완료 폴링용)
 GET    /diet/meals?from=&to=      기간 목록
 PUT    /diet/meals/{id}/items     항목 전체 교체 → 영양소·점수·피드백 재계산, 204
 DELETE /diet/meals/{id}           204
-POST   /diet/meals/{id}/retry     분석 재시도 (FAILED 상태에서만), 204
+POST   /diet/meals/{id}/retry     피드백 재생성 (FAILED 상태에서만), 204
 
 PUT    /diet/activity             {date, activeEnergyKcal} upsert, 204
 GET    /diet/days/{date}          하루 집계 + dayScore + 마감 피드백(lazy 생성)
 GET    /diet/foods?q=&size=       식품DB 검색 (iOS 항목 수정 화면용)
 ```
 
-### 사진 업로드는 `common-file`의 기존 2단계 흐름
+### 인식 → 확인 → 확정 흐름
 
 ```
-POST /files (multipart)                    → fileId, temp/ 프리픽스에 저장
-POST /diet/meals {date, mealType, fileId}  → FileService.attachFile(fileId, "meals/")
-조회 시 FileService.getPresignedUrl(fileId) → 10분 만료 URL을 응답에 담는다
-DELETE /diet/meals/{id}                    → FileService.detachFile(fileId)
+POST /files (multipart) × N                → fileId들, temp/ 프리픽스에 저장
+POST /diet/analyses {fileIds}              → 201 analysisId, 사진별 인식은 @Async
+GET  /diet/analyses/{id}                   → status + photos[{fileId, url, items, failed}]
+        ↓ 사용자가 확인·수정 (중복 제거, 수량 조정, 항목 추가·삭제)
+POST /diet/meals {date, mealType, analysisId, items}
+                                           → attachFile(fileId, "meals/") × N, MealPhoto 생성
+조회 시 FileService.getPresignedUrls(fileIds) → 10분 만료 URL을 응답에 담는다
+DELETE /diet/meals/{id}                    → FileService.detachFiles(fileIds)
 ```
 
-**`Meal` 삭제 시 파일을 물리 삭제하지 않고 `detach`한다.** `2026-07-27-file-detach-and-temp-cleanup`
-변경으로 `FileService`는 `delete` 대신 `detach`를 제공한다 — 상태를 `TEMP`로 되돌리기만 하고
-S3 객체는 매일 04:00 정리 배치가 수거한다. 도메인 트랜잭션이 롤백되면 상태 변경도 함께
-되돌아가므로 "레코드는 살아났는데 객체는 사라진" 상태가 생기지 않는다.
+**확정 요청에 `fileIds`를 다시 보내지 않는다.** `analysisId`로 서버가 사진 목록을 안다.
+클라이언트가 파일 목록을 재구성하다 인식에 쓴 사진과 어긋나는 경로를 없앤다.
 
-부수 효과로 **사용자가 사진만 올리고 끼니 등록을 취소한 경우도 자동 정리된다.**
-`POST /files`만 호출되고 `attachFile`이 안 된 파일은 TTL 24시간 뒤 배치가 수거한다.
-고아 파일 처리를 이 도메인에서 따로 만들 필요가 없다.
+**`items`는 사용자가 고친 최종본을 통째로 받는다.** 서버는 인식 결과와 대조하지 않고 그대로
+신뢰한다 — 확인 단계의 존재 이유가 사용자 판단을 최종으로 삼는 것이다. 모양은 기존
+`PUT /diet/meals/{id}/items`(전체 교체)와 같아 항목 편집 로직을 한 벌만 만든다.
 
-`DailyRecordApplication`에는 `@EnableScheduling`이 이미 있어 정리 배치가 그대로 동작한다.
+조회·목록 응답의 사진 URL은 `getPresignedUrls`로 한 번에 받는다(끼니 목록에서 N+1 방지).
 
-`daily-record`는 아직 `common-file`을 의존하지 않으므로 `build.gradle.kts`에
-`implementation(project(":common-file"))`을 추가하고, `application.yml`에 `s3.*` 블록을
-`family-tree`에서 복사한다(버킷만 `daily`). `@SpringBootApplication`이 `com.toy.backend`에
-있어 `com.toy.backend.file`의 빈·엔티티는 자동으로 스캔된다.
+**`Meal` 삭제 시 파일을 물리 삭제하지 않고 detach한다.** `2026-07-27-file-detach-and-temp-cleanup`
+변경으로 `FileService`는 `delete`/`deleteAll` 대신 `detachFile`/`detachFiles`를 제공한다 —
+상태를 `TEMP`로 되돌리기만 하고 S3 객체는 매일 04:00 정리 배치가 수거한다. 도메인 트랜잭션이
+롤백되면 상태 변경도 함께 되돌아가므로 "레코드는 살아났는데 객체는 사라진" 상태가 생기지 않는다.
 
-**`POST /diet/meals`가 즉시 201을 반환하고 분석은 뒤에서 돌린다.** OpenRouter 이미지 호출이
-수 초 걸려 동기로 처리하면 업로드 응답이 그만큼 지연된다. iOS는 받은 id로 `GET /diet/meals/{id}`를
-폴링한다. `@EnableAsync`를 `DailyRecordApplication`에 추가한다(`@EnableScheduling`은 이미 있다).
+부수 효과로 **확인 단계에서 이탈한 사진도 자동 정리된다.** 확정되지 않으면 `attachFile`이
+호출되지 않으므로 파일은 `TEMP`로 남고 TTL 24시간 뒤 배치가 수거한다. 파일 쪽은 이 도메인에서
+새로 만들 게 없다. 다만 **`MealAnalysis` 레코드 자체는 지워야 하므로** 같은 주기로 도는
+`MealAnalysisCleanupScheduler`를 이 도메인에 하나 둔다(TTL 24시간, `createdAt` 기준).
 
-## 분석 파이프라인 (`MealAnalyzer`, `@Async`)
+`daily-record`의 `common-file` 배선은 완료됐다(PR #24) — 의존성과 `s3.*` 설정(버킷 `daily`)이
+들어가 있고, `@SpringBootApplication`이 `com.toy.backend`에 있어 `com.toy.backend.file`의
+빈·엔티티는 자동 스캔된다. `@EnableScheduling`도 이미 있어 파일 정리 배치가 동작 중이다.
+
+**`POST /diet/analyses`가 즉시 201을 반환하고 인식은 뒤에서 돌린다.** 사진마다 OpenRouter
+이미지 호출이 수 초 걸려 5장이면 동기 처리 시 수십 초를 응답 대기로 잡아먹는다. iOS는 받은
+id로 `GET /diet/analyses/{id}`를 폴링한다. `@EnableAsync`를 `DailyRecordApplication`에
+추가한다(`@EnableScheduling`은 이미 있다).
+
+## 인식 파이프라인 (`MealAnalyzer`, `@Async`)
+
+**사진마다 독립적으로 돈다.** 한 호출에 여러 장을 넣지 않는 이유는 확인 화면에서 "이 항목은
+몇 번째 사진에서 나왔다"를 보여주기 위해서다. 사용자가 중복을 판단하려면 출처가 보여야 한다.
+
+사진 1장에 대해:
 
 1. MinIO에서 이미지를 읽어 base64로 인코딩한다.
    **리사이즈는 하지 않는다** — iOS가 업로드 전에 장변 1024px로 줄여서 보낸다.
@@ -148,12 +219,37 @@ S3 객체는 매일 04:00 정리 배치가 수거한다. 도메인 트랜잭션�
 3. 각 `name`을 `FoodMatcher`로 식품DB에 매칭한다.
    - 성공: `quantityG = servingSizeG × portion` → 100g당 값으로 영양소 산출, `source = DB_MATCHED`
    - 실패: 2번에서 함께 받아둔 LLM 추정값을 그대로 쓰고 `source = LLM_ESTIMATED`
-4. `MealItem` 합산 → `DietScoreCalculator`로 끼니 점수 산출
-5. `DietFeedbackGenerator`로 2차 텍스트 호출 → 끼니 피드백
-6. `Meal` 업데이트, `status = COMPLETED`
 
-`@Async` 메서드는 별도 트랜잭션이므로 **`Meal`을 id로 다시 조회해서 다룬다.** 호출 측에서
-넘긴 엔티티를 그대로 쓰면 준영속 상태 문제가 생긴다.
+사진을 전부 처리하면 결과를 `resultJson`에 모아 쓰고 `MealAnalysis.status`를 갱신한다.
+**여기까지가 인식이다. 점수도 피드백도 만들지 않는다** — 사용자가 항목을 고칠 수 있으므로
+확정 전 수치로 계산하면 버려진다.
+
+**사진별 부분 실패를 허용한다.** 5장 중 1장이 실패해도 나머지 결과로 확인 화면을 띄우고,
+실패한 사진만 `failed: true`로 표시한다. 전부 실패했을 때만 `status = FAILED`다. 사진 한 장
+때문에 나머지 인식 결과를 버리면 사용자는 전부 다시 올려야 한다.
+
+`POST /diet/analyses/{id}/retry`는 **실패한 사진만** 다시 호출한다. 성공한 사진을 재호출하면
+비용이 이중으로 나가고 결과가 흔들린다.
+
+`@Async` 메서드는 별도 트랜잭션이므로 **`MealAnalysis`를 id로 다시 조회해서 다룬다.** 호출
+측에서 넘긴 엔티티를 그대로 쓰면 준영속 상태 문제가 생긴다.
+
+## 확정 (`MealService.confirm`)
+
+`POST /diet/meals {date, mealType, analysisId, items}`:
+
+1. `MealAnalysis`를 조회해 소유자를 확인한다(타인 것이면 404).
+2. `attachFile(fileId, "meals/")`을 사진마다 호출하고 `MealPhoto`를 만든다.
+3. 받은 `items`로 `MealItem`을 만들고 합산 → `DietScoreCalculator`로 끼니 점수 산출.
+4. `Meal`을 `status = PENDING`으로 저장하고 **201을 즉시 반환한다.**
+5. `MealAnalysis`를 삭제한다.
+6. `@Async`로 `DietFeedbackGenerator` 텍스트 호출 → `feedback` 채우고 `status = COMPLETED`.
+
+**점수는 동기, 피드백은 비동기다.** 점수는 룰 기반이라 즉시 나오고 사용자가 바로 봐야 하는
+값이지만, 피드백은 LLM 텍스트 호출이라 수 초 걸린다. 확정 응답을 붙잡을 이유가 없다.
+
+파일 attach가 실패하면 트랜잭션 전체가 롤백된다. detach 전환 덕에 이미 attach된 사진의 S3
+객체는 사라지지 않고, 커밋되지 않았으므로 `TEMP`로 남아 정리 배치가 수거한다.
 
 ## 점수 계산 (`DietScoreCalculator`)
 
@@ -231,6 +327,9 @@ dayScore   = round(0.4 × calorieScore + 0.6 × macroScore)
 
 텍스트 모델을 쓴다. 이미지 호출이 비싼 부분이고 텍스트 호출은 훨씬 저렴하므로,
 정확한 수치를 얻은 뒤 2차로 나눠 부르는 비용이 크지 않다.
+
+**끼니 피드백은 확정 시점에 만든다.** 인식 직후가 아니라 사용자가 항목을 고친 뒤라야 실제로
+먹은 것에 대한 조언이 된다. 항목을 다시 고치면(`PUT /diet/meals/{id}/items`) 재생성한다.
 
 **끼니 피드백 프롬프트 입력** — 음식 목록과 영양소, 개인 목표, 계산된 끼니 점수,
 **그날 지금까지의 누적 섭취량**, 그리고 `DailyActivity`가 있으면 활동 에너지.
@@ -335,14 +434,17 @@ AI 서비스로 전송되므로 앱 개인정보 처리방침에도 명시가 �
 
 | 상황 | 처리 |
 | --- | --- |
-| 1차(이미지) 호출 실패 | `status = FAILED`. **자동 재시도하지 않는다** |
+| 이미지 호출이 일부 사진에서 실패 | 그 사진만 `failed: true`, 나머지 결과로 확인 화면을 띄운다 |
+| 이미지 호출이 모든 사진에서 실패 | `MealAnalysis.status = FAILED`. **자동 재시도하지 않는다** |
 | 식품DB 매칭 실패 | LLM 추정값 사용 + `source = LLM_ESTIMATED` (iOS가 「추정」 배지 표시) |
-| 2차(피드백) 호출 실패 | 점수는 살리고 `feedback = null`. 점수가 피드백보다 중요하다 |
+| 확정 중 `attachFile` 실패 | 트랜잭션 롤백. 사진은 `TEMP`로 남아 정리 배치가 수거한다 |
+| 피드백 호출 실패 | 점수는 살리고 `feedback = null`, `Meal.status = FAILED`. 점수가 피드백보다 중요하다 |
 | 하루 피드백 생성 실패 | `dayScore`만 반환, `feedback = null` |
 
 **자동 재시도를 넣지 않는 이유** — OpenRouter 호출은 실제 비용이 나가므로, 실패가 반복되면
-자동 재시도가 비용 폭주 경로가 된다. 사용자 2명 규모에서는 `POST /diet/meals/{id}/retry`로
-수동 재시도만 열어두는 것으로 충분하고, 1일 호출 상한 같은 방어도 필요 없다.
+자동 재시도가 비용 폭주 경로가 된다. 사용자 2명 규모에서는 수동 재시도
+(`POST /diet/analyses/{id}/retry`로 실패한 사진만, `POST /diet/meals/{id}/retry`로 피드백만)를
+열어두는 것으로 충분하고, 1일 호출 상한 같은 방어도 필요 없다.
 
 ## 테스트
 
@@ -355,11 +457,16 @@ kotest `BehaviorSpec` + mockk, 픽스처는 `testFixtures`의 `dummyUser()`·`wi
 - `FoodMatcherTest` — 완전일치 / 유사도 / 실패 시 fallback 경로
 - `MealServiceTest` — 타인 `Meal` 접근 시 404, 항목 교체 시 영양소·점수 재계산,
   `FAILED`가 아닌 상태에서 retry 거절
+- `MealAnalysisServiceTest` — 사진 6장 이상 `INVALID_REQUEST`, 일부 사진 실패 시 나머지 결과
+  유지·`failed` 표시, 전부 실패 시 `FAILED`, retry가 실패한 사진만 재호출, 타인 분석 접근 404
+- `MealConfirmTest` — 확정 시 사진 수만큼 `attachFile` 호출·`MealAnalysis` 삭제,
+  사용자가 고친 `items`가 인식 결과 대신 저장되는지
 - `DailyDietServiceTest` — 캐시 무효화 조건(`generatedAt` < 최종 `Meal.updatedAt`)
 
 단위 테스트는 리포지토리를 목으로 대체하므로 트랜잭션 경계를 잡지 못한다(AGENTS.md).
-**`@Async` 분석 경로는 실제로 앱을 띄워 사진을 올려 확인한다** — 이 설계에서 트랜잭션 경계가
-가장 위험한 지점이다.
+**`@Async` 인식 경로와 확정 경로는 실제로 앱을 띄워 사진을 여러 장 올려 확인한다** —
+이 설계에서 트랜잭션 경계가 가장 위험한 지점이고, 확정 시 `attachFile` × N과 `MealAnalysis`
+삭제가 한 트랜잭션에 묶이는 부분은 목으로 검증되지 않는다.
 
 ## 리스크
 
@@ -372,6 +479,12 @@ kotest `BehaviorSpec` + mockk, 픽스처는 `testFixtures`의 `dummyUser()`·`wi
    정규화 규칙을 다듬어야 한다.
 3. **한식 인식 정확도** — 반찬이 여러 개인 상차림에서 개별 음식을 분리하는 정확도는 모델에
    크게 의존한다. 모델을 환경변수로 뺀 이유가 이것이다.
+4. **사진 수만큼 비용이 곱해진다** — 사진별 호출이라 5장이면 이미지 호출도 5회다. 상한 5장은
+   초기 추정치이므로, **실제 사용 패턴에서 평균 몇 장을 올리는지 관찰해 조정한다.** 대부분
+   1~2장이면 문제가 없지만 습관적으로 5장을 올린다면 상한을 낮추거나 한 호출에 여러 장을 묶는
+   방식(항목별 출처 추적을 포기)을 다시 검토한다.
+5. **확인 단계 이탈률** — 확인을 귀찮아해 인식만 하고 저장하지 않으면 LLM 비용만 나가고 기록은
+   남지 않는다. 확인 화면이 무거우면 이 값이 올라가므로 iOS 쪽 UX와 함께 봐야 한다.
 
 ## 범위 외
 
