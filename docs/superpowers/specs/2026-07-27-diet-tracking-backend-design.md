@@ -30,7 +30,7 @@
 | 항목 | 결정 | 이유 |
 | --- | --- | --- |
 | 영양소 출처 | 식품DB 조회 (실패 시 LLM 추정 fallback) | LLM 수치는 재현성이 없다 |
-| 점수 | 룰 기반 계산 | 결정적·테스트 가능·설명 가능 |
+| 점수 | 룰 기반 계산, 기준은 KDRIs 에너지적정비율 | 결정적·테스트 가능하고 **근거를 사용자에게 보여줄 수 있다** |
 | LLM 호출 | 사진당 1회(이미지) + 확정 시 1회(텍스트 피드백) | 사진마다 따로 인식하고, 피드백은 사용자가 확정한 수치가 필요하다 |
 | 끼니당 사진 | 여러 장 (최대 5장) | 상을 나눠 찍거나 음식별로 따로 찍는다 |
 | 저장 시점 | 인식 결과를 사용자가 확인·수정한 뒤 확정 | 중복·오인식을 사람이 거른다. 서버가 음식명만으로 판단할 수 없다 |
@@ -253,8 +253,22 @@ id로 `GET /diet/analyses/{id}`를 폴링한다. `@EnableAsync`를 `DailyRecordA
 
 ## 점수 계산 (`DietScoreCalculator`)
 
-감점 계수는 전부 `DietScorePolicy` object의 상수로 모아 나중에 튜닝할 수 있게 한다.
-아래 값은 초기 추정치다.
+**점수는 사용자에게 근거를 보여줄 수 있어야 한다.** 숫자만 던지면 신뢰가 생기지 않고 행동도
+바뀌지 않는다. 그래서 ① 기준을 가능한 한 공개된 출처에서 가져오고 ② 계산 결과에 항목별 근거를
+함께 실어 앱이 그대로 표시한다.
+
+### 기준의 출처
+
+| 요소 | 출처 | 성격 |
+| --- | --- | --- |
+| BMR 공식 | Mifflin-St Jeor (1990) | 공개된 표준. 실무에서 가장 널리 쓰인다 |
+| 활동 계수 1.2~1.9 | PAL(신체활동수준) 관례값 | 통용되는 값 |
+| 매크로 권장 범위 | **2025 한국인 영양소 섭취기준(KDRIs) 에너지적정비율** | 국가 기준 |
+| 감점 기울기·가중치 | 자체 설정 | **공개 근거 없음. 초기 추정치다** |
+
+감점 계수는 전부 `DietScorePolicy` object의 상수로 모아 튜닝할 수 있게 한다. **어느 값이 국가
+기준이고 어느 값이 우리가 정한 것인지 상수 주석에 명시한다** — 나중에 이 구분이 흐려지면
+사용자에게 근거를 설명할 수 없게 된다.
 
 ### 목표 산출 (`NutritionProfileService`)
 
@@ -266,28 +280,45 @@ BMR은 Mifflin-St Jeor:
 ```
 
 활동 계수 — SEDENTARY 1.2 / LIGHT 1.375 / MODERATE 1.55 / ACTIVE 1.725 / VERY_ACTIVE 1.9.
-`TDEE = BMR × 계수`.
+`TDEE = BMR × 계수`. 목표 조정 — LOSE `×0.85` / MAINTAIN `×1.0` / GAIN `×1.1`.
 
-목표 조정 — LOSE `×0.85` / MAINTAIN `×1.0` / GAIN `×1.1`.
-
-매크로 분배 (탄/단/지 칼로리 비율) — LOSE 40/30/30 · MAINTAIN 50/20/30 · GAIN 50/25/25.
-`g = kcal × 비율 / (탄 4, 단 4, 지 9)`.
-
-### 끼니 점수 — 비율만 본다
+매크로 분배는 **KDRIs 에너지적정비율(탄 50~65% · 단 10~20% · 지 15~30%) 안에서** 목표별로
+고른다. 세 비율의 합이 100이 되어야 하므로 범위 중앙값을 그대로 쓸 수는 없다:
 
 ```
-macroKcal      = carbsG×4 + proteinG×4 + fatG×9
-목표 비율 tc%  = targetCarbsG×4 / (targetCarbsG×4 + targetProteinG×4 + targetFatG×9) × 100
-실제 비율 c%   = carbsG×4 / macroKcal × 100
-deviation = |c%−tc%| + |p%−tp%| + |f%−tf%|
-mealScore = round(max(0, 100 − 0.9 × deviation))
+LOSE      탄 50 / 단 20 / 지 30   (탄수 하한, 단백질 상한)
+MAINTAIN  탄 55 / 단 15 / 지 30
+GAIN      탄 60 / 단 15 / 지 25
 ```
+
+`g = kcal × 비율 / (탄 4, 단 4, 지 9)`. 세 조합 모두 KDRIs 범위 안에 있어서, 어떤 목표를
+골라도 국가 기준을 벗어난 목표가 제시되지 않는다.
+
+### 끼니 점수 — KDRIs 범위를 벗어난 만큼만 감점
+
+```
+macroKcal = carbsG×4 + proteinG×4 + fatG×9
+실제 비율 c% = carbsG×4 / macroKcal × 100   (단백질·지방도 동일)
+
+각 매크로: excess = max(0, 하한 − 실제%, 실제% − 상한)     ← 범위 안이면 0
+deviation = 탄 excess + 단 excess + 지 excess
+mealScore = round(max(0, 100 − 2.0 × deviation))
+```
+
+**점 목표가 아니라 범위로 채점한다.** 개인 목표(50/15/30 등)를 점으로 놓고 편차를 감점하면
+탄수화물 55%처럼 **권장 범위 한가운데인 식사도 감점된다.** 그건 사용자에게 설명할 수 없는
+감점이고, 국가 기준과도 어긋난다. 범위 기준이면 "권장 범위를 벗어난 만큼만 깎였다"고 그대로
+말할 수 있다.
+
+그래서 **끼니 점수는 목표(LOSE/MAINTAIN/GAIN)와 무관하게 KDRIs 범위만 본다.** 개인 목표는
+하루 점수의 g 목표에 반영된다 — 끼니는 「균형」, 하루는 「목표 대비 총량」으로 역할을 나눈다.
+
+예) 탄 75% / 단 8% / 지 17% → excess 10 + 2 + 0 = 12 → `100 − 24` = **76점**.
+극단적으로 밥만 먹으면(탄 100/단 0/지 0) excess 35 + 10 + 15 = 60 → 0점.
 
 **비율 계산에는 `Meal.totalKcal`이 아니라 매크로에서 역산한 `macroKcal`을 쓴다.** 식품DB의
 100g당 kcal은 탄단지 합산과 정확히 일치하지 않아(알코올·식이섬유·측정 오차) `totalKcal`을
 분모로 쓰면 세 비율의 합이 100%가 되지 않고 편차가 왜곡된다.
-
-예) 목표 50/20/30, 실제 60/10/30 → deviation 20 → 82점.
 
 **끼니 점수에 칼로리를 넣지 않는다.** 아침을 가볍게 먹은 것을 감점하면 안 된다. 총량은
 하루 단위에서만 평가한다.
@@ -321,7 +352,38 @@ macroScore = (탄수 + 단백질 + 지방) / 3
 dayScore   = round(0.4 × calorieScore + 0.6 × macroScore)
 ```
 
+`0.4 / 0.6` 가중치와 `200 ×` 기울기는 **우리가 정한 값이고 공개 근거가 없다.** 총량보다 구성이
+조금 더 중요하다는 판단일 뿐이다. 사용자에게 보여줄 때 국가 기준과 같은 무게로 제시하지 않는다.
+
 그날 `Meal`이 0건이면 `dayScore = null`이고 피드백도 만들지 않는다.
+
+### 점수 근거를 응답에 함께 싣는다
+
+`GET /diet/meals/{id}`와 `GET /diet/days/{date}`는 점수와 함께 `scoreBasis`를 반환한다.
+앱이 계산을 다시 하지 않고 그대로 표시할 수 있는 형태여야 한다.
+
+```json
+{
+  "score": 76,
+  "scoreBasis": {
+    "standard": "2025 한국인 영양소 섭취기준(KDRIs) 에너지적정비율",
+    "macros": [
+      {"name": "탄수화물", "percent": 75.0, "rangeMin": 50, "rangeMax": 65, "status": "OVER",     "penalty": 20.0},
+      {"name": "단백질",   "percent":  8.0, "rangeMin": 10, "rangeMax": 20, "status": "UNDER",    "penalty":  4.0},
+      {"name": "지방",     "percent": 17.0, "rangeMin": 15, "rangeMax": 30, "status": "IN_RANGE", "penalty":  0.0}
+    ]
+  }
+}
+```
+
+하루 점수는 여기에 칼로리 항목(`intakeKcal`·`targetKcal`·`ratio`·`calorieScore`)과 매크로 g
+목표 대비 실제값을 더해 같은 모양으로 담는다.
+
+**`status`와 `penalty`를 서버가 계산해 내려준다.** 앱이 `percent`와 범위만 받아 판정하면 감점
+규칙이 두 곳에 생기고, 서버가 기울기를 튜닝했을 때 앱 표시와 실제 점수가 어긋난다.
+
+`standard` 문구는 상수로 두고 응답에 그대로 싣는다. 기준이 개정되면(KDRIs는 5년 주기다) 이
+문자열과 범위 상수를 함께 바꾼다.
 
 ## 피드백 생성 (`DietFeedbackGenerator`)
 
@@ -450,8 +512,9 @@ AI 서비스로 전송되므로 앱 개인정보 처리방침에도 명시가 �
 
 kotest `BehaviorSpec` + mockk, 픽스처는 `testFixtures`의 `dummyUser()`·`withId()`.
 
-- `DietScoreCalculatorTest` — 목표 일치 시 100점, 편차 20 → 82점, `totalKcal 0` → null,
-  단백질 초과 무감점, 칼로리 0.9/1.1 경계
+- `DietScoreCalculatorTest` — KDRIs 범위 안이면 100점(경계값 50/65·10/20·15/30 포함),
+  탄 75·단 8·지 17 → 76점, `macroKcal 0` → null, 단백질 초과 무감점, 칼로리 0.9/1.1 경계,
+  `scoreBasis`의 `status`·`penalty`가 실제 감점과 일치하는지
 - `NutritionProfileServiceTest` — 성별·활동량·목표별 BMR·목표 g 계산, `birthDate`/`gender`
   결측 시 `INVALID_REQUEST`
 - `FoodMatcherTest` — 완전일치 / 유사도 / 실패 시 fallback 경로
@@ -485,6 +548,24 @@ kotest `BehaviorSpec` + mockk, 픽스처는 `testFixtures`의 `dummyUser()`·`wi
    방식(항목별 출처 추적을 포기)을 다시 검토한다.
 5. **확인 단계 이탈률** — 확인을 귀찮아해 인식만 하고 저장하지 않으면 LLM 비용만 나가고 기록은
    남지 않는다. 확인 화면이 무거우면 이 값이 올라가므로 iOS 쪽 UX와 함께 봐야 한다.
+
+## 기준 출처
+
+점수 근거를 사용자에게 보여주는 기능이 있으므로, 인용한 기준의 출처를 남긴다.
+
+- **2025 한국인 영양소 섭취기준(KDRIs)** — 에너지적정비율 탄수화물 50~65% · 단백질 10~20% ·
+  지방 15~30%. 2020년 기준(탄 55~65 · 단 7~20)에서 탄수화물을 낮추고 단백질을 올린 개정이다.
+  - [보건복지부 보도자료 — 영양소 적정 섭취기준 개정](https://www.mohw.go.kr/board.es?mid=a10503010100&bid=0027&act=view&list_no=1488441)
+  - [한국영양학회 — 한국인 영양소 섭취기준 자료실](https://www.kns.or.kr/FileRoom/FileRoom_view.asp?idx=108&BoardID=Kdr)
+  - [탄수화물 섭취기준 개정 근거 (Journal of Nutrition and Health)](https://e-jnh.org/DOIx.php?id=10.4163%2Fjnh.2026.59.2.148)
+- **Mifflin-St Jeor** — BMR 추정식(1990). 비만·비비만 성인 모두에서 정확도가 높다고 평가된다.
+- **PAL 활동 계수** — 1.2~1.9. FAO/WHO/UNU 에너지 요구량 보고서 계열의 통용값.
+
+**채택하지 않은 것 — KHEI(한국인 식생활평가지수).** 질병관리청 국민건강영양조사 기반의 14개
+항목 100점 척도로, 국내 식사 품질 지표로는 가장 표준에 가깝다. 다만 잡곡·과일·채소·나트륨·
+포화지방 등 **식품군과 미량영양소 단위 평가**라, 탄단지 g만 수집하는 이 설계로는 계산할 수
+없다. 사진에서 "잡곡밥인지 흰쌀밥인지"를 신뢰성 있게 얻을 수 있게 되면 그때 재검토한다.
+([KHEI 개발 논문](https://e-nrp.org/DOIx.php?id=10.4162%2Fnrp.2022.16.2.233))
 
 ## 범위 외
 
