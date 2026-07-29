@@ -24,5 +24,9 @@ data class AnalyzedItem(
     val carbsG: Double,
     val proteinG: Double,
     val fatG: Double,
+    // LLM 추정 항목은 0.0으로 둔다 — LLM에게 나트륨 등을 추정시키지 않는다는 이 설계의 전제 때문이다.
+    val sugarG: Double = 0.0,
+    val sodiumMg: Double = 0.0,
+    val fiberG: Double = 0.0,
     val source: NutritionSource,
 )

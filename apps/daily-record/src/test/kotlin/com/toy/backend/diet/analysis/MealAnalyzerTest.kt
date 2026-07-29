@@ -53,7 +53,16 @@ class MealAnalyzerTest :
                 every { fileService.download(11L) } returns FileContent(byteArrayOf(2), "image/jpeg")
                 every { client.recognizeFoods(any(), "image/jpeg") } returns listOf(recognized) andThen null
                 every { foodMatcher.match("제육볶음") } returns
-                    dummyFood(servingSizeG = 300.0, kcalPer100g = 200.0, carbsPer100g = 10.0, proteinPer100g = 20.0, fatPer100g = 5.0)
+                    dummyFood(
+                        servingSizeG = 300.0,
+                        kcalPer100g = 200.0,
+                        carbsPer100g = 10.0,
+                        proteinPer100g = 20.0,
+                        fatPer100g = 5.0,
+                        sugarPer100g = 4.0,
+                        sodiumMgPer100g = 600.0,
+                        fiberPer100g = 3.0,
+                    )
 
                 analyzer.analyze(1L)
 
@@ -71,6 +80,13 @@ class MealAnalyzerTest :
                     item.quantityG shouldBe 150.0
                     item.kcal shouldBe 300.0
                     item.source shouldBe NutritionSource.DB_MATCHED
+                }
+
+                Then("주의 영양소도 함께 환산돼 AnalyzedItem에 실린다 — 100g당 값 × 1.5") {
+                    val item = result.photos[0].items[0]
+                    item.sugarG shouldBe 6.0
+                    item.sodiumMg shouldBe 900.0
+                    item.fiberG shouldBe 4.5
                 }
             }
 

@@ -53,7 +53,9 @@ class MealConfirmTest :
             )
 
         val user = dietUser()
-        val profile = dummyProfile(user = user, weightKg = 70.0)
+        // 주의 영양소 목표는 픽스처 기본값과 다르게 둔다 — 1·2번이 "값을 옮기는 걸 빠뜨렸다"는
+        // 종류의 버그였으므로, 우연히 기본값과 같아 통과하는 일이 없도록 못 박는다.
+        val profile = dummyProfile(user = user, weightKg = 70.0, targetSodiumMg = 1999, targetSugarG = 111, targetFiberG = 22)
 
         fun completedAnalysis(vararg fileIds: Long): MealAnalysis =
             MealAnalysis(
@@ -155,6 +157,14 @@ class MealConfirmTest :
                     verify {
                         repository.save(
                             match { it.weightKg == 70.0 && it.targetKcal == 2509 && it.targetCarbsG == 345 },
+                        )
+                    }
+                }
+
+                Then("주의 영양소 목표도 함께 스냅샷으로 복사된다") {
+                    verify {
+                        repository.save(
+                            match { it.targetSodiumMg == 1999 && it.targetSugarG == 111 && it.targetFiberG == 22 },
                         )
                     }
                 }

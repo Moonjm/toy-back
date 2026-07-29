@@ -100,6 +100,9 @@ class MealAnalyzer(
             carbsG = amount.carbsG,
             proteinG = amount.proteinG,
             fatG = amount.fatG,
+            sugarG = amount.sugarG,
+            sodiumMg = amount.sodiumMg,
+            fiberG = amount.fiberG,
             source = NutritionSource.DB_MATCHED,
         )
     }

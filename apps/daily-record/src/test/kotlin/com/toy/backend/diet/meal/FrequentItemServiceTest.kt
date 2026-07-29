@@ -26,6 +26,9 @@ class FrequentItemServiceTest :
             quantityG: Double = 200.0,
             kcal: Double = 300.0,
             foodCode: String? = null,
+            sugarG: Double = 4.0,
+            sodiumMg: Double = 500.0,
+            fiberG: Double = 3.0,
         ): MealItem {
             val meal =
                 Meal(
@@ -50,6 +53,9 @@ class FrequentItemServiceTest :
                 carbsG = 10.0,
                 proteinG = 20.0,
                 fatG = 5.0,
+                sugarG = sugarG,
+                sodiumMg = sodiumMg,
+                fiberG = fiberG,
                 source = NutritionSource.DB_MATCHED,
             ).withId(id)
         }
@@ -62,7 +68,17 @@ class FrequentItemServiceTest :
             When("제육볶음 3회, 김치찌개 1회를 먹었으면") {
                 every { repository.findEatenBetween(user, any(), any()) } returns
                     listOf(
-                        item(1L, "제육볶음", LocalDate.of(2026, 7, 28), quantityG = 150.0, kcal = 250.0, foodCode = "D1"),
+                        item(
+                            1L,
+                            "제육볶음",
+                            LocalDate.of(2026, 7, 28),
+                            quantityG = 150.0,
+                            kcal = 250.0,
+                            foodCode = "D1",
+                            sugarG = 6.0,
+                            sodiumMg = 650.0,
+                            fiberG = 2.5,
+                        ),
                         item(2L, "김치찌개", LocalDate.of(2026, 7, 27), foodCode = "D2"),
                         item(3L, "제육볶음", LocalDate.of(2026, 7, 20), quantityG = 300.0, kcal = 500.0, foodCode = "D1"),
                         item(4L, "제육볶음", LocalDate.of(2026, 7, 10), quantityG = 200.0, kcal = 400.0, foodCode = "D1"),
@@ -81,6 +97,12 @@ class FrequentItemServiceTest :
                     result[0].quantityG shouldBe 150.0
                     result[0].kcal shouldBe 250.0
                     result[0].lastEatenOn shouldBe LocalDate.of(2026, 7, 28)
+                }
+
+                Then("저장된 주의 영양소 값도 그대로 응답에 실린다") {
+                    result[0].sugarG shouldBe 6.0
+                    result[0].sodiumMg shouldBe 650.0
+                    result[0].fiberG shouldBe 2.5
                 }
             }
 
