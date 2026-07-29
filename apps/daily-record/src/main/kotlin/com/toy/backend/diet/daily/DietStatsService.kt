@@ -54,7 +54,9 @@ class DietStatsService(
         if (from.plusDays(MAX_RANGE_DAYS) < to) throw CustomException(ErrorCode.INVALID_REQUEST, "기간은 최대 ${MAX_RANGE_DAYS}일입니다")
 
         val user = findUser(username)
-        val byDate = mealRepository.findByUserAndDateBetweenOrderByDateAscIdAsc(user, from, to).groupBy { it.date }
+        // createdAt 순으로 받으므로 날짜별로 묶었을 때 각 그룹의 first()가 「그날 첫 끼니」다 —
+        // 하루 집계(findByUserAndDateOrderByCreatedAtAscIdAsc)와 같은 정의라 두 화면이 어긋나지 않는다.
+        val byDate = mealRepository.findByUserAndDateBetweenOrderByDateAscCreatedAtAscIdAsc(user, from, to).groupBy { it.date }
         val topFoods = frequentItemService.aggregate(user, from, to)
 
         if (byDate.isEmpty()) {
