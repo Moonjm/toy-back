@@ -172,6 +172,27 @@ class MealAnalysisServiceTest :
                     e.errorCode shouldBe DietErrorCode.ANALYSIS_NOT_RETRYABLE
                 }
             }
+
+            // markPending()은 resultJson의 failed 표시를 지우지 않는다. 실패한 사진 유무만 보면
+            // 진행 중인 재인식이 끝나기 전에 또 들어온 요청이 검사를 통과해 유료 호출이 겹친다.
+            When("이미 재인식이 진행 중이면(PENDING인데 failed 표시가 남아 있음)") {
+                val analysis =
+                    MealAnalysis(
+                        user = user,
+                        status = AnalysisStatus.PENDING,
+                        resultJson =
+                            objectMapper.writeValueAsString(
+                                AnalysisResult(listOf(AnalyzedPhoto(fileId = 9L, failed = true))),
+                            ),
+                    ).withId(9L)
+                every { repository.findByIdOrNull(9L) } returns analysis
+
+                Then("ANALYSIS_IN_PROGRESS — 재시도 버튼을 두 번 눌러도 호출이 겹치지 않는다") {
+                    val e = shouldThrow<CustomException> { service.retry("testuser", 9L) }
+                    e.errorCode shouldBe DietErrorCode.ANALYSIS_IN_PROGRESS
+                    verify(exactly = 0) { analyzer.retryFailed(any()) }
+                }
+            }
         }
 
         Given("확인 취소") {

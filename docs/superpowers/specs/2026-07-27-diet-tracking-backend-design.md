@@ -270,6 +270,11 @@ id로 `GET /diet/analyses/{id}`를 폴링한다. `@EnableAsync`를 `DailyRecordA
 `POST /diet/analyses/{id}/retry`는 **실패한 사진만** 다시 호출한다. 성공한 사진을 재호출하면
 비용이 이중으로 나가고 결과가 흔들린다.
 
+**이미 `PENDING`이면 거절한다**(`ANALYSIS_IN_PROGRESS`). `markPending()`은 status만 바꾸고
+`resultJson`의 `failed` 표시는 그대로 두므로, 실패한 사진 유무만 보면 진행 중인 재인식이 끝나기
+전에 들어온 두 번째 요청이 검사를 통과해 **같은 사진에 유료 호출이 겹친다.** 하루 피드백의 마커
+패턴과 같은 목적이고, `MealService.retryFeedback`도 같은 모양으로 막는다.
+
 `@Async` 메서드는 별도 트랜잭션이므로 **`MealAnalysis`를 id로 다시 조회해서 다룬다.** 호출
 측에서 넘긴 엔티티를 그대로 쓰면 준영속 상태 문제가 생긴다.
 
@@ -690,7 +695,8 @@ kotest `BehaviorSpec` + mockk, 픽스처는 `testFixtures`의 `dummyUser()`·`wi
 - `MealServiceTest` — 타인 `Meal` 접근 시 404, 항목 교체 시 영양소·점수 재계산,
   `FAILED`가 아닌 상태에서 retry 거절
 - `MealAnalysisServiceTest` — 사진 6장 이상 `INVALID_REQUEST`, 일부 사진 실패 시 나머지 결과
-  유지·`failed` 표시, 전부 실패 시 `FAILED`, retry가 실패한 사진만 재호출, 타인 분석 접근 404
+  유지·`failed` 표시, 전부 실패 시 `FAILED`, retry가 실패한 사진만 재호출, 타인 분석 접근 404,
+  **`PENDING`인데 `failed` 표시가 남아 있는 상태에서 retry 거절**(중복 유료 호출 방지)
 - `MealConfirmTest` — 확정 시 사진 수만큼 `attachFile` 호출·`MealAnalysis` 삭제,
   사용자가 고친 `items`가 인식 결과 대신 저장되는지
 - `DailyDietServiceTest` — 캐시 무효화 조건(`generatedAt` < 최종 `Meal.updatedAt`)
