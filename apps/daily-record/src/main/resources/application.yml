@@ -45,6 +45,13 @@ s3:
   secret-key: ${S3_SECRET_KEY:pluxity0304}
   bucket: ${S3_BUCKET:daily}
 
+openrouter:
+  api-key: ${OPENROUTER_API_KEY:}
+  base-url: https://openrouter.ai/api/v1
+  vision-model: ${OPENROUTER_VISION_MODEL:google/gemini-2.5-flash}
+  text-model: ${OPENROUTER_TEXT_MODEL:google/gemini-2.5-flash-lite}
+  timeout-seconds: 60
+
 holiday:
   api:
     service-key: ${HOLIDAY_API_SERVICE_KEY:}
