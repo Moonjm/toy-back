@@ -2,6 +2,7 @@ package com.toy.backend.diet.daily
 
 import com.toy.backend.diet.feedback.NutritionTotals
 import com.toy.backend.diet.profile.NutritionTargets
+import java.util.Locale
 
 enum class NutrientStatus { OK, WARN }
 
@@ -61,5 +62,7 @@ object NutrientLimitEvaluator {
         status = if (intake < standard) NutrientStatus.WARN else NutrientStatus.OK,
     )
 
-    private fun format(value: Int): String = "%,d".format(value)
+    // JVM 기본 Locale에 맡기면 독일 로케일 등에서 "2.300mg"처럼 자릿수 구분자가 바뀐다.
+    // 이 문자열이 앱에 그대로 내려가 화면에 표시되므로 고정한다.
+    private fun format(value: Int): String = String.format(Locale.KOREA, "%,d", value)
 }

@@ -97,9 +97,11 @@ object DietFeedbackPrompts {
                     "단 ${totals.proteinG.roundToInt()}g, 지 ${totals.fatG.roundToInt()}g",
             )
             appendLine("[목표] ${targets.kcal}kcal, 탄 ${targets.carbsG}g, 단 ${targets.proteinG}g, 지 ${targets.fatG}g")
+            // 기준을 함께 실어야 LLM이 "나트륨 2,610mg"만 보고 많은지 적은지 스스로 판단하지 않는다.
             appendLine(
-                "[주의 영양소] 나트륨 ${totals.sodiumMg.roundToInt()}mg, " +
-                    "식이섬유 ${totals.fiberG.roundToInt()}g, 당류 ${totals.sugarG.roundToInt()}g",
+                "[주의 영양소] 나트륨 ${totals.sodiumMg.roundToInt()}mg (기준 ${targets.sodiumMg}mg 이하), " +
+                    "식이섬유 ${totals.fiberG.roundToInt()}g (기준 ${targets.fiberG}g 이상), " +
+                    "당류 ${totals.sugarG.roundToInt()}g (기준 ${targets.sugarG}g 이하)",
             )
             appendLine("[하루 점수] $dayScore")
             activeEnergyKcal?.let { appendLine("[활동 에너지] ${it}kcal") }

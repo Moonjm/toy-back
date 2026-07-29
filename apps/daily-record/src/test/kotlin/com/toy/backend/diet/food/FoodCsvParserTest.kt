@@ -19,7 +19,12 @@ class FoodCsvParserTest :
                         ).toList()
 
                 Then("주의 영양소까지 함께 담긴다") {
+                    foods.size shouldBe 1
+                    foods[0].code shouldBe "D000001"
                     foods[0].name shouldBe "제육볶음"
+                    foods[0].normalizedName shouldBe FoodNameNormalizer.normalize("제육볶음")
+                    foods[0].dataset shouldBe FoodDataset.DISH
+                    foods[0].servingSizeG shouldBe 300.0
                     foods[0].kcalPer100g shouldBe 180.5
                     foods[0].sugarPer100g shouldBe 3.4
                     foods[0].sodiumMgPer100g shouldBe 620.0
