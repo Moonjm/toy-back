@@ -74,6 +74,28 @@ class MealAnalyzerTest :
                 }
             }
 
+            When("한 장은 성공하고 한 장은 다운로드 중 예외가 나면") {
+                val analyzer = MealAnalyzer(repository, fileService, foodMatcher, objectMapper, client)
+                val analysis = pendingAnalysis(12L, 13L)
+                every { repository.findByIdOrNull(1L) } returns analysis
+                every { fileService.download(12L) } returns FileContent(byteArrayOf(1), "image/jpeg")
+                every { fileService.download(13L) } throws RuntimeException("S3 접속 실패")
+                every { client.recognizeFoods(any(), "image/jpeg") } returns listOf(recognized)
+                every { foodMatcher.match("제육볶음") } returns
+                    dummyFood(servingSizeG = 300.0, kcalPer100g = 200.0, carbsPer100g = 10.0, proteinPer100g = 20.0, fatPer100g = 5.0)
+
+                Then("예외가 밖으로 새지 않고, 실패한 사진만 표시되며 나머지 결과는 그대로 남는다") {
+                    analyzer.analyze(1L)
+
+                    val result = objectMapper.readValue<AnalysisResult>(analysis.resultJson)
+                    analysis.status shouldBe AnalysisStatus.COMPLETED
+                    result.photos[0].failed shouldBe false
+                    result.photos[0].items[0].foodName shouldBe "제육볶음"
+                    result.photos[1].failed shouldBe true
+                    result.photos[1].items shouldBe emptyList()
+                }
+            }
+
             When("모든 사진에서 실패하면") {
                 val analyzer = MealAnalyzer(repository, fileService, foodMatcher, objectMapper, client)
                 val analysis = pendingAnalysis(20L)
