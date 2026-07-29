@@ -1694,7 +1694,7 @@ git commit -m "feat: 식품DB 엔티티와 음식명 매칭 추가"
 - Create: `scripts/build-food-csv.py`
 - Create: `apps/daily-record/src/main/kotlin/com/toy/backend/diet/food/FoodCsvParser.kt`
 - Create: `apps/daily-record/src/main/kotlin/com/toy/backend/diet/food/FoodSeeder.kt`
-- Create: `apps/daily-record/src/main/resources/food/food-nutrition.csv` (스크립트 산출물, 커밋 대상)
+- Create: `apps/daily-record/src/main/resources/food/food-nutrition.csv` (스크립트 산출물 — **커밋하지 않는다**, `.gitignore` 대상. 2026-07-29 결정)
 - Test: `apps/daily-record/src/test/kotlin/com/toy/backend/diet/food/FoodCsvParserTest.kt`
 
 **Interfaces:**
@@ -5911,7 +5911,7 @@ OPENROUTER_API_KEY=<실제 키> ./gradlew :daily-record:bootRun
 - Modify: `apps/daily-record/src/main/kotlin/com/toy/backend/diet/food/FoodDtos.kt`
 - Modify: `apps/daily-record/src/main/kotlin/com/toy/backend/diet/food/FoodCsvParser.kt` (지연 평가 + dataset)
 - Modify: `apps/daily-record/src/main/kotlin/com/toy/backend/diet/food/FoodSeeder.kt` (두 파일 적재 + JDBC 배치)
-- Create: `apps/daily-record/src/main/resources/food/processed-food-nutrition.csv` (스크립트 산출물)
+- Create: `apps/daily-record/src/main/resources/food/processed-food-nutrition.csv` (스크립트 산출물 — **커밋하지 않는다**, `.gitignore` 대상. 23MB라 저장소·도커 이미지가 무거워지고, 원본만 있으면 언제든 다시 만들 수 있다)
 - Test: `apps/daily-record/src/test/kotlin/com/toy/backend/diet/food/FoodMatcherTest.kt` (매칭 순서 케이스 추가)
 - Test: `apps/daily-record/src/test/kotlin/com/toy/backend/diet/food/FoodCsvParserTest.kt` (`dataset` 인자·지연 평가 반영)
 - Modify: `apps/daily-record/src/test/kotlin/com/toy/backend/diet/DietFixtures.kt` (`dummyFood`에 `dataset` 인자)

@@ -488,10 +488,15 @@ dayScore   = round(0.4 × calorieScore + 0.6 × macroScore)
    같은 페이지의 오픈API로 페이징해 덤프한다 — **준비 단계 1회이고 런타임 호출이 아니다**
 2. `scripts/build-food-csv.py`로 정제한다. 33개 컬럼 중 8개만 남긴다:
    `식품코드`·`식품명`·`영양성분함량 기준량`·`에너지(kcal)`·`탄수화물(g)`·`단백질(g)`·`지방(g)`·`1인(회)분량 참고량`
-3. 결과를 `apps/daily-record/src/main/resources/food/`에 **데이터셋마다 한 파일로** 커밋한다
-   (`food-nutrition.csv` = 음식 6,090행, `processed-food-nutrition.csv` = 가공식품 약 30만 행).
-   파일을 나누면 시더가 파일 단위로 `dataset`을 붙일 수 있고, 한쪽 데이터셋만 갱신할 때 diff가
-   그쪽에만 난다. 외부 다운로드 의존 없이 배포가 재현되는 것은 그대로다
+3. 결과를 `apps/daily-record/src/main/resources/food/`에 **데이터셋마다 한 파일로** 둔다
+   (`food-nutrition.csv` = 음식 6,090행, `processed-food-nutrition.csv` = 가공식품 298,271행).
+   파일을 나누면 시더가 파일 단위로 `dataset`을 붙일 수 있고, 한쪽만 갱신하기도 쉽다.
+
+   **이 CSV는 커밋하지 않는다**(`.gitignore`). 가공식품 정제본이 23MB라 저장소와 도커 이미지가
+   그만큼 무거워지는데, 원본만 있으면 스크립트로 언제든 다시 만들 수 있는 파일이다. 대신
+   **재생성 경로를 저장소에 남긴다** — `scripts/xlsx-to-csv.py`(엑셀→CSV)와
+   `scripts/build-food-csv.py`(정제), 그리고 `resources/food/README.md`(출처 링크·명령·판단 근거).
+   빌드하는 기계에 파일이 있어야 도커 이미지에 실려 파이에서도 채워진다
 4. `FoodSeeder`가 기동 시 `foods` 테이블이 비어 있을 때만 **배치 삽입**한다(라즈베리파이 메모리).
    가공식품 30만 행 때문에 최초 기동이 수 분 걸리지만 1회뿐이다
 
