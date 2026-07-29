@@ -31,6 +31,11 @@ class DietFeedbackGenerator(
     /**
      * 끼니 피드백은 **확정 시점**에 만든다. 인식 직후가 아니라 사용자가 항목을 고친 뒤라야
      * 실제로 먹은 것에 대한 조언이 된다. `@Async`라 엔티티가 아닌 id를 받아 다시 조회한다.
+     *
+     * **이 끼니만 보고 쓴다 — 하루 맥락(누적 섭취량·하루 목표·활동 에너지)은 넣지 않는다.**
+     * 끼니 점수가 이미 「끼니는 균형, 하루는 목표 대비 총량」으로 역할을 나눠 놨는데, 프롬프트가
+     * 하루 맥락을 실으면 앞선 끼니를 고치거나 지울 때 이 끼니의 피드백까지 낡는다(직접 바뀐
+     * 끼니만 재생성하므로 아무도 그걸 고쳐주지 않는다). 종합은 하루 마감 피드백의 몫으로 남긴다.
      */
     @Async
     @Transactional
@@ -42,12 +47,8 @@ class DietFeedbackGenerator(
             return meal.markFeedback(null)
         }
 
-        // 누적치를 함께 넘기므로 한 끼만 보고 말하지 않고 하루 맥락이 담긴 조언이 나온다.
-        val sameDay = mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(meal.user, meal.date)
-        val cumulative = sameDay.filter { !it.createdAt.isAfter(meal.createdAt) }.totals()
-        val activeEnergy = activityRepository.findByUserAndDate(meal.user, meal.date)?.activeEnergyKcal
-
-        val prompt = DietFeedbackPrompts.meal(meal, cumulative, meal.targets(), activeEnergy)
+        val basis = DietScoreCalculator.scoreMeal(meal.carbsG, meal.proteinG, meal.fatG).basis
+        val prompt = DietFeedbackPrompts.meal(meal, basis)
         meal.markFeedback(openRouter.generateText(DietFeedbackPrompts.SYSTEM_PROMPT, prompt))
     }
 

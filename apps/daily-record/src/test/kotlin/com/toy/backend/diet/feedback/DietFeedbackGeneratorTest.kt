@@ -4,7 +4,6 @@ import com.toy.backend.common.entity.withAudit
 import com.toy.backend.common.entity.withId
 import com.toy.backend.diet.AnalysisStatus
 import com.toy.backend.diet.NutritionSource
-import com.toy.backend.diet.daily.DailyActivity
 import com.toy.backend.diet.daily.DailyActivityRepository
 import com.toy.backend.diet.dietUser
 import com.toy.backend.diet.llm.OpenRouterClient
@@ -12,9 +11,11 @@ import com.toy.backend.diet.meal.Meal
 import com.toy.backend.diet.meal.MealItem
 import com.toy.backend.diet.meal.MealRepository
 import com.toy.backend.diet.meal.MealType
+import com.toy.backend.diet.score.DietScoreCalculator
 import com.toy.backend.user.UserRepository
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.every
@@ -74,14 +75,10 @@ class DietFeedbackGeneratorTest :
 
         Given("끼니 피드백 생성") {
             val lunch = meal(2L, MealType.LUNCH, 600.0, 18.0, LocalDateTime.of(2026, 7, 29, 12, 30))
-            val breakfast = meal(1L, MealType.BREAKFAST, 400.0, 10.0, LocalDateTime.of(2026, 7, 29, 8, 0))
 
             When("호출이 성공하면") {
                 val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, client)
                 every { mealRepository.findByIdOrNull(2L) } returns lunch
-                every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(breakfast, lunch)
-                every { activityRepository.findByUserAndDate(user, date) } returns
-                    DailyActivity(user = user, date = date, activeEnergyKcal = 350).withId(1L)
                 val prompt = slot<String>()
                 every { client.generateText(any(), capture(prompt)) } returns "잘 드셨어요. 단백질이 부족합니다. 저녁에 닭가슴살을 곁들여 보세요."
 
@@ -92,14 +89,17 @@ class DietFeedbackGeneratorTest :
                     lunch.status shouldBe AnalysisStatus.COMPLETED
                 }
 
-                Then("그날 지금까지의 누적 섭취량이 프롬프트에 담긴다 — 한 끼만 보고 말하지 않는다") {
-                    prompt.captured shouldContain "누적"
-                    prompt.captured shouldContain "1000" // 400 + 600 kcal
-                    prompt.captured shouldContain "28" // 10 + 18 g 단백질
+                Then("다른 끼니와 활동 에너지는 아예 조회하지 않는다 — 이 끼니만 보고 쓴다") {
+                    verify(exactly = 0) { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(any(), any()) }
+                    verify(exactly = 0) { activityRepository.findByUserAndDate(any(), any()) }
                 }
 
-                Then("활동 에너지도 맥락으로 넘긴다") {
-                    prompt.captured shouldContain "350"
+                Then("이 끼니의 음식명·수치·점수 근거가 프롬프트에 담긴다") {
+                    prompt.captured shouldContain "제육볶음"
+                    prompt.captured shouldContain "600kcal"
+                    val basis = DietScoreCalculator.scoreMeal(lunch.carbsG, lunch.proteinG, lunch.fatG).basis.shouldNotBeNull()
+                    prompt.captured shouldContain basis.standard
+                    basis.macros.forEach { macro -> prompt.captured shouldContain "${macro.name} ${macro.percent}%" }
                 }
             }
 
@@ -107,8 +107,6 @@ class DietFeedbackGeneratorTest :
                 val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, client)
                 val dinner = meal(3L, MealType.DINNER, 700.0, 30.0, LocalDateTime.of(2026, 7, 29, 19, 0))
                 every { mealRepository.findByIdOrNull(3L) } returns dinner
-                every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(dinner)
-                every { activityRepository.findByUserAndDate(user, date) } returns null
                 every { client.generateText(any(), any()) } returns null
 
                 generator.generateForMeal(3L)
