@@ -772,13 +772,13 @@ OUT_HEADER = [
 
 - [ ] **Step 9: CSV 재생성 (사람이 확인하는 단계)**
 
-원본 xlsx는 `~/Downloads`에 있다. `resources/food/README.md`의 절차 그대로 두 데이터셋을 다시 만든다:
+원본 xlsx는 `~/Downloads`에 있다. **가공식품은 2026-07-28 판으로 갱신됐다** — 파일명과 건수가 바뀌었으니 옛 파일(`20260626_..._298288건`)을 쓰지 마라.
 
 ```bash
 python3 scripts/xlsx-to-csv.py "$HOME/Downloads/20251229_음식DB 19495건.xlsx" /tmp/food-raw.csv
 python3 scripts/build-food-csv.py /tmp/food-raw.csv \
   apps/daily-record/src/main/resources/food/food-nutrition.csv
-python3 scripts/xlsx-to-csv.py "$HOME/Downloads/20260626_가공식품DB_298288건.xlsx" /tmp/processed-raw.csv
+python3 scripts/xlsx-to-csv.py "$HOME/Downloads/20260728_가공식품DB_306307건.xlsx" /tmp/processed-raw.csv
 python3 scripts/build-food-csv.py /tmp/processed-raw.csv \
   apps/daily-record/src/main/resources/food/processed-food-nutrition.csv
 head -3 apps/daily-record/src/main/resources/food/food-nutrition.csv
@@ -787,7 +787,15 @@ wc -l apps/daily-record/src/main/resources/food/*.csv
 
 **`xlsx-to-csv.py`의 `WANTED`에도 세 컬럼을 더해야 한다** — 안 그러면 중간 CSV에서 이미 빠져 정제 스크립트가 못 찾는다. 이걸 빠뜨리면 "컬럼을 찾지 못했습니다"가 아니라 **조용히 빈 값**이 되니 출력의 앞 몇 줄을 눈으로 확인해라.
 
-행 수는 이전과 같아야 한다(음식 6,090 / 가공식품 298,271). 달라졌으면 힌트 매칭이 다른 컬럼을 물었을 가능성이 높다.
+새 판본을 확인한 사실(그대로 믿고 써도 된다):
+
+- 컬럼이 166개로 하나 늘었지만 우리가 쓰는 것은 전부 그대로 있다 — `당류(g)`·`나트륨(mg)`·`식이섬유(g)` 포함.
+- **`1인(회)분량 참고량` 컬럼이 아예 사라졌다.** 이미 `식품중량` 폴백을 쓰고 있어 그대로 동작한다(`xlsx-to-csv.py`의 `OPTIONAL`에 들어 있다). 스크립트 출력의 "1인분량 출처" 줄에서 `식품중량 폴백`이 대부분인지 확인해라.
+- 시트 이름이 `가공식품DB(306,307건)`로 바뀌었다. 스크립트가 첫 시트를 쓰므로 상관없다.
+
+**파일명에 한글이 있어 셸에서 반드시 따옴표로 감싸라.** macOS 파일명은 NFD로 저장돼 있어서, 파이썬에서 `glob("*가공식품*")`처럼 NFC 패턴으로 찾으면 **조용히 빈 결과**가 나온다(실제로 겪었다). 위처럼 전체 경로를 따옴표로 넘기면 문제없다.
+
+기대 행 수 — 음식은 6,090으로 이전과 같아야 한다. **가공식품은 원본이 298,288 → 306,307로 늘었으니 결과도 30만 건대 초반에서 늘어난다**(이전 정제 결과는 298,271이었고 버려진 행은 17개뿐이었다). 스크립트가 찍는 "버린 행" 수가 갑자기 수천 건대로 뛰면 힌트 매칭이 다른 컬럼을 물었을 가능성이 높으니 그 자리에서 멈추고 헤더를 확인해라.
 
 **CSV는 커밋하지 않는다**(`.gitignore` 대상).
 
@@ -800,7 +808,7 @@ drop table if exists foods;
 truncate table food;
 ```
 
-앱을 띄워 `식품DB 적재 완료: dataset=DISH, 6090건` / `dataset=PROCESSED, 298271건`이 찍히는지 확인하고, 임의의 행에서 `sugar_per_100g`·`sodium_mg_per_100g`가 채워졌는지 본다.
+앱을 띄워 `식품DB 적재 완료: dataset=DISH, 6090건` / `dataset=PROCESSED, 30만 건대`가 찍히는지 확인하고(가공식품은 2026-07-28 판이라 이전의 298,271보다 늘어난다), 임의의 행에서 `sugar_per_100g`·`sodium_mg_per_100g`가 채워졌는지 본다.
 
 - [ ] **Step 11: 포맷·커밋**
 
