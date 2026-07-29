@@ -36,6 +36,7 @@ class DailyDietFeedback(
     @Column(name = "generated_at", nullable = false)
     var generatedAt: LocalDateTime,
 ) : BaseEntity() {
+    /** 마커를 찍는다 — `generatedAt`이 「이 시점의 끼니 구성을 기준으로 생성을 시작했다」는 뜻이 된다. */
     fun update(
         dayScore: Int,
         feedback: String?,
@@ -44,5 +45,18 @@ class DailyDietFeedback(
         this.dayScore = dayScore
         this.feedback = feedback
         this.generatedAt = generatedAt
+    }
+
+    /**
+     * 생성된 문장을 싣는다. **`generatedAt`은 건드리지 않는다** — 마커를 찍은 시각으로 남겨야
+     * 생성 중에 끼니가 바뀐 경우 무효화 판정(`generatedAt < 최종 Meal.updatedAt`)에 걸린다.
+     * 여기서 끝난 시각을 다시 찍으면 그 수정보다 나중이 되어, **낡은 문장이 유효한 것으로 굳는다.**
+     */
+    fun publish(
+        dayScore: Int,
+        feedback: String,
+    ) {
+        this.dayScore = dayScore
+        this.feedback = feedback
     }
 }

@@ -22,6 +22,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import io.mockk.verifyOrder
 import org.springframework.data.repository.findByIdOrNull
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -33,6 +34,8 @@ class DietFeedbackGeneratorTest :
         val feedbackRepository = mockk<DailyDietFeedbackRepository>()
         val userRepository = mockk<UserRepository>()
         val client = mockk<OpenRouterClient>()
+        // 얇은 트랜잭션 경계 래퍼라 실물을 쓴다 — 목으로 바꾸면 이 테스트들이 아무것도 확인하지 않게 된다.
+        val store = MealFeedbackStore(mealRepository)
 
         val user = dietUser()
         val date = LocalDate.of(2026, 7, 29)
@@ -80,7 +83,7 @@ class DietFeedbackGeneratorTest :
             val lunch = meal(2L, MealType.LUNCH, 600.0, 18.0, LocalDateTime.of(2026, 7, 29, 12, 30))
 
             When("호출이 성공하면") {
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, client)
+                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
                 every { mealRepository.findByIdOrNull(2L) } returns lunch
                 val prompt = slot<String>()
                 every { client.generateText(any(), capture(prompt)) } returns "잘 드셨어요. 단백질이 부족합니다. 저녁에 닭가슴살을 곁들여 보세요."
@@ -107,7 +110,7 @@ class DietFeedbackGeneratorTest :
             }
 
             When("호출이 실패하면") {
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, client)
+                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
                 val dinner = meal(3L, MealType.DINNER, 700.0, 30.0, LocalDateTime.of(2026, 7, 29, 19, 0))
                 every { mealRepository.findByIdOrNull(3L) } returns dinner
                 every { client.generateText(any(), any()) } returns null
@@ -122,7 +125,7 @@ class DietFeedbackGeneratorTest :
             }
 
             When("API 키가 없어 클라이언트 빈이 없으면") {
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, null)
+                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, null)
                 val snack = meal(4L, MealType.SNACK, 200.0, 5.0, LocalDateTime.of(2026, 7, 29, 15, 0))
                 every { mealRepository.findByIdOrNull(4L) } returns snack
 
@@ -133,6 +136,27 @@ class DietFeedbackGeneratorTest :
                     snack.status shouldBe AnalysisStatus.FAILED
                 }
             }
+
+            // LLM 호출을 트랜잭션 안에서 하면 Meal이 호출 내내 영속성 컨텍스트에 남고, 그 사이
+            // 항목이 수정되면 커밋 때 dirty check가 합계 컬럼을 옛 값으로 되돌린다. 단위 테스트에
+            // Hibernate가 없어 그 되돌림 자체는 재현되지 않으므로, **그것을 불가능하게 만드는
+            // 구조**를 확인한다 — 호출 뒤에 다시 조회하는지.
+            When("피드백을 실을 때") {
+                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
+                val brunch = meal(5L, MealType.BREAKFAST, 500.0, 20.0, LocalDateTime.of(2026, 7, 29, 10, 0))
+                every { mealRepository.findByIdOrNull(5L) } returns brunch
+                every { client.generateText(any(), any()) } returns "좋은 한 끼였어요. 채소를 곁들여 보세요."
+
+                generator.generateForMeal(5L)
+
+                Then("LLM 호출 뒤에 끼니를 다시 조회한다 — 엔티티를 호출 내내 붙들지 않는다") {
+                    verifyOrder {
+                        mealRepository.findByIdOrNull(5L)
+                        client.generateText(any(), any())
+                        mealRepository.findByIdOrNull(5L)
+                    }
+                }
+            }
         }
 
         Given("하루 마감 피드백 생성") {
@@ -140,7 +164,7 @@ class DietFeedbackGeneratorTest :
             val lunch = meal(2L, MealType.LUNCH, 600.0, 18.0, LocalDateTime.of(2026, 7, 29, 12, 30))
 
             When("호출이 성공하면") {
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, client)
+                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
                 // `DailyDietService`가 생성을 시작하기 전에 먼저 써 둔 마커 행 — feedback은 아직 null이다.
                 val marker =
                     DailyDietFeedback(
@@ -164,6 +188,12 @@ class DietFeedbackGeneratorTest :
                     marker.feedback shouldContain "그릭요거트"
                 }
 
+                // 끝난 시각을 찍으면 생성 중에 있었던 수정보다 나중이 되어, 낡은 문장이 유효한
+                // 것으로 굳는다. 수정은 캐시 행을 지우지 않아 `cached == null` 검사로는 안 잡힌다.
+                Then("generatedAt은 마커 시각 그대로 둔다 — 생성 중 수정이 무효화 판정에 걸려야 한다") {
+                    marker.generatedAt shouldBe LocalDateTime.of(2026, 7, 29, 20, 0)
+                }
+
                 Then("그날 끼니 전체와 하루 점수가 프롬프트에 담긴다") {
                     prompt.captured shouldContain "제육볶음"
                     prompt.captured shouldContain "하루 점수"
@@ -173,7 +203,7 @@ class DietFeedbackGeneratorTest :
             When("호출이 성공했는데 그 사이 마커가 지워졌으면") {
                 // 마커는 트리거 직전에 항상 저장된다 — 여기서 없다는 것은 끼니 삭제·활동 에너지 갱신으로
                 // 캐시가 이미 무효화됐다는 뜻이다. 방금 만든 문장은 낡은 구성 기준이라 되살리면 안 된다.
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, client)
+                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
                 every { userRepository.findByIdOrNull(user.requiredId) } returns user
                 every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(breakfast, lunch)
                 every { activityRepository.findByUserAndDate(user, date) } returns null
@@ -188,7 +218,7 @@ class DietFeedbackGeneratorTest :
             }
 
             When("호출이 실패하면") {
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, client)
+                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
                 val marker =
                     DailyDietFeedback(
                         user = user,
@@ -212,7 +242,7 @@ class DietFeedbackGeneratorTest :
             }
 
             When("API 키가 없어 클라이언트 빈이 없으면") {
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, null)
+                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, null)
 
                 generator.generateForDay(user.requiredId, date)
 
@@ -222,7 +252,7 @@ class DietFeedbackGeneratorTest :
             }
 
             When("마커를 쓴 뒤 끼니가 모두 삭제됐으면") {
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, client)
+                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
                 every { userRepository.findByIdOrNull(user.requiredId) } returns user
                 every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns emptyList()
 

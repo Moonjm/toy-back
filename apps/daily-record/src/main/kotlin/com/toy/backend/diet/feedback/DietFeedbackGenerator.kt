@@ -12,7 +12,6 @@ import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
-import java.time.LocalDateTime
 
 private val log = KotlinLogging.logger {}
 
@@ -26,6 +25,7 @@ class DietFeedbackGenerator(
     private val activityRepository: DailyActivityRepository,
     private val feedbackRepository: DailyDietFeedbackRepository,
     private val userRepository: UserRepository,
+    private val store: MealFeedbackStore,
     @Autowired(required = false) private val client: OpenRouterClient?,
 ) {
     /**
@@ -38,18 +38,17 @@ class DietFeedbackGenerator(
      * 끼니만 재생성하므로 아무도 그걸 고쳐주지 않는다). 종합은 하루 마감 피드백의 몫으로 남긴다.
      */
     @Async
-    @Transactional
     fun generateForMeal(mealId: Long) {
-        val meal = mealRepository.findByIdOrNull(mealId) ?: return log.warn { "피드백 대상 끼니가 없다: id=$mealId" }
         val openRouter = client
         if (openRouter == null) {
             log.warn { "OpenRouter 미설정 — 끼니 피드백을 건너뛴다: id=$mealId" }
-            return meal.markFeedback(null)
+            return store.publish(mealId, null)
         }
 
-        val basis = DietScoreCalculator.scoreMeal(meal.carbsG, meal.proteinG, meal.fatG).basis
-        val prompt = DietFeedbackPrompts.meal(meal, basis)
-        meal.markFeedback(openRouter.generateText(DietFeedbackPrompts.SYSTEM_PROMPT, prompt))
+        // **트랜잭션 밖에서 호출한다.** 안에서 부르면 Meal 엔티티가 호출 내내 영속성 컨텍스트에
+        // 남고, 그 사이 항목이 수정되면 커밋 때 dirty check가 합계 컬럼을 옛 값으로 되돌린다.
+        val prompt = store.loadPrompt(mealId) ?: return
+        store.publish(mealId, openRouter.generateText(DietFeedbackPrompts.SYSTEM_PROMPT, prompt))
     }
 
     /**
@@ -64,6 +63,10 @@ class DietFeedbackGenerator(
      * **성공했는데도 마커가 없으면(`cached == null`) 새로 저장하지 않고 버린다.** 마커는 트리거
      * 직전에 항상 저장되므로, 여기서 사라졌다는 것은 그 사이에 끼니 삭제·활동 에너지 갱신으로
      * 캐시가 무효화됐다는 뜻이다 — 방금 만든 문장은 이미 낡은 구성을 기준으로 한 것이다.
+     *
+     * **그 검사는 캐시 행을 지우는 경로만 잡는다.** 항목 수정은 행을 지우지 않고 `Meal.updatedAt`만
+     * 올리므로 여기 걸리지 않는다. 그쪽은 `publish`가 `generatedAt`을 마커 시각으로 남겨 두는 것으로
+     * 처리한다 — 수정 시각이 그보다 뒤면 다음 조회의 무효화 판정에 걸려 다시 만들어진다.
      */
     @Async
     @Transactional
@@ -93,6 +96,10 @@ class DietFeedbackGenerator(
         // 이미 낡은 끼니 구성을 기준으로 한 것이라는 뜻이다. 되살리지 않고 버린다. 다음 조회가
         // 새 마커를 만들어 자연히 다시 시도한다.
         val cached = feedbackRepository.findByUserAndDate(user, date) ?: return
-        cached.update(dayScore, generated, LocalDateTime.now())
+        // `generatedAt`을 갱신하지 않는다. 마커를 찍은 시각으로 남겨야, 생성 중에 끼니가 수정된
+        // 경우 무효화 판정에 걸려 다음 조회가 다시 만든다. 여기서 지금 시각을 찍으면 그 수정보다
+        // 나중이 되어 **낡은 문장이 유효한 것으로 굳는다** — 수정은 캐시 행을 지우지 않으므로
+        // 위의 `cached == null` 검사로는 잡히지 않는 경로다.
+        cached.publish(dayScore, generated)
     }
 }
