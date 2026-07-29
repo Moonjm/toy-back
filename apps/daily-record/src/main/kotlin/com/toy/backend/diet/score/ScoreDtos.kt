@@ -24,3 +24,35 @@ data class MealScore(
     val score: Int?,
     val basis: MealScoreBasis?,
 )
+
+data class CalorieBasis(
+    val intakeKcal: Double,
+    val targetKcal: Int,
+    val ratio: Double,
+    val calorieScore: Int,
+)
+
+data class MacroAmountBasis(
+    val name: String,
+    val intakeG: Double,
+    val targetG: Int,
+    val ratio: Double,
+    val score: Int,
+)
+
+/**
+ * 하루 점수 근거. 끼니 근거와 달리 `standard`가 자체 기준이라고 밝힌다 —
+ * 가중치와 기울기는 우리가 정한 값이라 국가 기준과 같은 무게로 제시하면 안 된다.
+ */
+data class DayScoreBasis(
+    val standard: String,
+    val calorie: CalorieBasis,
+    val macros: List<MacroAmountBasis>,
+    val calorieWeight: Double,
+    val macroWeight: Double,
+)
+
+data class DayScore(
+    val score: Int,
+    val basis: DayScoreBasis,
+)

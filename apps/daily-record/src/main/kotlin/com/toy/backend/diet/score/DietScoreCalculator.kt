@@ -1,5 +1,6 @@
 package com.toy.backend.diet.score
 
+import com.toy.backend.diet.profile.NutritionTargets
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -72,4 +73,99 @@ object DietScoreCalculator {
             penalty = excess * DietScorePolicy.MEAL_PENALTY_PER_PERCENT,
         )
     }
+
+    /**
+     * 하루 점수 — 칼로리(총량) 40% + 매크로(구성) 60%. 목표는 호출자가 넘긴다.
+     * 호출자(`DailyDietService`)는 **현재 프로필이 아니라 그날 첫 `Meal`의 스냅샷**을 넘겨야
+     * 몸무게를 갱신했을 때 과거 점수가 흔들리지 않는다.
+     *
+     * 각 요소 점수를 먼저 Int로 반올림한 뒤 가중 합산한다 — 앱이 근거에 실린 숫자만으로
+     * 최종 점수를 그대로 재현할 수 있어야 하기 때문이다.
+     */
+    fun scoreDay(
+        intakeKcal: Double,
+        carbsG: Double,
+        proteinG: Double,
+        fatG: Double,
+        targets: NutritionTargets,
+    ): DayScore {
+        val calorieRatio = ratioOf(intakeKcal, targets.kcal)
+        val calorieScore =
+            when {
+                calorieRatio < DietScorePolicy.CALORIE_TOLERANCE_LOW -> {
+                    penalized(DietScorePolicy.CALORIE_TOLERANCE_LOW - calorieRatio)
+                }
+
+                calorieRatio > DietScorePolicy.CALORIE_TOLERANCE_HIGH -> {
+                    penalized(calorieRatio - DietScorePolicy.CALORIE_TOLERANCE_HIGH)
+                }
+
+                else -> {
+                    100
+                }
+            }
+
+        val macros =
+            listOf(
+                macroBasis(DietScorePolicy.CARBS_LABEL, carbsG, targets.carbsG, penalizeOver = true),
+                // 단백질만 초과를 감점하지 않는다 — 단백질 과다는 실질적 문제가 아니어서,
+                // 감점하면 "고기를 충분히 먹었더니 점수가 깎이는" 잘못된 신호를 준다.
+                macroBasis(DietScorePolicy.PROTEIN_LABEL, proteinG, targets.proteinG, penalizeOver = false),
+                macroBasis(DietScorePolicy.FAT_LABEL, fatG, targets.fatG, penalizeOver = true),
+            )
+
+        val macroScore = macros.sumOf { it.score }.toDouble() / macros.size
+        val dayScore =
+            (DietScorePolicy.CALORIE_WEIGHT * calorieScore + DietScorePolicy.MACRO_WEIGHT * macroScore).roundToInt()
+
+        return DayScore(
+            score = dayScore,
+            basis =
+                DayScoreBasis(
+                    standard = DietScorePolicy.DAY_STANDARD_NAME,
+                    calorie =
+                        CalorieBasis(
+                            intakeKcal = intakeKcal,
+                            targetKcal = targets.kcal,
+                            ratio = calorieRatio,
+                            calorieScore = calorieScore,
+                        ),
+                    macros = macros,
+                    calorieWeight = DietScorePolicy.CALORIE_WEIGHT,
+                    macroWeight = DietScorePolicy.MACRO_WEIGHT,
+                ),
+        )
+    }
+
+    private fun macroBasis(
+        name: String,
+        intakeG: Double,
+        targetG: Int,
+        penalizeOver: Boolean,
+    ): MacroAmountBasis {
+        val ratio = ratioOf(intakeG, targetG)
+        val score =
+            when {
+                ratio < 1.0 -> {
+                    (100 * ratio).roundToInt()
+                }
+
+                penalizeOver && ratio > DietScorePolicy.MACRO_OVER_TOLERANCE -> {
+                    penalized(ratio - DietScorePolicy.MACRO_OVER_TOLERANCE)
+                }
+
+                else -> {
+                    100
+                }
+            }
+        return MacroAmountBasis(name = name, intakeG = intakeG, targetG = targetG, ratio = ratio, score = score)
+    }
+
+    private fun penalized(excessRatio: Double): Int = max(0.0, 100.0 - DietScorePolicy.PENALTY_SLOPE * excessRatio).roundToInt()
+
+    /** 목표는 프로필 계산 결과라 항상 양수지만, 0으로 나누는 사고는 막아 둔다. */
+    private fun ratioOf(
+        intake: Double,
+        target: Int,
+    ): Double = intake / max(1, target).toDouble()
 }
