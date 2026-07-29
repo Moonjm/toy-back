@@ -59,6 +59,10 @@ class DietFeedbackGenerator(
      * **생성이 실패하면(`generateText`가 null) 행을 그대로 둔다.** `feedback`은 null로 남고
      * `generatedAt`은 마커를 쓴 시각이라, 끼니가 바뀌기 전까지(캐시 무효화 전까지) 재호출되지 않는다
      * — 자동 재시도를 넣지 않는다는 설계와 맞물리는 지점이다.
+     *
+     * **성공했는데도 마커가 없으면(`cached == null`) 새로 저장하지 않고 버린다.** 마커는 트리거
+     * 직전에 항상 저장되므로, 여기서 사라졌다는 것은 그 사이에 끼니 삭제·활동 에너지 갱신으로
+     * 캐시가 무효화됐다는 뜻이다 — 방금 만든 문장은 이미 낡은 구성을 기준으로 한 것이다.
      */
     @Async
     @Transactional
@@ -83,13 +87,11 @@ class DietFeedbackGenerator(
                 DietFeedbackPrompts.day(meals, totals, targets, dayScore, activeEnergyKcal),
             ) ?: return
 
-        val cached = feedbackRepository.findByUserAndDate(user, date)
-        if (cached == null) {
-            feedbackRepository.save(
-                DailyDietFeedback(user = user, date = date, dayScore = dayScore, feedback = generated, generatedAt = LocalDateTime.now()),
-            )
-        } else {
-            cached.update(dayScore, generated, LocalDateTime.now())
-        }
+        // 마커는 트리거 직전에 항상 저장돼 있다. 그런데도 여기서 못 찾았다면 그 사이에 누가
+        // 지운 것이다(끼니 삭제·활동 에너지 갱신 — 둘 다 캐시를 지운다) — 즉 지금 막 만든 문장은
+        // 이미 낡은 끼니 구성을 기준으로 한 것이라는 뜻이다. 되살리지 않고 버린다. 다음 조회가
+        // 새 마커를 만들어 자연히 다시 시도한다.
+        val cached = feedbackRepository.findByUserAndDate(user, date) ?: return
+        cached.update(dayScore, generated, LocalDateTime.now())
     }
 }

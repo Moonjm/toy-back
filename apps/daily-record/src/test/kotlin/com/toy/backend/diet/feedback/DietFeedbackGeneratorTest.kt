@@ -169,6 +169,23 @@ class DietFeedbackGeneratorTest :
                 }
             }
 
+            When("호출이 성공했는데 그 사이 마커가 지워졌으면") {
+                // 마커는 트리거 직전에 항상 저장된다 — 여기서 없다는 것은 끼니 삭제·활동 에너지 갱신으로
+                // 캐시가 이미 무효화됐다는 뜻이다. 방금 만든 문장은 낡은 구성 기준이라 되살리면 안 된다.
+                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, client)
+                every { userRepository.findByIdOrNull(user.requiredId) } returns user
+                every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(breakfast, lunch)
+                every { activityRepository.findByUserAndDate(user, date) } returns null
+                every { feedbackRepository.findByUserAndDate(user, date) } returns null
+                every { client.generateText(any(), any()) } returns "이제는 낡은 문장입니다."
+
+                generator.generateForDay(user.requiredId, date)
+
+                Then("새 행으로 되살리지 않는다") {
+                    verify(exactly = 0) { feedbackRepository.save(any()) }
+                }
+            }
+
             When("호출이 실패하면") {
                 val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, client)
                 val marker =
