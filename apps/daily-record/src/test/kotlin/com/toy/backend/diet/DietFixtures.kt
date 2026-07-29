@@ -2,6 +2,7 @@ package com.toy.backend.diet
 
 import com.toy.backend.common.entity.withId
 import com.toy.backend.diet.food.Food
+import com.toy.backend.diet.food.FoodDataset
 import com.toy.backend.diet.food.FoodNameNormalizer
 import com.toy.backend.diet.profile.ActivityLevel
 import com.toy.backend.diet.profile.DietGoal
@@ -47,6 +48,7 @@ fun dummyFood(
     code: String = "D000",
     name: String = "제육볶음",
     normalizedName: String = FoodNameNormalizer.normalize(name),
+    dataset: FoodDataset = FoodDataset.DISH,
     servingSizeG: Double = 200.0,
     kcalPer100g: Double = 180.0,
     carbsPer100g: Double = 12.0,
@@ -58,6 +60,7 @@ fun dummyFood(
         code = code,
         name = name,
         normalizedName = normalizedName,
+        dataset = dataset,
         servingSizeG = servingSizeG,
         kcalPer100g = kcalPer100g,
         carbsPer100g = carbsPer100g,

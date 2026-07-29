@@ -22,6 +22,7 @@ mL)으로 폴백한다 — 둘 다 없을 때만 결측으로 세고 빈 칸으�
 import csv
 import re
 import sys
+import unicodedata
 
 OUT_HEADER = [
     "code", "servingSizeG", "kcalPer100g",
@@ -72,6 +73,20 @@ def parse_amount(text):
         return None
 
 
+def clean_name(text):
+    """BOM(U+FEFF)과 그 밖의 보이지 않는 제어문자를 뗀다.
+
+    가공식품DB 원본 일부 행에 BOM이 이름 맨 앞에 붙어 있다(`﻿우리밀 한입 스콘 초코칩`).
+    정규화(`FoodNameNormalizer`)는 이런 문자를 걸러내지 않는 문자 클래스([\\p{L}\\p{N}] 매칭
+    대상이 아니므로 그대로 통과)라, 여기서 안 지우면 사람이 보기엔 같은 이름인데 완전일치가
+    영영 안 맞는 행이 생긴다. NFC로 정규화해 자모 분리 등 조합 차이도 맞춘다.
+    """
+    text = text.replace("﻿", "")
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Cc")
+    text = unicodedata.normalize("NFC", text)
+    return text.strip()
+
+
 def to_float(text):
     if text is None:
         return None
@@ -105,7 +120,7 @@ def main(src_path, dst_path):
             protein = to_float(row.get(columns["protein"]))
             fat = to_float(row.get(columns["fat"]))
             code = (row.get(columns["code"]) or "").strip()
-            name = (row.get(columns["name"]) or "").strip().replace("\n", " ")
+            name = clean_name((row.get(columns["name"]) or "").replace("\n", " "))
 
             # 출력은 인용부호 없이 그대로 join한다(아래 참고). code는 원본 값을 그대로
             # 옮기는 유일한 자유 텍스트 필드라 여기 구분자·개행이 섞이면 컬럼이 밀린다.

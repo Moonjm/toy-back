@@ -3,6 +3,8 @@ package com.toy.backend.diet.food
 import com.toy.backend.common.entity.BaseEntity
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
+import jakarta.persistence.EnumType
+import jakarta.persistence.Enumerated
 import jakarta.persistence.Index
 import jakarta.persistence.Table
 
@@ -14,12 +16,17 @@ object FoodPolicy {
     const val DEFAULT_SERVING_SIZE_G = 200.0
 }
 
-/** 식약처 `전국통합식품영양성분정보(음식)` 표준데이터를 100g 기준으로 정규화해 적재한 표. */
+/** 적재 출처. 매칭 규칙을 가르는 축이라 값이 늘어날 일이 거의 없다. */
+enum class FoodDataset { DISH, PROCESSED }
+
+/** 식약처 `전국통합식품영양성분정보(음식)` 표준데이터와 가공식품DB를 100g 기준으로 정규화해 적재한 표. */
 @Entity
 @Table(
     name = "foods",
     indexes = [
-        Index(name = "idx_foods_normalized_name", columnList = "normalized_name"),
+        // 완전일치는 (dataset, normalized_name) 인덱스 조회라 30만 행이어도 빠르다.
+        // 부분일치(LIKE '%x%')는 인덱스를 못 쓰므로 DISH 6천 행으로만 제한해서 감당한다.
+        Index(name = "idx_foods_dataset_normalized_name", columnList = "dataset, normalized_name"),
     ],
 )
 class Food(
@@ -29,6 +36,9 @@ class Food(
     var name: String,
     @Column(name = "normalized_name", nullable = false, length = 200)
     var normalizedName: String,
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, columnDefinition = "varchar(20)")
+    var dataset: FoodDataset,
     @Column(name = "serving_size_g", nullable = false)
     var servingSizeG: Double,
     @Column(name = "kcal_per_100g", nullable = false)

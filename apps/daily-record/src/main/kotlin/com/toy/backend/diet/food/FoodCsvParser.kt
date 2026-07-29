@@ -1,9 +1,5 @@
 package com.toy.backend.diet.food
 
-import io.github.oshai.kotlinlogging.KotlinLogging
-
-private val log = KotlinLogging.logger {}
-
 /**
  * `scripts/build-food-csv.py`가 만든 정제본을 읽는다.
  *
@@ -13,21 +9,22 @@ private val log = KotlinLogging.logger {}
 object FoodCsvParser {
     private const val COLUMN_COUNT = 7
 
-    fun parse(lines: Sequence<String>): List<Food> {
-        var dropped = 0
-        val foods =
-            lines
-                .drop(1) // 헤더
-                .mapNotNull { line ->
-                    val food = parseLine(line)
-                    if (food == null && line.isNotBlank()) dropped++
-                    food
-                }.toList()
-        if (dropped > 0) log.warn { "식품 CSV에서 파싱할 수 없는 행 ${dropped}건을 건너뛴다" }
-        return foods
-    }
+    /**
+     * 지연 평가로 돌려준다 — 가공식품 30만 행을 List로 만들면 라즈베리파이 힙이 감당하지 못한다.
+     * 호출자가 청크 단위로 소비하는 것을 전제하며, **스트림이 열려 있는 동안 소비해야 한다.**
+     */
+    fun parse(
+        lines: Sequence<String>,
+        dataset: FoodDataset,
+    ): Sequence<Food> =
+        lines
+            .drop(1) // 헤더
+            .mapNotNull { parseLine(it, dataset) }
 
-    private fun parseLine(line: String): Food? {
+    private fun parseLine(
+        line: String,
+        dataset: FoodDataset,
+    ): Food? {
         if (line.isBlank()) return null
         val columns = line.split(',', limit = COLUMN_COUNT)
         if (columns.size < COLUMN_COUNT) return null
@@ -46,6 +43,7 @@ object FoodCsvParser {
             code = code,
             name = name,
             normalizedName = FoodNameNormalizer.normalize(name),
+            dataset = dataset,
             servingSizeG = if (servingSizeG > 0) servingSizeG else FoodPolicy.DEFAULT_SERVING_SIZE_G,
             kcalPer100g = kcal,
             carbsPer100g = carbs,
