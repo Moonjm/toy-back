@@ -12,6 +12,11 @@
 기준량이 200g인 행을 100g당으로 착각하면 그 음식만 칼로리가 2배로 잡힌다. 여기서 전부 100g
 기준으로 환산하고, 기준량을 파싱할 수 없는 행은 버린다 — 틀린 값을 넣느니 매칭 실패로
 LLM 추정에 맡기는 편이 낫다.
+
+`1인(회)분량 참고량`은 실제 배포본에서 전 행이 비어 있는 경우가 있었다(2026-07-29 판,
+19,495/19,495건). 이 컬럼이 비면 같은 뜻인 `식품중량`(그 음식 1회 제공량의 중량, g 또는
+mL)으로 폴백한다 — 둘 다 없을 때만 결측으로 세고 빈 칸으로 내보낸다(Kotlin 파서가
+`FoodPolicy.DEFAULT_SERVING_SIZE_G`로 채운다).
 """
 
 import csv
@@ -32,8 +37,13 @@ COLUMN_HINTS = {
     "carbs": ["탄수화물"],
     "protein": ["단백질"],
     "fat": ["지방"],
-    "serving": ["1인(회)분량참고량", "1회분량", "분량참고량"],
+    # 1인분 기준량 우선, 없으면 식품중량으로 폴백한다(아래 main 참고). 둘 다 선택 컬럼이다.
+    "servingReference": ["1인(회)분량참고량", "1회분량", "분량참고량"],
+    "servingWeight": ["식품중량"],
 }
+
+# 위 두 개는 없어도 되는 컬럼이다 — 없으면 그 경로로는 못 채울 뿐 전체를 중단하지 않는다.
+OPTIONAL_COLUMNS = {"servingReference", "servingWeight"}
 
 AMOUNT_PATTERN = re.compile(r"([0-9]+(?:\.[0-9]+)?)\s*(g|ml|mL|ML|㎖)")
 
@@ -78,11 +88,16 @@ def main(src_path, dst_path):
     with open(src_path, encoding="utf-8-sig", newline="") as src:
         reader = csv.DictReader(src)
         columns = {key: find_column(reader.fieldnames, hints) for key, hints in COLUMN_HINTS.items()}
-        missing = [key for key, value in columns.items() if value is None and key != "serving"]
+        missing = [key for key, value in columns.items() if value is None and key not in OPTIONAL_COLUMNS]
         if missing:
             sys.exit(f"원본에서 컬럼을 찾지 못했습니다: {missing}\n헤더: {reader.fieldnames}")
 
-        rows, dropped, serving_missing = [], 0, 0
+        rows = []
+        dropped = 0
+        malformed = 0
+        serving_from_reference = 0
+        serving_from_weight = 0
+        serving_missing = 0
         for row in reader:
             basis = parse_amount(row.get(columns["basis"]))
             kcal = to_float(row.get(columns["kcal"]))
@@ -92,15 +107,37 @@ def main(src_path, dst_path):
             code = (row.get(columns["code"]) or "").strip()
             name = (row.get(columns["name"]) or "").strip().replace("\n", " ")
 
+            # 출력은 인용부호 없이 그대로 join한다(아래 참고). code는 원본 값을 그대로
+            # 옮기는 유일한 자유 텍스트 필드라 여기 구분자·개행이 섞이면 컬럼이 밀린다.
+            # 다른 통계(결측/폴백 카운트)를 오염시키지 않도록 나머지 판단보다 먼저 버린다.
+            if "," in code or "\n" in code:
+                malformed += 1
+                continue
+
             if not code or not name or not basis or basis <= 0 or None in (kcal, carbs, protein, fat):
                 dropped += 1
                 continue
 
             factor = 100.0 / basis
-            serving = parse_amount(row.get(columns["serving"])) if columns["serving"] else None
-            if not serving:
-                serving_missing += 1
 
+            # 1인분 기준량이 비어 있으면 식품중량(1회 제공량 중량)으로 폴백한다.
+            # 실제 배포본에서 전자가 전 행 결측이었던 적이 있어 둘 다 없을 때만 결측으로 센다.
+            reference = parse_amount(row.get(columns["servingReference"])) if columns["servingReference"] else None
+            if reference:
+                serving = reference
+                serving_from_reference += 1
+            else:
+                weight = parse_amount(row.get(columns["servingWeight"])) if columns["servingWeight"] else None
+                if weight:
+                    serving = weight
+                    serving_from_weight += 1
+                else:
+                    serving = None
+                    serving_missing += 1
+
+            # kcal/carbs/protein/fat/serving은 전부 f-string으로 다시 포맷한 숫자라
+            # 콤마가 섞일 수 없다(파이썬 float 포맷은 로캘과 무관하게 '.'을 쓴다) —
+            # 구조 손상은 code에서만 온다.
             rows.append([
                 code,
                 f"{serving:.1f}" if serving else "",
@@ -128,7 +165,14 @@ def main(src_path, dst_path):
         for row in unique_rows:
             dst.write(",".join(row) + "\n")
 
-    print(f"적재 대상 {len(unique_rows)}건, 버린 행 {dropped}건, 1인분량 결측 {serving_missing}건")
+    print(
+        f"적재 대상 {len(unique_rows)}건, 버린 행 {dropped}건, "
+        f"구조 이상으로 버린 행 {malformed}건, 1인분량 결측 {serving_missing}건",
+    )
+    print(
+        f"  1인분량 출처 — 1인(회)분량 참고량 {serving_from_reference}건, "
+        f"식품중량 폴백 {serving_from_weight}건, 결측 {serving_missing}건",
+    )
     print("※ 결측률이 높으면 FoodPolicy.DEFAULT_SERVING_SIZE_G(200g) 가정을 재검토할 것")
 
 
