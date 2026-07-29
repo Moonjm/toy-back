@@ -1,6 +1,8 @@
 package com.toy.backend.diet
 
 import com.toy.backend.common.entity.withId
+import com.toy.backend.diet.food.Food
+import com.toy.backend.diet.food.FoodNameNormalizer
 import com.toy.backend.diet.profile.ActivityLevel
 import com.toy.backend.diet.profile.DietGoal
 import com.toy.backend.diet.profile.NutritionProfile
@@ -39,4 +41,26 @@ fun dummyProfile(
         targetCarbsG = targetCarbsG,
         targetProteinG = targetProteinG,
         targetFatG = targetFatG,
+    ).withId(id)
+
+fun dummyFood(
+    code: String = "D000",
+    name: String = "제육볶음",
+    normalizedName: String = FoodNameNormalizer.normalize(name),
+    servingSizeG: Double = 200.0,
+    kcalPer100g: Double = 180.0,
+    carbsPer100g: Double = 12.0,
+    proteinPer100g: Double = 15.0,
+    fatPer100g: Double = 8.0,
+    id: Long = 1L,
+): Food =
+    Food(
+        code = code,
+        name = name,
+        normalizedName = normalizedName,
+        servingSizeG = servingSizeG,
+        kcalPer100g = kcalPer100g,
+        carbsPer100g = carbsPer100g,
+        proteinPer100g = proteinPer100g,
+        fatPer100g = fatPer100g,
     ).withId(id)
