@@ -57,6 +57,7 @@ class DailyDietService(
                 fatG = 0.0,
                 activeEnergyKcal = activeEnergyKcal,
                 meals = emptyList(),
+                nutrientLimits = emptyList(),
             )
         }
 
@@ -67,6 +68,7 @@ class DailyDietService(
         val targets = meals.first().targets()
         val dayScore = DietScoreCalculator.scoreDay(totals.kcal, totals.carbsG, totals.proteinG, totals.fatG, targets)
         val feedback = resolveFeedback(user, date, meals, dayScore.score)
+        val nutrientLimits = NutrientLimitEvaluator.evaluate(totals, targets)
 
         return DayResponse(
             date = date,
@@ -81,6 +83,7 @@ class DailyDietService(
             // 응답에 담을 때만 끼니 순(아침→점심→저녁→간식)으로 정렬한다 — 확정한 순서(createdAt)
             // 그대로 실으면 저녁을 먼저 확정한 날 화면이 저녁→아침으로 나온다.
             meals = meals.sortedBy { it.mealType }.map { it.toResponse(urls) },
+            nutrientLimits = nutrientLimits,
         )
     }
 

@@ -125,6 +125,11 @@ class DailyDietServiceTest :
                     basis.calorie.intakeKcal shouldBe 2000.0
                     response.dayScore shouldBe 100
                 }
+
+                Then("주의 영양소 판정도 첫 끼니의 스냅샷 기준을 쓴다") {
+                    val sugar = response.nutrientLimits.first { it.name == "당류" }
+                    sugar.standardText shouldBe "100g 이하"
+                }
             }
         }
 
@@ -221,6 +226,10 @@ class DailyDietServiceTest :
                 Then("마커 행을 먼저 저장한 뒤 비동기 생성을 트리거한다 — 폴링이 호출을 중복시키지 않기 위한 표시다") {
                     verify { feedbackRepository.save(match { it.dayScore == 70 && it.feedback == null }) }
                     verify { feedbackGenerator.generateForDay(user.requiredId, date) }
+                }
+
+                Then("주의 영양소 판정이 응답에 실린다") {
+                    response.nutrientLimits.size shouldBe 3
                 }
             }
 

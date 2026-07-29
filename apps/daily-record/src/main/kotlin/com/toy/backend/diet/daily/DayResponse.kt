@@ -15,4 +15,5 @@ data class DayResponse(
     val fatG: Double,
     val activeEnergyKcal: Int?,
     val meals: List<MealResponse>,
+    val nutrientLimits: List<NutrientLimit>,
 )

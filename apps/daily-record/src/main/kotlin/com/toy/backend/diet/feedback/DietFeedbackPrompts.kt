@@ -97,6 +97,10 @@ object DietFeedbackPrompts {
                     "단 ${totals.proteinG.roundToInt()}g, 지 ${totals.fatG.roundToInt()}g",
             )
             appendLine("[목표] ${targets.kcal}kcal, 탄 ${targets.carbsG}g, 단 ${targets.proteinG}g, 지 ${targets.fatG}g")
+            appendLine(
+                "[주의 영양소] 나트륨 ${totals.sodiumMg.roundToInt()}mg, " +
+                    "식이섬유 ${totals.fiberG.roundToInt()}g, 당류 ${totals.sugarG.roundToInt()}g",
+            )
             appendLine("[하루 점수] $dayScore")
             activeEnergyKcal?.let { appendLine("[활동 에너지] ${it}kcal") }
         }
