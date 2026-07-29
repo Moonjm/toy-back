@@ -2,6 +2,7 @@ package com.toy.backend.diet.daily
 
 import com.toy.backend.common.entity.withId
 import com.toy.backend.diet.dietUser
+import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
 import com.toy.backend.user.UserRepository
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
@@ -14,13 +15,15 @@ class DailyActivityServiceTest :
     BehaviorSpec({
         val repository = mockk<DailyActivityRepository>()
         val userRepository = mockk<UserRepository>()
-        val service = DailyActivityService(repository, userRepository)
+        val dailyFeedbackRepository = mockk<DailyDietFeedbackRepository>()
+        val service = DailyActivityService(repository, userRepository, dailyFeedbackRepository)
 
         val user = dietUser()
         val date = LocalDate.of(2026, 7, 29)
 
         beforeContainer {
             every { userRepository.findByUsername("testuser") } returns user
+            every { dailyFeedbackRepository.deleteByUserAndDate(user, date) } returns 1L
         }
 
         Given("활동 에너지 upsert") {
@@ -44,6 +47,10 @@ class DailyActivityServiceTest :
                 Then("값만 갱신하고 새로 만들지 않는다") {
                     existing.activeEnergyKcal shouldBe 550
                     verify(exactly = 0) { repository.save(any()) }
+                }
+
+                Then("하루 피드백 캐시를 지운다 — 활동 에너지는 프롬프트에 들어가므로 낡은 캐시를 남기면 안 된다") {
+                    verify { dailyFeedbackRepository.deleteByUserAndDate(user, date) }
                 }
             }
         }

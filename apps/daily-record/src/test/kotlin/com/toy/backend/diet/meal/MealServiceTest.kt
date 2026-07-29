@@ -9,6 +9,7 @@ import com.toy.backend.diet.NutritionSource
 import com.toy.backend.diet.analysis.MealAnalysisRepository
 import com.toy.backend.diet.analysis.MealAnalysisService
 import com.toy.backend.diet.dietUser
+import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
 import com.toy.backend.diet.feedback.DietFeedbackGenerator
 import com.toy.backend.diet.profile.NutritionProfileService
 import com.toy.backend.file.FileService
@@ -33,6 +34,7 @@ class MealServiceTest :
         val analysisRepository = mockk<MealAnalysisRepository>()
         val fileService = mockk<FileService>()
         val feedbackGenerator = mockk<DietFeedbackGenerator>()
+        val dailyFeedbackRepository = mockk<DailyDietFeedbackRepository>()
         val service =
             MealService(
                 repository,
@@ -43,6 +45,7 @@ class MealServiceTest :
                 fileService,
                 jacksonObjectMapper(),
                 feedbackGenerator,
+                dailyFeedbackRepository,
             )
 
         val user = dietUser()
@@ -157,12 +160,17 @@ class MealServiceTest :
                 every { repository.findByIdOrNull(62L) } returns meal
                 justRun { fileService.detachFiles(listOf(21L)) }
                 justRun { repository.delete(meal) }
+                every { dailyFeedbackRepository.deleteByUserAndDate(user, meal.date) } returns 1L
 
                 service.delete("testuser", 62L)
 
                 Then("사진은 물리 삭제하지 않고 detach 한다 — 롤백되면 파일도 함께 살아난다") {
                     verify { fileService.detachFiles(listOf(21L)) }
                     verify { repository.delete(meal) }
+                }
+
+                Then("하루 피드백 캐시도 지운다 — 남은 끼니의 updatedAt은 안 바뀌어 무효화 조건만으로는 안 잡힌다") {
+                    verify { dailyFeedbackRepository.deleteByUserAndDate(user, meal.date) }
                 }
             }
         }

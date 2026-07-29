@@ -7,6 +7,7 @@ import com.toy.backend.diet.DietErrorCode
 import com.toy.backend.diet.analysis.AnalysisResult
 import com.toy.backend.diet.analysis.MealAnalysisRepository
 import com.toy.backend.diet.analysis.MealAnalysisService
+import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
 import com.toy.backend.diet.feedback.DietFeedbackGenerator
 import com.toy.backend.diet.profile.NutritionProfileService
 import com.toy.backend.diet.runAfterCommit
@@ -32,6 +33,7 @@ class MealService(
     private val fileService: FileService,
     private val objectMapper: ObjectMapper,
     private val feedbackGenerator: DietFeedbackGenerator,
+    private val dailyFeedbackRepository: DailyDietFeedbackRepository,
 ) {
     /**
      * 확정. **점수는 동기, 피드백은 비동기다**(피드백 연결은 별도 단계에서 붙인다) —
@@ -119,6 +121,9 @@ class MealService(
      * 삭제. **파일을 물리 삭제하지 않고 detach 한다** — 상태를 `TEMP`로 되돌리기만 하고 S3 객체는
      * 매일 04:00 정리 배치가 수거한다. 트랜잭션이 롤백되면 상태 변경도 함께 되돌아가므로
      * "레코드는 살아났는데 객체는 사라진" 상태가 생기지 않는다.
+     *
+     * 그날의 하루 피드백 캐시도 함께 지운다 — 남은 끼니의 `updatedAt`은 바뀌지 않아 캐시 무효화
+     * 조건만으로는 잡히지 않고, 그대로 두면 지운 끼니를 언급하는 문장이 남는다.
      */
     @Transactional
     fun delete(
@@ -128,6 +133,7 @@ class MealService(
         val meal = requireOwned(findUser(username), id)
         fileService.detachFiles(meal.photos.map { it.fileId })
         repository.delete(meal)
+        dailyFeedbackRepository.deleteByUserAndDate(meal.user, meal.date)
     }
 
     /** 자동 재시도를 넣지 않는 대신 수동 재시도를 연다. 실패 상태에서만 허용해 중복 호출을 막는다. */
