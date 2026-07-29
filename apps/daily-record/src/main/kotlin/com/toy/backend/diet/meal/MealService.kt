@@ -7,7 +7,9 @@ import com.toy.backend.diet.DietErrorCode
 import com.toy.backend.diet.analysis.AnalysisResult
 import com.toy.backend.diet.analysis.MealAnalysisRepository
 import com.toy.backend.diet.analysis.MealAnalysisService
+import com.toy.backend.diet.feedback.DietFeedbackGenerator
 import com.toy.backend.diet.profile.NutritionProfileService
+import com.toy.backend.diet.runAfterCommit
 import com.toy.backend.diet.score.DietScoreCalculator
 import com.toy.backend.file.FileService
 import com.toy.backend.user.User
@@ -29,6 +31,7 @@ class MealService(
     private val analysisRepository: MealAnalysisRepository,
     private val fileService: FileService,
     private val objectMapper: ObjectMapper,
+    private val feedbackGenerator: DietFeedbackGenerator,
 ) {
     /**
      * 확정. **점수는 동기, 피드백은 비동기다**(피드백 연결은 별도 단계에서 붙인다) —
@@ -73,6 +76,8 @@ class MealService(
 
         val saved = repository.save(meal)
         analysisRepository.delete(analysis)
+        // 커밋 뒤에 시작해야 비동기 스레드가 저장된 끼니를 볼 수 있다.
+        runAfterCommit { feedbackGenerator.generateForMeal(saved.requiredId) }
         return saved.requiredId
     }
 

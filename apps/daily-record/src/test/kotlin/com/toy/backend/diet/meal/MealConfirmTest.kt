@@ -13,6 +13,7 @@ import com.toy.backend.diet.analysis.MealAnalysisRepository
 import com.toy.backend.diet.analysis.MealAnalysisService
 import com.toy.backend.diet.dietUser
 import com.toy.backend.diet.dummyProfile
+import com.toy.backend.diet.feedback.DietFeedbackGenerator
 import com.toy.backend.diet.profile.NutritionProfileService
 import com.toy.backend.file.FileService
 import com.toy.backend.user.UserRepository
@@ -35,6 +36,7 @@ class MealConfirmTest :
         val analysisRepository = mockk<MealAnalysisRepository>()
         val fileService = mockk<FileService>()
         val objectMapper = jacksonObjectMapper()
+        val feedbackGenerator = mockk<DietFeedbackGenerator>()
         val service =
             MealService(
                 repository,
@@ -44,6 +46,7 @@ class MealConfirmTest :
                 analysisRepository,
                 fileService,
                 objectMapper,
+                feedbackGenerator,
             )
 
         val user = dietUser()
@@ -96,6 +99,7 @@ class MealConfirmTest :
         beforeContainer {
             every { userRepository.findByUsername("testuser") } returns user
             every { profileService.requireProfile(user) } returns profile
+            justRun { feedbackGenerator.generateForMeal(any()) }
         }
 
         Given("끼니 확정") {
@@ -154,6 +158,10 @@ class MealConfirmTest :
 
                 Then("임시 분석 레코드는 지운다") {
                     verify { analysisRepository.delete(analysis) }
+                }
+
+                Then("피드백 생성이 커밋 뒤에 예약된다 — 트랜잭션이 없는 단위 테스트에서는 즉시 실행된다") {
+                    verify { feedbackGenerator.generateForMeal(50L) }
                 }
             }
 
