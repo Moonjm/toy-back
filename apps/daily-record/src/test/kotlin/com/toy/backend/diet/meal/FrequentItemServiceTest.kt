@@ -8,7 +8,9 @@ import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 
 class FrequentItemServiceTest :
     BehaviorSpec({
@@ -151,6 +153,44 @@ class FrequentItemServiceTest :
 
                 Then("빈 목록 — 오류가 아니다") {
                     service.list("testuser", days = 30, size = 20) shouldBe emptyList()
+                }
+            }
+        }
+
+        Given("조회 기간") {
+            // 쿼리가 between이라 양 끝이 포함된다. days만큼 그대로 빼면 days+1일이 잡힌다.
+            val from = slot<LocalDate>()
+            val to = slot<LocalDate>()
+
+            When("days = 1이면") {
+                every { repository.findEatenBetween(user, capture(from), capture(to)) } returns emptyList()
+
+                service.list("testuser", days = 1, size = 20)
+
+                Then("오늘 하루만 본다 — from과 to가 같다") {
+                    from.captured shouldBe to.captured
+                    to.captured shouldBe LocalDate.now()
+                }
+            }
+
+            When("days = 30이면") {
+                every { repository.findEatenBetween(user, capture(from), capture(to)) } returns emptyList()
+
+                service.list("testuser", days = 30, size = 20)
+
+                Then("30일이다 — 29일 전부터 오늘까지") {
+                    from.captured shouldBe LocalDate.now().minusDays(29)
+                    ChronoUnit.DAYS.between(from.captured, to.captured) + 1 shouldBe 30
+                }
+            }
+
+            When("days가 상한을 넘으면") {
+                every { repository.findEatenBetween(user, capture(from), capture(to)) } returns emptyList()
+
+                service.list("testuser", days = 9999, size = 20)
+
+                Then("90일로 자른다 — 클램프 뒤에 경계 보정이 온다") {
+                    ChronoUnit.DAYS.between(from.captured, to.captured) + 1 shouldBe 90
                 }
             }
         }

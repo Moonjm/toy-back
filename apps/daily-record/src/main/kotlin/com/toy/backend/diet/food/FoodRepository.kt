@@ -6,6 +6,14 @@ import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 
 interface FoodRepository : JpaRepository<Food, Long> {
+    /**
+     * 적재 여부를 **데이터셋별로** 판단한다(`FoodSeeder`). 전체 행 수로 보면, 두 CSV 중 하나만
+     * 있는 상태로 처음 기동한 뒤 나머지를 채워 넣어도 영영 적재되지 않는다.
+     *
+     * `(dataset, normalized_name)` 인덱스의 선두 컬럼이라 30만 행이어도 비용이 일정하다.
+     */
+    fun existsByDataset(dataset: FoodDataset): Boolean
+
     /** 완전일치는 (dataset, normalized_name) 인덱스를 탄다. 가공식품 30만 행이어도 비용이 일정하다. */
     fun findFirstByDatasetAndNormalizedName(
         dataset: FoodDataset,

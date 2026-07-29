@@ -91,6 +91,10 @@ GET /diet/items/frequent?days=30&size=20
 
 `days`는 기본 30, 상한 90으로 클램프한다. `size`는 기본 20, 상한 50.
 
+**`days`는 오늘을 포함한 일수다** — `days=1`은 오늘 하루, `days=30`은 29일 전부터 오늘까지다.
+쿼리가 `between`이라 양 끝을 포함하므로 `from = 오늘 - (days - 1)`이다. 그냥 `days`를 빼면
+기간이 하루씩 길어져 응답의 `count`가 사용자가 센 것과 어긋난다.
+
 ## ③ 주의 영양소
 
 ### 저장
@@ -165,8 +169,15 @@ code,servingSizeG,kcalPer100g,carbsPer100g,proteinPer100g,fatPer100g,sugarPer100
 스크립트가 빈 값을 0으로 채우므로, `DB_MATCHED` 항목에도 조용한 0이 섞인다. 구분하려면 `Food`의
 세 컬럼을 nullable로 바꾸고 합계·판정까지 전부 null을 다뤄야 해서 이번에는 하지 않는다.
 
-**CSV 포맷이 바뀌므로 `food` 테이블을 비우고 다시 적재해야 한다.** 시더는 테이블이 비어
-있을 때만 돌기 때문이다. 배포 절차에 `truncate food` 한 줄이 필요하다.
+**CSV 포맷이 바뀌므로 `food` 테이블을 비우고 다시 적재해야 한다.** 시더는 이미 적재된
+데이터셋을 건너뛰기 때문이다. 배포 절차에 `truncate food` 한 줄이 필요하다.
+
+> **2026-07-29 개정 — 시더의 판단 단위를 데이터셋별로 바꿨다.** 원래 `count() > 0`으로 전체를
+> 봤는데, CSV를 각자 만들어야 하는 구조상 **하나만 준비된 상태로 먼저 기동하는 것이 정상적인
+> 중간 단계**다. 그때 전체 행 수가 0이 아니게 되어, 나중에 나머지 CSV를 채워도 영영 적재되지
+> 않았다. 증상이 「가공식품이 검색되지 않는다」로만 나타나 적재가 아니라 매칭 문제로 보인다.
+> 이제 `existsByDataset`으로 데이터셋마다 따로 본다 — 한쪽만 다시 넣으려면
+> `delete from food where dataset = 'PROCESSED'`로 충분하다.
 
 **배포 전에 `meal`·`meal_item`·`nutrition_profile`이 비어 있는지도 확인해야 한다.** 이 셋에도
 `nullable = false` 컬럼이 3개씩 늘어나는데, **`ddl-auto: update`는 행이 있는 테이블에 NOT NULL

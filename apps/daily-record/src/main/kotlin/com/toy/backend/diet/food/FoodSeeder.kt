@@ -12,7 +12,12 @@ import java.time.LocalDateTime
 private val log = KotlinLogging.logger {}
 
 /**
- * `food`가 비어 있을 때만 CSV를 적재한다. 이름 정규화 규칙을 바꿨다면 테이블을 비워야 다시 돈다.
+ * CSV를 적재한다. **판단은 데이터셋별로 한다** — 전체 행 수로 보면 두 CSV 중 하나만 있는 상태로
+ * 처음 기동한 뒤 나머지를 채워 넣어도 영영 적재되지 않는다. CSV는 저장소에 없고 각자 만들어야
+ * 하므로(`resources/food/README.md`) 하나만 먼저 준비된 상태가 정상적인 중간 단계다.
+ *
+ * 이름 정규화 규칙이나 CSV 포맷을 바꿨다면 해당 데이터셋의 행을 지워야 다시 돈다
+ * (`delete from food where dataset = 'DISH'`).
  *
  * **JPA가 아니라 JdbcTemplate 배치로 넣는다.** 엔티티 id가 IDENTITY라 Hibernate가 JDBC 배칭을
  * 끄기 때문에, 가공식품 30만 행을 `saveAll`로 넣으면 왕복이 30만 번이 되어 라즈베리파이에서
@@ -25,9 +30,14 @@ class FoodSeeder(
 ) : ApplicationRunner {
     @Transactional
     override fun run(args: ApplicationArguments) {
-        if (repository.count() > 0) return
-
-        DATASETS.forEach { (path, dataset) -> seed(path, dataset) }
+        DATASETS.forEach { (path, dataset) ->
+            // 중간에 죽어 일부만 들어간 데이터셋은 「있음」으로 본다 — 이어붙이려면 지우고 다시 돌린다.
+            if (repository.existsByDataset(dataset)) {
+                log.info { "이미 적재돼 있어 건너뛴다: dataset=$dataset" }
+            } else {
+                seed(path, dataset)
+            }
+        }
     }
 
     private fun seed(

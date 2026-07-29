@@ -42,7 +42,8 @@ class FrequentItemService(
         size: Int,
     ): List<FrequentItemResponse> {
         val to = LocalDate.now()
-        val from = to.minusDays(days.coerceIn(1, MAX_DAYS).toLong())
+        // 쿼리가 between이라 양 끝을 포함한다 — days만큼 빼면 days+1일이 잡힌다. days=1은 오늘 하루다.
+        val from = to.minusDays(days.coerceIn(1, MAX_DAYS) - 1L)
         return aggregate(findUser(username), from, to).take(size.coerceIn(1, MAX_SIZE))
     }
 

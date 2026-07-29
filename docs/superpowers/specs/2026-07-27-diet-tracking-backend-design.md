@@ -561,7 +561,7 @@ dayScore   = round(0.4 × calorieScore + 0.6 × macroScore)
    **재생성 경로를 저장소에 남긴다** — `scripts/xlsx-to-csv.py`(엑셀→CSV)와
    `scripts/build-food-csv.py`(정제), 그리고 `resources/food/README.md`(출처 링크·명령·판단 근거).
    빌드하는 기계에 파일이 있어야 도커 이미지에 실려 파이에서도 채워진다
-4. `FoodSeeder`가 기동 시 `foods` 테이블이 비어 있을 때만 **배치 삽입**한다(라즈베리파이 메모리).
+4. `FoodSeeder`가 기동 시 **아직 적재되지 않은 데이터셋만** 배치 삽입한다(라즈베리파이 메모리).
    가공식품 30만 행 때문에 최초 기동이 수 분 걸리지만 1회뿐이다
 
 ### 정제 시 주의 — 기준량 정규화
