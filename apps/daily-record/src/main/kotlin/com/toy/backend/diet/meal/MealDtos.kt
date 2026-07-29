@@ -42,6 +42,9 @@ data class MealItemRequest(
     @field:PositiveOrZero val carbsG: Double,
     @field:PositiveOrZero val proteinG: Double,
     @field:PositiveOrZero val fatG: Double,
+    @field:PositiveOrZero val sugarG: Double = 0.0,
+    @field:PositiveOrZero val sodiumMg: Double = 0.0,
+    @field:PositiveOrZero val fiberG: Double = 0.0,
     val source: NutritionSource = NutritionSource.LLM_ESTIMATED,
 )
 
@@ -54,6 +57,9 @@ data class MealItemResponse(
     val carbsG: Double,
     val proteinG: Double,
     val fatG: Double,
+    val sugarG: Double,
+    val sodiumMg: Double,
+    val fiberG: Double,
     val source: NutritionSource,
 )
 
@@ -74,6 +80,9 @@ data class MealResponse(
     val carbsG: Double,
     val proteinG: Double,
     val fatG: Double,
+    val sugarG: Double,
+    val sodiumMg: Double,
+    val fiberG: Double,
     val feedback: String?,
     val weightKg: Double,
     val targetKcal: Int,
@@ -91,6 +100,9 @@ fun MealItemRequest.toEntity(meal: Meal): MealItem =
         carbsG = carbsG,
         proteinG = proteinG,
         fatG = fatG,
+        sugarG = sugarG,
+        sodiumMg = sodiumMg,
+        fiberG = fiberG,
         source = source,
     )
 
@@ -112,6 +124,9 @@ fun Meal.toResponse(urls: Map<Long, String>): MealResponse {
         carbsG = carbsG,
         proteinG = proteinG,
         fatG = fatG,
+        sugarG = sugarG,
+        sodiumMg = sodiumMg,
+        fiberG = fiberG,
         feedback = feedback,
         weightKg = weightKg,
         targetKcal = targetKcal,
@@ -127,6 +142,9 @@ fun Meal.toResponse(urls: Map<Long, String>): MealResponse {
                     carbsG = it.carbsG,
                     proteinG = it.proteinG,
                     fatG = it.fatG,
+                    sugarG = it.sugarG,
+                    sodiumMg = it.sodiumMg,
+                    fiberG = it.fiberG,
                     source = it.source,
                 )
             },

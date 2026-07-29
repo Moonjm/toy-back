@@ -54,6 +54,9 @@ class DietFeedbackGeneratorTest :
                     targetCarbsG = 345,
                     targetProteinG = 94,
                     targetFatG = 84,
+                    targetSugarG = 125,
+                    targetSodiumMg = 2300,
+                    targetFiberG = 30,
                 ).withId(id).withAudit(createdAt = createdAt)
             meal.replaceItems(
                 listOf(

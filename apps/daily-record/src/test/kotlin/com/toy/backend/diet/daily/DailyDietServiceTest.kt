@@ -62,6 +62,9 @@ class DailyDietServiceTest :
                     targetCarbsG = 275,
                     targetProteinG = 75,
                     targetFatG = 67,
+                    targetSugarG = (targetKcal * 0.20 / 4).toInt(),
+                    targetSodiumMg = 2300,
+                    targetFiberG = 30,
                 ).withId(id).withAudit(createdAt = createdAt, updatedAt = updatedAt)
             meal.replaceItems(
                 listOf(
@@ -137,6 +140,9 @@ class DailyDietServiceTest :
                         targetCarbsG = 275,
                         targetProteinG = 75,
                         targetFatG = 67,
+                        targetSugarG = 100,
+                        targetSodiumMg = 2300,
+                        targetFiberG = 30,
                     ).withId(5L).withAudit(createdAt = LocalDateTime.of(2026, 7, 29, 8, 0))
                 dinner.replaceItems(
                     listOf(
@@ -163,6 +169,9 @@ class DailyDietServiceTest :
                         targetCarbsG = 275,
                         targetProteinG = 75,
                         targetFatG = 67,
+                        targetSugarG = 100,
+                        targetSodiumMg = 2300,
+                        targetFiberG = 30,
                     ).withId(6L).withAudit(createdAt = LocalDateTime.of(2026, 7, 29, 19, 0))
                 breakfast.replaceItems(
                     listOf(

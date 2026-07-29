@@ -11,6 +11,9 @@ data class NutritionTotals(
     val carbsG: Double,
     val proteinG: Double,
     val fatG: Double,
+    val sugarG: Double,
+    val sodiumMg: Double,
+    val fiberG: Double,
 )
 
 fun List<Meal>.totals(): NutritionTotals =
@@ -19,6 +22,9 @@ fun List<Meal>.totals(): NutritionTotals =
         carbsG = sumOf { it.carbsG },
         proteinG = sumOf { it.proteinG },
         fatG = sumOf { it.fatG },
+        sugarG = sumOf { it.sugarG },
+        sodiumMg = sumOf { it.sodiumMg },
+        fiberG = sumOf { it.fiberG },
     )
 
 object DietFeedbackPrompts {

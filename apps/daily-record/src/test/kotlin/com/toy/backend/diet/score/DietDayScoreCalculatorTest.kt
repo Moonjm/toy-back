@@ -6,7 +6,8 @@ import io.kotest.matchers.shouldBe
 
 class DietDayScoreCalculatorTest :
     BehaviorSpec({
-        val targets = NutritionTargets(kcal = 2000, carbsG = 275, proteinG = 75, fatG = 67)
+        val targets =
+            NutritionTargets(kcal = 2000, carbsG = 275, proteinG = 75, fatG = 67, sugarG = 100, sodiumMg = 2300, fiberG = 30)
 
         Given("하루 점수") {
             When("칼로리·매크로가 목표와 같으면") {

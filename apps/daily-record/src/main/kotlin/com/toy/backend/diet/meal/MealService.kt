@@ -68,6 +68,9 @@ class MealService(
                 targetCarbsG = profile.targetCarbsG,
                 targetProteinG = profile.targetProteinG,
                 targetFatG = profile.targetFatG,
+                targetSugarG = profile.targetSugarG,
+                targetSodiumMg = profile.targetSodiumMg,
+                targetFiberG = profile.targetFiberG,
             )
         applyItems(meal, request.items)
         analysis?.let { attachPhotos(meal, it) }

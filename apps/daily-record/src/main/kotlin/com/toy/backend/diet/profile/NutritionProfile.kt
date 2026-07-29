@@ -69,6 +69,12 @@ class NutritionProfile(
     var targetProteinG: Int = 0,
     @Column(name = "target_fat_g", nullable = false)
     var targetFatG: Int = 0,
+    @Column(name = "target_sugar_g", nullable = false)
+    var targetSugarG: Int = 0,
+    @Column(name = "target_sodium_mg", nullable = false)
+    var targetSodiumMg: Int = 0,
+    @Column(name = "target_fiber_g", nullable = false)
+    var targetFiberG: Int = 0,
 ) : BaseEntity() {
     fun updateDetails(
         heightCm: Double,
@@ -92,7 +98,11 @@ class NutritionProfile(
         this.targetCarbsG = targets.carbsG
         this.targetProteinG = targets.proteinG
         this.targetFatG = targets.fatG
+        this.targetSugarG = targets.sugarG
+        this.targetSodiumMg = targets.sodiumMg
+        this.targetFiberG = targets.fiberG
     }
 
-    fun targets(): NutritionTargets = NutritionTargets(targetKcal, targetCarbsG, targetProteinG, targetFatG)
+    fun targets(): NutritionTargets =
+        NutritionTargets(targetKcal, targetCarbsG, targetProteinG, targetFatG, targetSugarG, targetSodiumMg, targetFiberG)
 }

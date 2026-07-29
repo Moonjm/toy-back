@@ -37,6 +37,9 @@ class FrequentItemServiceTest :
                     targetCarbsG = 345,
                     targetProteinG = 94,
                     targetFatG = 84,
+                    targetSugarG = 125,
+                    targetSodiumMg = 2300,
+                    targetFiberG = 30,
                 ).withId(id * 10)
             return MealItem(
                 meal = meal,

@@ -33,6 +33,9 @@ fun dummyProfile(
     targetCarbsG: Int = 345,
     targetProteinG: Int = 94,
     targetFatG: Int = 84,
+    targetSugarG: Int = 125,
+    targetSodiumMg: Int = 2300,
+    targetFiberG: Int = 30,
     id: Long = 1L,
 ): NutritionProfile =
     NutritionProfile(
@@ -45,6 +48,9 @@ fun dummyProfile(
         targetCarbsG = targetCarbsG,
         targetProteinG = targetProteinG,
         targetFatG = targetFatG,
+        targetSugarG = targetSugarG,
+        targetSodiumMg = targetSodiumMg,
+        targetFiberG = targetFiberG,
     ).withId(id)
 
 fun dummyFood(
@@ -86,6 +92,9 @@ fun dummyMeal(
     targetCarbsG: Int = 345,
     targetProteinG: Int = 94,
     targetFatG: Int = 84,
+    targetSugarG: Int = 125,
+    targetSodiumMg: Int = 2300,
+    targetFiberG: Int = 30,
     id: Long = 1L,
 ): Meal =
     Meal(
@@ -97,6 +106,9 @@ fun dummyMeal(
         targetCarbsG = targetCarbsG,
         targetProteinG = targetProteinG,
         targetFatG = targetFatG,
+        targetSugarG = targetSugarG,
+        targetSodiumMg = targetSodiumMg,
+        targetFiberG = targetFiberG,
     ).withId(id)
 
 fun dummyMealItem(

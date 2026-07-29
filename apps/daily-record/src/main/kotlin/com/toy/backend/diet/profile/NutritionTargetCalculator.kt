@@ -10,6 +10,9 @@ data class NutritionTargets(
     val carbsG: Int,
     val proteinG: Int,
     val fatG: Int,
+    val sugarG: Int,
+    val sodiumMg: Int,
+    val fiberG: Int,
 )
 
 /**
@@ -45,6 +48,9 @@ object NutritionTargetCalculator {
             carbsG = (kcal * goal.carbsPercent / 100.0 / KCAL_PER_G_CARBS).roundToInt(),
             proteinG = (kcal * goal.proteinPercent / 100.0 / KCAL_PER_G_PROTEIN).roundToInt(),
             fatG = (kcal * goal.fatPercent / 100.0 / KCAL_PER_G_FAT).roundToInt(),
+            sugarG = (kcal * NutrientLimitPolicy.SUGAR_ENERGY_RATIO / NutrientLimitPolicy.KCAL_PER_G_SUGAR).roundToInt(),
+            sodiumMg = NutrientLimitPolicy.SODIUM_MG_LIMIT,
+            fiberG = if (gender == Gender.MALE) NutrientLimitPolicy.FIBER_G_MALE else NutrientLimitPolicy.FIBER_G_FEMALE,
         )
     }
 }

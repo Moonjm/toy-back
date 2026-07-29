@@ -65,6 +65,9 @@ class MealServiceTest :
                     targetCarbsG = 345,
                     targetProteinG = 94,
                     targetFatG = 84,
+                    targetSugarG = 125,
+                    targetSodiumMg = 2300,
+                    targetFiberG = 30,
                     status = status,
                     feedback = if (status == AnalysisStatus.COMPLETED) "기존 피드백" else null,
                 ).withId(id)
@@ -144,7 +147,16 @@ class MealServiceTest :
                                 61L,
                                 MealItemsRequest(
                                     listOf(
-                                        MealItemRequest("밥", null, 100.0, 100.0, 20.0, 3.0, 1.0, NutritionSource.LLM_ESTIMATED),
+                                        MealItemRequest(
+                                            "밥",
+                                            null,
+                                            100.0,
+                                            100.0,
+                                            20.0,
+                                            3.0,
+                                            1.0,
+                                            source = NutritionSource.LLM_ESTIMATED,
+                                        ),
                                     ),
                                 ),
                             )

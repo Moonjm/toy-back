@@ -54,6 +54,12 @@ class Meal(
     var targetProteinG: Int,
     @Column(name = "target_fat_g", nullable = false)
     var targetFatG: Int,
+    @Column(name = "target_sugar_g", nullable = false)
+    var targetSugarG: Int,
+    @Column(name = "target_sodium_mg", nullable = false)
+    var targetSodiumMg: Int,
+    @Column(name = "target_fiber_g", nullable = false)
+    var targetFiberG: Int,
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, columnDefinition = "varchar(20)")
     var status: AnalysisStatus = AnalysisStatus.PENDING,
@@ -67,6 +73,12 @@ class Meal(
     var proteinG: Double = 0.0,
     @Column(name = "fat_g", nullable = false)
     var fatG: Double = 0.0,
+    @Column(name = "sugar_g", nullable = false)
+    var sugarG: Double = 0.0,
+    @Column(name = "sodium_mg", nullable = false)
+    var sodiumMg: Double = 0.0,
+    @Column(name = "fiber_g", nullable = false)
+    var fiberG: Double = 0.0,
     @Column(columnDefinition = "text")
     var feedback: String? = null,
 ) : BaseEntity() {
@@ -86,6 +98,9 @@ class Meal(
         carbsG = items.sumOf { it.carbsG }
         proteinG = items.sumOf { it.proteinG }
         fatG = items.sumOf { it.fatG }
+        sugarG = items.sumOf { it.sugarG }
+        sodiumMg = items.sumOf { it.sodiumMg }
+        fiberG = items.sumOf { it.fiberG }
     }
 
     fun addPhoto(photo: MealPhoto) {
@@ -107,5 +122,6 @@ class Meal(
         this.status = AnalysisStatus.PENDING
     }
 
-    fun targets(): NutritionTargets = NutritionTargets(targetKcal, targetCarbsG, targetProteinG, targetFatG)
+    fun targets(): NutritionTargets =
+        NutritionTargets(targetKcal, targetCarbsG, targetProteinG, targetFatG, targetSugarG, targetSodiumMg, targetFiberG)
 }

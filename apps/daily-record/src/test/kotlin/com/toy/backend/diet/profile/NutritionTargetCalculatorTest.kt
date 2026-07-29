@@ -28,6 +28,12 @@ class NutritionTargetCalculatorTest :
                     targets.proteinG shouldBe 94
                     targets.fatG shouldBe 84
                 }
+
+                Then("주의 영양소 기준도 함께 나온다 — 당류는 목표 칼로리의 20%, 나트륨은 상수, 식이섬유는 성별") {
+                    targets.sugarG shouldBe 125 // 2509 × 0.20 / 4 = 125.45
+                    targets.sodiumMg shouldBe 2300
+                    targets.fiberG shouldBe 30 // 남성 충분섭취량
+                }
             }
         }
 
@@ -49,6 +55,12 @@ class NutritionTargetCalculatorTest :
                     targets.carbsG shouldBe 180
                     targets.proteinG shouldBe 72
                     targets.fatG shouldBe 48
+                }
+
+                Then("여성은 식이섬유 기준이 다르다") {
+                    targets.sugarG shouldBe 72 // 1439 × 0.20 / 4 = 71.95
+                    targets.sodiumMg shouldBe 2300
+                    targets.fiberG shouldBe 20
                 }
             }
         }

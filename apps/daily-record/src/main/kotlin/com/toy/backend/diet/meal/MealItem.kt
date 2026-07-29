@@ -43,6 +43,12 @@ class MealItem(
     var proteinG: Double,
     @Column(name = "fat_g", nullable = false)
     var fatG: Double,
+    @Column(name = "sugar_g", nullable = false)
+    var sugarG: Double = 0.0,
+    @Column(name = "sodium_mg", nullable = false)
+    var sodiumMg: Double = 0.0,
+    @Column(name = "fiber_g", nullable = false)
+    var fiberG: Double = 0.0,
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, columnDefinition = "varchar(20)")
     var source: NutritionSource,

@@ -26,6 +26,9 @@ data class NutritionProfileResponse(
     val targetCarbsG: Int,
     val targetProteinG: Int,
     val targetFatG: Int,
+    val targetSugarG: Int,
+    val targetSodiumMg: Int,
+    val targetFiberG: Int,
 )
 
 fun NutritionProfile.toResponse(): NutritionProfileResponse =
@@ -38,4 +41,7 @@ fun NutritionProfile.toResponse(): NutritionProfileResponse =
         targetCarbsG = targetCarbsG,
         targetProteinG = targetProteinG,
         targetFatG = targetFatG,
+        targetSugarG = targetSugarG,
+        targetSodiumMg = targetSodiumMg,
+        targetFiberG = targetFiberG,
     )
