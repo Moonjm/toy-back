@@ -383,6 +383,7 @@ import com.toy.backend.user.UserRepository
 import com.toy.backend.user.entity.dummyUser
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
+import io.kotest.matchers.ints.shouldBeLessThan
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
@@ -456,7 +457,11 @@ class NutritionProfileServiceTest :
 
                 Then("몸무게가 바뀌고 목표가 재계산된다") {
                     profile.weightKg shouldBe 68.0
-                    profile.targetKcal shouldBe 2478
+                    // 나이가 LocalDate.now()에 달려 있어 정확한 값을 못 박는다(그 검증은
+                    // NutritionTargetCalculatorTest가 한다). 몸무게가 줄면 목표도 줄어든다는
+                    // 관계는 나이와 무관하게 성립한다.
+                    profile.targetKcal shouldBeLessThan 2509
+                    profile.targetCarbsG shouldBeLessThan 345
                 }
 
                 Then("키·활동량·목표는 보존된다") {
@@ -491,9 +496,9 @@ class NutritionProfileServiceTest :
     })
 ```
 
-> `targetKcal shouldBe 2478` 근거: BMR = 10×68 + 6.25×175 − 5×36 + 5 = 1598.75, ×1.55 = 2478.06 → 2478.
-> **나이는 `LocalDate.now()` 기준이라 2027-01-01 이후에는 37세가 되어 이 값이 바뀐다.** 시각에 의존하지
-> 않는 정확한 수치 검증은 `NutritionTargetCalculatorTest`가 맡는다. 이 값이 깨지면 상수를 갱신하라.
+> 서비스는 `LocalDate.now()`로 나이를 구하므로 이 테스트에서 목표 kcal의 정확한 값을 못 박지
+> 않는다 — 해가 바뀌면 나이가 달라져 깨진다. 정확한 수치 검증은 `NutritionTargetCalculatorTest`가
+> 맡고, 여기서는 **몸무게를 줄이면 목표도 준다**는 관계(나이와 무관하게 성립)만 확인한다.
 
 - [ ] **Step 6: 테스트 실행 — 실패 확인**
 
