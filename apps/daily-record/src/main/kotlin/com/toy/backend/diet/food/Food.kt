@@ -49,6 +49,12 @@ class Food(
     var proteinPer100g: Double,
     @Column(name = "fat_per_100g", nullable = false)
     var fatPer100g: Double,
+    @Column(name = "sugar_per_100g", nullable = false)
+    var sugarPer100g: Double,
+    @Column(name = "sodium_mg_per_100g", nullable = false)
+    var sodiumMgPer100g: Double,
+    @Column(name = "fiber_per_100g", nullable = false)
+    var fiberPer100g: Double,
 ) : BaseEntity()
 
 data class NutritionAmount(
@@ -57,6 +63,9 @@ data class NutritionAmount(
     val carbsG: Double,
     val proteinG: Double,
     val fatG: Double,
+    val sugarG: Double,
+    val sodiumMg: Double,
+    val fiberG: Double,
 )
 
 /** LLM이 주는 `portion`은 1인분 대비 배수다(0.5 = 반 인분). 이를 g으로 바꿔 100g당 값에 곱한다. */
@@ -69,5 +78,8 @@ fun Food.nutritionFor(portion: Double): NutritionAmount {
         carbsG = carbsPer100g * ratio,
         proteinG = proteinPer100g * ratio,
         fatG = fatPer100g * ratio,
+        sugarG = sugarPer100g * ratio,
+        sodiumMg = sodiumMgPer100g * ratio,
+        fiberG = fiberPer100g * ratio,
     )
 }

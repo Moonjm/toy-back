@@ -63,8 +63,11 @@ class FoodSeeder(
             ps.setDouble(7, food.carbsPer100g)
             ps.setDouble(8, food.proteinPer100g)
             ps.setDouble(9, food.fatPer100g)
-            ps.setObject(10, now)
-            ps.setObject(11, now)
+            ps.setDouble(10, food.sugarPer100g)
+            ps.setDouble(11, food.sodiumMgPer100g)
+            ps.setDouble(12, food.fiberPer100g)
+            ps.setObject(13, now)
+            ps.setObject(14, now)
         }
     }
 
@@ -83,9 +86,10 @@ class FoodSeeder(
         private val INSERT_SQL =
             """
             insert into food (code, name, normalized_name, dataset, serving_size_g,
-                               kcal_per_100g, carbs_per_100g, protein_per_100g, fat_per_100g,
-                               created_at, updated_at)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              kcal_per_100g, carbs_per_100g, protein_per_100g, fat_per_100g,
+                              sugar_per_100g, sodium_mg_per_100g, fiber_per_100g,
+                              created_at, updated_at)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             on conflict (code) do nothing
             """.trimIndent()
     }

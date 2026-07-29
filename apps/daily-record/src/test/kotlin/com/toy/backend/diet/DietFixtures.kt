@@ -57,6 +57,9 @@ fun dummyFood(
     carbsPer100g: Double = 12.0,
     proteinPer100g: Double = 15.0,
     fatPer100g: Double = 8.0,
+    sugarPer100g: Double = 3.0,
+    sodiumMgPer100g: Double = 500.0,
+    fiberPer100g: Double = 2.0,
     id: Long = 1L,
 ): Food =
     Food(
@@ -69,6 +72,9 @@ fun dummyFood(
         carbsPer100g = carbsPer100g,
         proteinPer100g = proteinPer100g,
         fatPer100g = fatPer100g,
+        sugarPer100g = sugarPer100g,
+        sodiumMgPer100g = sodiumMgPer100g,
+        fiberPer100g = fiberPer100g,
     ).withId(id)
 
 fun dummyMeal(

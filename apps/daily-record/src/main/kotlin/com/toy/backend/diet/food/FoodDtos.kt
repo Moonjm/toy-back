@@ -10,6 +10,9 @@ data class FoodResponse(
     val carbsPer100g: Double,
     val proteinPer100g: Double,
     val fatPer100g: Double,
+    val sugarPer100g: Double,
+    val sodiumMgPer100g: Double,
+    val fiberPer100g: Double,
 )
 
 fun Food.toResponse(): FoodResponse =
@@ -22,4 +25,7 @@ fun Food.toResponse(): FoodResponse =
         carbsPer100g = carbsPer100g,
         proteinPer100g = proteinPer100g,
         fatPer100g = fatPer100g,
+        sugarPer100g = sugarPer100g,
+        sodiumMgPer100g = sodiumMgPer100g,
+        fiberPer100g = fiberPer100g,
     )

@@ -26,7 +26,8 @@ import unicodedata
 
 OUT_HEADER = [
     "code", "servingSizeG", "kcalPer100g",
-    "carbsPer100g", "proteinPer100g", "fatPer100g", "name",
+    "carbsPer100g", "proteinPer100g", "fatPer100g",
+    "sugarPer100g", "sodiumMgPer100g", "fiberPer100g", "name",
 ]
 
 # 원본 헤더는 공백·괄호 표기가 판번마다 조금씩 달라 부분 문자열로 찾는다.
@@ -38,13 +39,17 @@ COLUMN_HINTS = {
     "carbs": ["탄수화물"],
     "protein": ["단백질"],
     "fat": ["지방"],
+    "sugar": ["당류"],
+    "sodium": ["나트륨"],
+    "fiber": ["식이섬유"],
     # 1인분 기준량 우선, 없으면 식품중량으로 폴백한다(아래 main 참고). 둘 다 선택 컬럼이다.
     "servingReference": ["1인(회)분량참고량", "1회분량", "분량참고량"],
     "servingWeight": ["식품중량"],
 }
 
-# 위 두 개는 없어도 되는 컬럼이다 — 없으면 그 경로로는 못 채울 뿐 전체를 중단하지 않는다.
-OPTIONAL_COLUMNS = {"servingReference", "servingWeight"}
+# 이 컬럼들은 없어도 되는 컬럼이다 — 없으면 그 경로로는 못 채울 뿐 전체를 중단하지 않는다.
+# 당류·나트륨·식이섬유는 판본이 바뀌어 컬럼이 빠지더라도 탄단지는 살려야 하므로 포함한다.
+OPTIONAL_COLUMNS = {"servingReference", "servingWeight", "sugar", "sodium", "fiber"}
 
 AMOUNT_PATTERN = re.compile(r"([0-9]+(?:\.[0-9]+)?)\s*(g|ml|mL|ML|㎖)")
 
@@ -121,6 +126,10 @@ def main(src_path, dst_path):
             fat = to_float(row.get(columns["fat"]))
             code = (row.get(columns["code"]) or "").strip()
             name = clean_name((row.get(columns["name"]) or "").replace("\n", " "))
+            # 주의 영양소는 결측이어도 행을 버리지 않는다 — Kotlin 파서가 빈 칸을 0으로 채운다.
+            sugar = to_float(row.get(columns["sugar"])) if columns["sugar"] else None
+            sodium = to_float(row.get(columns["sodium"])) if columns["sodium"] else None
+            fiber = to_float(row.get(columns["fiber"])) if columns["fiber"] else None
 
             # 출력은 인용부호 없이 그대로 join한다(아래 참고). code는 원본 값을 그대로
             # 옮기는 유일한 자유 텍스트 필드라 여기 구분자·개행이 섞이면 컬럼이 밀린다.
@@ -160,6 +169,9 @@ def main(src_path, dst_path):
                 f"{carbs * factor:.2f}",
                 f"{protein * factor:.2f}",
                 f"{fat * factor:.2f}",
+                f"{sugar * factor:.2f}" if sugar is not None else "",
+                f"{sodium * factor:.1f}" if sodium is not None else "",
+                f"{fiber * factor:.2f}" if fiber is not None else "",
                 name,
             ])
 
