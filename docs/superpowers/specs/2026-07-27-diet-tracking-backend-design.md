@@ -8,6 +8,10 @@
 > 저장하는 흐름으로 바꿨다. **iOS 짝 문서는 아직 개정 전이다** — 단일 사진과 확인 단계 없는
 > 흐름(`POST /diet/meals {fileId}` → 폴링 → 완료)을 전제하고 있어, 다중 선택·확인 화면·
 > `analyses` 폴링을 반영한 개정이 필요하다.
+>
+> **2026-07-29 개정** — ① 매일 재는 몸무게를 반영했다. 몸무게 전용 갱신 엔드포인트를 두고,
+> 확정 시점의 몸무게·목표를 `Meal`에 스냅샷으로 남겨 **하루 점수도 소급 변경되지 않게** 했다.
+> ② OpenRouter 연동을 API 키가 있을 때만 빈으로 등록하도록 바꿔, 키 없이 로컬 실행이 된다.
 
 ## 배경
 
@@ -39,6 +43,9 @@
 | 분석 실행 | `@Async` (큐 없음) | 사용자 2명·하루 수십 건. 큐는 과하다 |
 | 하루 피드백 | lazy 생성 + 캐시 무효화 | 크론 불필요, 안 보는 날 LLM 비용이 안 든다 |
 | 활동 에너지 | 표시·피드백 맥락으로만 사용, 목표에는 반영하지 않음 | 목표가 매일 흔들리면 점수를 설명할 수 없다 |
+| 몸무게 갱신 | 전용 엔드포인트로 매일 갱신, 확정 시점 값을 `Meal`에 스냅샷 | 매일 재는 값이라 프로필 전체를 다시 보내게 하면 안 된다 |
+| 하루 점수 기준 | 그날 첫 `Meal`의 스냅샷 목표 | 현재 프로필로 계산하면 어제 점수가 오늘 몸무게에 흔들린다 |
+| LLM 빈 등록 | `openrouter.api-key`가 있을 때만 등록 | 키 없이 로컬을 띄워도 나머지 기능이 다 돌아야 한다 |
 
 ## 도메인 모델
 
@@ -55,10 +62,25 @@ BMR을 계산할 수 없으므로 프로필 저장을 `INVALID_REQUEST`로 거�
 **목표치를 계산해서 저장하는 이유** — 몸무게를 갱신했을 때 과거 점수의 기준이 소급 변경되면
 안 된다. 점수는 `Meal`에 확정값으로 남고, 프로필은 현재 목표만 들고 있는다.
 
+**몸무게는 매일 갱신된다.** 그래서 `PUT /diet/profile/weight {weightKg}`를 따로 둔다. 키·활동량·
+목표는 몇 달에 한 번 바뀌는 값인데 이걸 매일 함께 보내게 하면 클라이언트가 낡은 값을 되돌려
+쓰는 사고가 난다. 이 엔드포인트는 `weightKg`만 갱신하고 목표 4개를 즉시 재계산한다.
+
+**몸무게 이력 테이블은 만들지 않는다.** 확정 시점의 몸무게·목표를 `Meal`에 스냅샷으로 남기므로
+"그날 몇 kg 기준으로 채점됐는지"는 이미 남는다. 식사를 기록하지 않은 날의 몸무게는 이 도메인이
+쓸 데가 없다 — 체중 추이 그래프가 필요해지면 그때 별도로 만든다.
+
 ### `Meal` — 확정된 끼니 1건
 
 `userId`, `date`, `mealType`, `status`, `score`, `totalKcal`,
-`carbsG`·`proteinG`·`fatG`, `feedback`, `photos`(OneToMany), `items`(OneToMany).
+`carbsG`·`proteinG`·`fatG`, `feedback`, `photos`(OneToMany), `items`(OneToMany),
+그리고 확정 시점 스냅샷 `weightKg`·`targetKcal`·`targetCarbsG`·`targetProteinG`·`targetFatG`.
+
+**스냅샷을 끼니마다 복사해 두는 이유** — 하루 점수는 목표 대비 총량이라 목표가 필요한데,
+조회 시점의 프로필을 쓰면 오늘 몸무게를 갱신했을 때 지난주 하루 점수가 함께 바뀐다. 그날
+첫 `Meal`의 스냅샷을 기준으로 삼으면 계산이 언제 돌아도 같은 값이 나온다. 끼니 점수는
+KDRIs 비율만 보므로 스냅샷과 무관하지만, 같은 행에 있어야 "이 끼니는 몇 kg 기준이었나"를
+설명할 수 있다.
 
 **`Meal`은 사용자가 확인·확정한 것만 존재한다.** 인식만 되고 확정되지 않은 결과는
 `MealAnalysis`에 있고 `Meal`이 되지 않는다. 덕분에 하루 집계·점수·음식 빈도 쿼리에
@@ -115,6 +137,13 @@ BMR을 계산할 수 없으므로 프로필 저장을 `INVALID_REQUEST`로 거�
 `code`, `name`, `normalizedName`, `servingSizeG`,
 `kcalPer100g`·`carbsPer100g`·`proteinPer100g`·`fatPer100g`.
 
+### 수치 타입
+
+영양소·몸무게·키는 `Double`, kcal 합계도 `Double`, 목표치와 점수만 `Int`다.
+AGENTS.md의 `BigDecimal` 관례는 **금액**에 대한 것이고, 영양소는 원본(식품DB 100g당 값)부터
+소수이며 점수 계산이 전부 실수 연산이라 `BigDecimal`로 들고 다니면 변환만 늘어난다.
+목표치(`targetKcal` 등)와 점수는 사용자에게 보이는 확정값이라 계산 끝에 반올림해 `Int`로 저장한다.
+
 ### enum 컬럼
 
 `MealType`(BREAKFAST/LUNCH/DINNER/SNACK), `AnalysisStatus`(PENDING/COMPLETED/FAILED),
@@ -144,6 +173,7 @@ enum(`MealType`에 야식 추가 등)이 있어 그냥 넘어갈 수 없고, ②
 ```
 GET    /diet/profile              내 프로필 + 계산된 목표
 PUT    /diet/profile              키·몸무게·활동량·목표 저장 → 서버가 목표 재계산, 204
+PUT    /diet/profile/weight       {weightKg}만 갱신 → 목표 재계산, 204 (매일 호출)
 
 POST   /diet/analyses             {fileIds} → 201 + Location, 사진별 인식은 @Async
 GET    /diet/analyses/{id}        상태 + 사진별 인식 결과 (확인 화면·폴링용)
@@ -327,6 +357,14 @@ mealScore = round(max(0, 100 − 2.0 × deviation))
 
 ### 하루 점수 — 칼로리 40% + 매크로 60%
 
+**목표(`targetKcal`·매크로 g)는 그날 첫 `Meal`의 스냅샷에서 읽는다.** 현재 프로필을 쓰면 오늘
+몸무게를 갱신했을 때 지난주 하루 점수가 같이 바뀐다. `Meal`이 0건인 날은 `dayScore`가 어차피
+`null`이라 목표가 필요 없어, 이 규칙에 예외가 생기지 않는다.
+
+"첫 `Meal`"은 `createdAt` 오름차순(동률이면 `id` 오름차순) 첫 건이다. 그 끼니를 지우면 다음
+끼니의 스냅샷이 기준이 되는데, **같은 날 안에서 몸무게를 두 번 재는 경우가 아니면 값이 같다.**
+이 좁은 창은 감수한다(AGENTS.md — 크래시 중간 상태 복구 없음과 같은 판단).
+
 칼로리 점수 — `totalKcal`은 그날 모든 `MealItem.kcal`의 합이다(끼니 점수와 달리 역산하지 않고
 식품DB의 kcal 값을 그대로 쓴다. 총량 평가에서는 실제 칼로리가 맞는 값이다):
 
@@ -485,6 +523,32 @@ Flash Lite로 충분하다.
 `OpenRouterClient`·`OpenRouterProperties`·`OpenRouterConfig`는 `HolidayApiClient` 패턴을
 복제한다. `webflux`와 `kotlinx-coroutines-reactor`가 이미 의존성에 있어 추가 라이브러리가 없다.
 
+### API 키가 없으면 빈을 등록하지 않는다
+
+로컬에서는 키 없이 앱을 띄운다. `OpenRouterClient`는 **키가 있을 때만** 빈으로 등록하고,
+소비자(`MealAnalyzer`·`DietFeedbackGenerator`)는 `OpenRouterClient?`로 받는다.
+
+```kotlin
+@ConditionalOnExpression("'\${openrouter.api-key:}'.trim().length() > 0")
+```
+
+**`@ConditionalOnProperty`는 여기서 동작하지 않는다.** `api-key: ${OPENROUTER_API_KEY:}`는 환경
+변수가 없어도 프로퍼티 자체는 빈 문자열로 *존재*하고, `havingValue`를 비워 둔 `ConditionalOnProperty`는
+"존재하고 `false`가 아니면 참"이라 항상 매칭된다. 값이 비었는지를 봐야 하므로 SpEL 조건을 쓴다.
+
+키가 없을 때의 동작:
+
+| 대상 | 동작 |
+| --- | --- |
+| `POST /diet/analyses`, `POST /diet/analyses/{id}/retry` | `DietErrorCode.LLM_UNAVAILABLE`(503)로 즉시 거절 |
+| 끼니 피드백 | 생성을 건너뛰고 `feedback = null`, `Meal.status = FAILED`. **점수는 살아 있다** |
+| 하루 피드백 | 생성을 건너뛰고 `dayScore`만 반환 |
+| 그 외 전부 | 정상 동작 — 프로필·확정·항목 수정·하루 집계·식품DB 검색은 LLM을 쓰지 않는다 |
+
+인식만 즉시 거절하는 이유는, 인식은 LLM 없이 대체 경로가 없어서 진행시켜 봐야 `FAILED`
+레코드만 쌓이기 때문이다. 반면 피드백은 없어도 점수라는 본체가 남는다 — 실제 호출 실패
+처리와 같은 경로다.
+
 **모델명은 환경변수로만 정한다.** 코드에 박지 않으면 한식 인식 정확도를 모델별로 비교하며
 교체할 수 있다. 실제 모델은 착수 시점에 후보를 비교해 결정하고, **`json_schema` strict를
 지원하는 모델인지 반드시 확인한다**(지원하지 않는 모델은 응답 파싱이 불안정해진다).
@@ -496,6 +560,7 @@ AI 서비스로 전송되므로 앱 개인정보 처리방침에도 명시가 �
 
 | 상황 | 처리 |
 | --- | --- |
+| `openrouter.api-key` 미설정 | 인식 요청은 `LLM_UNAVAILABLE`(503), 피드백은 건너뛴다 (위 「설정」 참조) |
 | 이미지 호출이 일부 사진에서 실패 | 그 사진만 `failed: true`, 나머지 결과로 확인 화면을 띄운다 |
 | 이미지 호출이 모든 사진에서 실패 | `MealAnalysis.status = FAILED`. **자동 재시도하지 않는다** |
 | 식품DB 매칭 실패 | LLM 추정값 사용 + `source = LLM_ESTIMATED` (iOS가 「추정」 배지 표시) |
@@ -516,7 +581,11 @@ kotest `BehaviorSpec` + mockk, 픽스처는 `testFixtures`의 `dummyUser()`·`wi
   탄 75·단 8·지 17 → 76점, `macroKcal 0` → null, 단백질 초과 무감점, 칼로리 0.9/1.1 경계,
   `scoreBasis`의 `status`·`penalty`가 실제 감점과 일치하는지
 - `NutritionProfileServiceTest` — 성별·활동량·목표별 BMR·목표 g 계산, `birthDate`/`gender`
-  결측 시 `INVALID_REQUEST`
+  결측 시 `INVALID_REQUEST`, 몸무게만 갱신했을 때 키·활동량·목표가 보존되고 목표 4개가 재계산되는지
+- `DailyDietServiceTest` — 하루 목표를 **현재 프로필이 아니라 그날 첫 `Meal` 스냅샷**에서 읽는지
+  (프로필 몸무게를 바꿔도 과거 `dayScore`가 그대로인지)
+- `OpenRouterConfigTest` — `ApplicationContextRunner`로 키가 빈 문자열이면 `OpenRouterClient`
+  빈이 없고, 값이 있으면 등록되는지. 키 없을 때 인식 요청이 `LLM_UNAVAILABLE`인지
 - `FoodMatcherTest` — 완전일치 / 유사도 / 실패 시 fallback 경로
 - `MealServiceTest` — 타인 `Meal` 접근 시 404, 항목 교체 시 영양소·점수 재계산,
   `FAILED`가 아닌 상태에서 retry 거절
