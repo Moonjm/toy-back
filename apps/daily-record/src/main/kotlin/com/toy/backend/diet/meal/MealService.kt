@@ -5,6 +5,7 @@ import com.toy.backend.common.exception.CustomException
 import com.toy.backend.diet.AnalysisStatus
 import com.toy.backend.diet.DietErrorCode
 import com.toy.backend.diet.analysis.AnalysisResult
+import com.toy.backend.diet.analysis.MealAnalysis
 import com.toy.backend.diet.analysis.MealAnalysisRepository
 import com.toy.backend.diet.analysis.MealAnalysisService
 import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
@@ -36,9 +37,11 @@ class MealService(
     private val dailyFeedbackRepository: DailyDietFeedbackRepository,
 ) {
     /**
-     * 확정. **점수는 동기, 피드백은 비동기다**(피드백 연결은 별도 단계에서 붙인다) —
-     * 점수는 룰 기반이라 즉시 나오고 사용자가 바로 봐야 하는 값이지만, 피드백은 LLM 텍스트 호출이라
-     * 수 초 걸린다. 확정 응답을 붙잡을 이유가 없다.
+     * 확정. **점수는 동기, 피드백은 비동기다** — 점수는 룰 기반이라 즉시 나오고 사용자가 바로
+     * 봐야 하는 값이지만, 피드백은 LLM 텍스트 호출이라 수 초 걸린다.
+     *
+     * `analysisId`가 없으면 **사진 없는 기록**이다. 분석 조회·`attachFile`·분석 삭제를 통째로
+     * 건너뛴다. 프로필은 사진 유무와 무관하게 필요하다 — 목표 스냅샷을 떠야 하기 때문이다.
      *
      * `attachFile`이 실패하면 트랜잭션 전체가 롤백된다. detach 전환 덕에 이미 attach된 사진의
      * S3 객체는 사라지지 않고, 커밋되지 않았으므로 `TEMP`로 남아 정리 배치가 수거한다.
@@ -51,10 +54,8 @@ class MealService(
         if (request.items.isEmpty()) throw CustomException(ErrorCode.INVALID_REQUEST, "항목이 비어 있습니다")
         val user = findUser(username)
         val profile = profileService.requireProfile(user)
-        val analysis = analysisService.requireOwned(user, request.analysisId)
-        if (analysis.status == AnalysisStatus.PENDING) {
-            throw CustomException(DietErrorCode.ANALYSIS_NOT_CONFIRMABLE, request.analysisId)
-        }
+        // 분석은 끼니를 만들기 전에 검증한다 — 확정할 수 없는 분석이면 아무것도 만들지 않고 끝낸다.
+        val analysis = request.analysisId?.let { confirmableAnalysis(user, it) }
 
         val meal =
             Meal(
@@ -69,18 +70,35 @@ class MealService(
                 targetFatG = profile.targetFatG,
             )
         applyItems(meal, request.items)
-
-        val photos = objectMapper.readValue<AnalysisResult>(analysis.resultJson).photos
-        photos.forEachIndexed { index, photo ->
-            fileService.attachFile(photo.fileId, MEAL_FILE_PREFIX)
-            meal.addPhoto(MealPhoto(meal = meal, fileId = photo.fileId, sortOrder = index))
-        }
+        analysis?.let { attachPhotos(meal, it) }
 
         val saved = repository.save(meal)
-        analysisRepository.delete(analysis)
+        analysis?.let { analysisRepository.delete(it) }
         // 커밋 뒤에 시작해야 비동기 스레드가 저장된 끼니를 볼 수 있다.
         runAfterCommit { feedbackGenerator.generateForMeal(saved.requiredId) }
         return saved.requiredId
+    }
+
+    private fun confirmableAnalysis(
+        user: User,
+        analysisId: Long,
+    ): MealAnalysis {
+        val analysis = analysisService.requireOwned(user, analysisId)
+        if (analysis.status == AnalysisStatus.PENDING) {
+            throw CustomException(DietErrorCode.ANALYSIS_NOT_CONFIRMABLE, analysisId)
+        }
+        return analysis
+    }
+
+    /** 인식이 실패한 사진도 붙인다 — 인식이 안 됐을 뿐 사용자가 찍은 그 끼니의 사진이다. */
+    private fun attachPhotos(
+        meal: Meal,
+        analysis: MealAnalysis,
+    ) {
+        objectMapper.readValue<AnalysisResult>(analysis.resultJson).photos.forEachIndexed { index, photo ->
+            fileService.attachFile(photo.fileId, MEAL_FILE_PREFIX)
+            meal.addPhoto(MealPhoto(meal = meal, fileId = photo.fileId, sortOrder = index))
+        }
     }
 
     fun get(

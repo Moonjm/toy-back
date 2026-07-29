@@ -198,5 +198,39 @@ class MealConfirmTest :
                     }
                 }
             }
+
+            When("사진 없이(analysisId 없이) 확정하면") {
+                every { repository.save(any()) } answers { (firstArg() as Meal).withId(51L) }
+
+                val id =
+                    service.confirm(
+                        "testuser",
+                        MealConfirmRequest(
+                            date = LocalDate.of(2026, 7, 29),
+                            mealType = MealType.SNACK,
+                            analysisId = null,
+                            items = userItems,
+                        ),
+                    )
+
+                Then("사진 첨부와 분석 삭제를 아예 하지 않는다") {
+                    id shouldBe 51L
+                    verify(exactly = 0) { fileService.attachFile(any(), any()) }
+                    verify(exactly = 0) { analysisRepository.delete(any()) }
+                    verify(exactly = 0) { analysisService.requireOwned(any(), any()) }
+                }
+
+                Then("사진 없는 끼니가 저장되고 점수·스냅샷은 그대로 계산된다") {
+                    verify {
+                        repository.save(
+                            match { it.photos.isEmpty() && it.score == 76 && it.targetKcal == 2509 },
+                        )
+                    }
+                }
+
+                Then("피드백 생성은 사진 유무와 무관하게 예약된다") {
+                    verify { feedbackGenerator.generateForMeal(51L) }
+                }
+            }
         }
     })

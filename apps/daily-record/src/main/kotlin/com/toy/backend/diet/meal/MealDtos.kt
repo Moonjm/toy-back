@@ -14,11 +14,14 @@ import java.time.LocalDate
 /**
  * 확정 요청에 `fileIds`를 다시 보내지 않는다 — `analysisId`로 서버가 사진 목록을 안다.
  * 클라이언트가 파일 목록을 재구성하다 인식에 쓴 사진과 어긋나는 경로를 없앤다.
+ *
+ * **`analysisId`가 없으면 사진 없이 기록한다.** 검색·직접 입력으로 만든 항목만 저장되고
+ * 사진 첨부를 건너뛴다 — 과자 하나를 적으려고 사진을 찍게 만들면 기록을 안 하게 된다.
  */
 data class MealConfirmRequest(
     val date: LocalDate,
     val mealType: MealType,
-    val analysisId: Long,
+    val analysisId: Long? = null,
     @field:NotEmpty @field:Valid
     val items: List<MealItemRequest>,
 )
