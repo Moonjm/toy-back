@@ -2,6 +2,7 @@ package com.toy.backend.diet.daily
 
 import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.exception.CustomException
+import com.toy.backend.diet.NutritionSource
 import com.toy.backend.diet.feedback.DailyDietFeedback
 import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
 import com.toy.backend.diet.feedback.DietFeedbackGenerator
@@ -58,6 +59,7 @@ class DailyDietService(
                 activeEnergyKcal = activeEnergyKcal,
                 meals = emptyList(),
                 nutrientLimits = emptyList(),
+                estimatedItemCount = 0,
             )
         }
 
@@ -84,6 +86,9 @@ class DailyDietService(
             // 그대로 실으면 저녁을 먼저 확정한 날 화면이 저녁→아침으로 나온다.
             meals = meals.sortedBy { it.mealType }.map { it.toResponse(urls) },
             nutrientLimits = nutrientLimits,
+            // 판정에 「이 숫자는 추정이 섞였다」를 달아 주는 값이다. 미매칭 항목도 이제 LLM 추정
+            // 수치를 갖지만, 그 오차까지 사라지는 것은 아니다.
+            estimatedItemCount = meals.sumOf { meal -> meal.items.count { it.source == NutritionSource.LLM_ESTIMATED } },
         )
     }
 

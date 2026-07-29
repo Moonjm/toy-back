@@ -16,12 +16,18 @@ data class RecognizedFood(
     val estimatedCarbsG: Double,
     val estimatedProteinG: Double,
     val estimatedFatG: Double,
+    val estimatedSugarG: Double,
+    val estimatedSodiumMg: Double,
+    val estimatedFiberG: Double,
 )
 
 /**
- * OpenRouter `chat/completions` 래퍼. **영양소 수치나 점수를 LLM에게 묻지 않는다** —
- * 같은 사진에서도 호출마다 값이 달라지기 때문이다. 여기서 얻는 것은 *음식 식별*과 *문장*뿐이고,
+ * OpenRouter `chat/completions` 래퍼. **매칭에 성공한 음식의 수치는 LLM에게 묻지 않는다** —
+ * 같은 사진에서도 호출마다 값이 달라지기 때문이다. 여기서 얻는 것은 *음식 식별*과 *문장*이고,
  * `estimated*` 값은 식품DB 매칭이 실패했을 때만 쓰는 fallback이다.
+ *
+ * 그 fallback에 당류·나트륨·식이섬유도 들어간다. 빼고 0으로 두면 「없음」이 아니라 **합계에
+ * 더해지는 틀린 숫자**가 되고, 그 오차가 늘 안전한 쪽으로 기울어 나트륨 경고만 안 뜬다.
  *
  * 호출 실패는 전부 null로 돌려준다 — 자동 재시도를 하지 않는다(실패 반복이 곧 비용 폭주 경로).
  */
@@ -123,6 +129,9 @@ class OpenRouterClient(
                 estimatedCarbsG = item.path("estimatedCarbsG").asDouble(),
                 estimatedProteinG = item.path("estimatedProteinG").asDouble(),
                 estimatedFatG = item.path("estimatedFatG").asDouble(),
+                estimatedSugarG = item.path("estimatedSugarG").asDouble(),
+                estimatedSodiumMg = item.path("estimatedSodiumMg").asDouble(),
+                estimatedFiberG = item.path("estimatedFiberG").asDouble(),
             )
         }
     }
@@ -130,7 +139,9 @@ class OpenRouterClient(
     companion object {
         private const val VISION_PROMPT =
             "사진 속 음식을 하나씩 식별해 주세요. 각 음식의 한국어 이름과, 1인분 대비 양(portion, 0.5는 반 인분), " +
-                "그리고 대략적인 영양소 추정치를 알려 주세요. 음식이 아닌 물건은 넣지 마세요."
+                "그리고 대략적인 영양소 추정치를 알려 주세요. 당류·나트륨·식이섬유도 그 음식의 통상적인 " +
+                "조리법을 기준으로 추정해 주세요(모르겠으면 0 대신 비슷한 음식의 값을 쓰세요). " +
+                "음식이 아닌 물건은 넣지 마세요."
 
         private val NUMBER = mapOf("type" to "number")
 
@@ -160,6 +171,9 @@ class OpenRouterClient(
                                                                 "estimatedCarbsG" to NUMBER,
                                                                 "estimatedProteinG" to NUMBER,
                                                                 "estimatedFatG" to NUMBER,
+                                                                "estimatedSugarG" to NUMBER,
+                                                                "estimatedSodiumMg" to NUMBER,
+                                                                "estimatedFiberG" to NUMBER,
                                                             ),
                                                         "required" to
                                                             listOf(
@@ -169,6 +183,11 @@ class OpenRouterClient(
                                                                 "estimatedCarbsG",
                                                                 "estimatedProteinG",
                                                                 "estimatedFatG",
+                                                                // strict: true라 properties에 있는 키가
+                                                                // required에 없으면 호출 자체가 거부된다.
+                                                                "estimatedSugarG",
+                                                                "estimatedSodiumMg",
+                                                                "estimatedFiberG",
                                                             ),
                                                         "additionalProperties" to false,
                                                     ),

@@ -44,13 +44,19 @@ class DailyDietServiceTest :
         val user = dietUser()
         val date = LocalDate.of(2026, 7, 29)
 
-        /** 확정 시점 스냅샷이 다른 두 끼니 — 하루 목표는 첫 끼니 것을 써야 한다. */
+        /**
+         * 확정 시점 스냅샷이 다른 두 끼니 — 하루 목표는 첫 끼니 것을 써야 한다.
+         *
+         * `sources`는 항목 하나당 하나다. 수량·영양소를 항목 수로 나눠 담으므로 **항목을 늘려도
+         * 끼니 합계는 그대로다** — 출처만 섞인 끼니를 만들 때 다른 단언이 흔들리지 않게 하기 위해서다.
+         */
         fun meal(
             id: Long,
             kcal: Double,
             targetKcal: Int,
             createdAt: LocalDateTime,
             updatedAt: LocalDateTime = createdAt,
+            sources: List<NutritionSource> = listOf(NutritionSource.DB_MATCHED),
         ): Meal {
             val meal =
                 Meal(
@@ -67,19 +73,19 @@ class DailyDietServiceTest :
                     targetFiberG = 30,
                 ).withId(id).withAudit(createdAt = createdAt, updatedAt = updatedAt)
             meal.replaceItems(
-                listOf(
+                sources.mapIndexed { index, source ->
                     MealItem(
                         meal = meal,
                         foodName = "제육볶음",
                         foodCode = "D1",
-                        quantityG = 200.0,
-                        kcal = kcal,
-                        carbsG = 137.5,
-                        proteinG = 37.5,
-                        fatG = 33.5,
-                        source = NutritionSource.DB_MATCHED,
-                    ).withId(id * 100),
-                ),
+                        quantityG = 200.0 / sources.size,
+                        kcal = kcal / sources.size,
+                        carbsG = 137.5 / sources.size,
+                        proteinG = 37.5 / sources.size,
+                        fatG = 33.5 / sources.size,
+                        source = source,
+                    ).withId(id * 100 + index)
+                },
             )
             return meal
         }
@@ -104,6 +110,38 @@ class DailyDietServiceTest :
                     response.scoreBasis shouldBe null
                     response.feedback shouldBe null
                     verify(exactly = 0) { feedbackGenerator.generateForDay(any(), any()) }
+                }
+
+                Then("추정 건수는 null이 아니라 0이다 — 앱이 분기를 만들지 않도록") {
+                    response.estimatedItemCount shouldBe 0
+                }
+            }
+        }
+
+        Given("판정에 섞인 추정값") {
+            When("식품DB에 매칭된 항목과 LLM 추정 항목이 섞여 있으면") {
+                val mixed =
+                    meal(
+                        1L,
+                        1000.0,
+                        targetKcal = 2000,
+                        createdAt = LocalDateTime.of(2026, 7, 29, 8, 0),
+                        sources = listOf(NutritionSource.DB_MATCHED, NutritionSource.LLM_ESTIMATED),
+                    )
+                val matched = meal(2L, 1000.0, targetKcal = 2000, createdAt = LocalDateTime.of(2026, 7, 29, 19, 0))
+                every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(mixed, matched)
+                every { feedbackRepository.findByUserAndDate(user, date) } returns null
+                every { feedbackRepository.save(any()) } answers { (firstArg() as DailyDietFeedback).withId(1L) }
+
+                val response = service.getDay("testuser", date)
+
+                Then("끼니를 가로질러 추정 건수를 센다 — 「기준 이하」가 오차 범위 안의 이야기임을 앱이 알아야 한다") {
+                    response.estimatedItemCount shouldBe 1
+                }
+
+                Then("점수와 판정은 추정 여부와 무관하게 그대로다 — 이 값은 표시용이지 감점 요인이 아니다") {
+                    response.dayScore shouldBe 100
+                    response.nutrientLimits.size shouldBe 3
                 }
             }
         }

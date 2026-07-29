@@ -24,7 +24,8 @@ data class AnalyzedItem(
     val carbsG: Double,
     val proteinG: Double,
     val fatG: Double,
-    // LLM 추정 항목은 0.0으로 둔다 — LLM에게 나트륨 등을 추정시키지 않는다는 이 설계의 전제 때문이다.
+    // 미매칭 항목도 LLM 추정값이 들어온다. 기본값 0.0은 직접 입력 경로를 위한 것이지 추정 항목을
+    // 위한 게 아니다 — 추정 항목을 0으로 두면 하루 나트륨 합계가 늘 실제보다 작아진다.
     val sugarG: Double = 0.0,
     val sodiumMg: Double = 0.0,
     val fiberG: Double = 0.0,

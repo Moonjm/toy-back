@@ -36,6 +36,9 @@ class MealAnalyzerTest :
                 estimatedCarbsG = 30.0,
                 estimatedProteinG = 25.0,
                 estimatedFatG = 18.0,
+                estimatedSugarG = 7.5,
+                estimatedSodiumMg = 880.0,
+                estimatedFiberG = 2.2,
             )
 
         fun pendingAnalysis(vararg fileIds: Long): MealAnalysis =
@@ -144,6 +147,12 @@ class MealAnalyzerTest :
                     item.foodCode shouldBe null
                     item.source shouldBe NutritionSource.LLM_ESTIMATED
                     item.quantityG shouldBe 100.0 // 기본 1인분 200g × 0.5
+                }
+
+                Then("주의 영양소도 LLM 추정값을 쓴다 — 0으로 두면 하루 나트륨이 늘 실제보다 낮게 잡힌다") {
+                    item.sugarG shouldBe 7.5
+                    item.sodiumMg shouldBe 880.0
+                    item.fiberG shouldBe 2.2
                 }
             }
         }

@@ -88,6 +88,10 @@ class MealAnalyzer(
                 carbsG = recognized.estimatedCarbsG,
                 proteinG = recognized.estimatedProteinG,
                 fatG = recognized.estimatedFatG,
+                // 0으로 두면 「없음」이 아니라 하루 합계를 낮추는 값이 되어, 나트륨 경고가 영영 안 뜬다.
+                sugarG = recognized.estimatedSugarG,
+                sodiumMg = recognized.estimatedSodiumMg,
+                fiberG = recognized.estimatedFiberG,
                 source = NutritionSource.LLM_ESTIMATED,
             )
         }
