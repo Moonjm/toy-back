@@ -16,14 +16,13 @@ class DailyActivityServiceTest :
         val repository = mockk<DailyActivityRepository>()
         val userRepository = mockk<UserRepository>()
         val dailyFeedbackRepository = mockk<DailyDietFeedbackRepository>()
-        val service = DailyActivityService(repository, userRepository, dailyFeedbackRepository)
+        val service = DailyActivityService(repository, userRepository)
 
         val user = dietUser()
         val date = LocalDate.of(2026, 7, 29)
 
         beforeContainer {
             every { userRepository.findByUsername("testuser") } returns user
-            every { dailyFeedbackRepository.deleteByUserAndDate(user, date) } returns 1L
         }
 
         Given("활동 에너지 upsert") {
@@ -49,8 +48,8 @@ class DailyActivityServiceTest :
                     verify(exactly = 0) { repository.save(any()) }
                 }
 
-                Then("하루 피드백 캐시를 지운다 — 활동 에너지는 프롬프트에 들어가므로 낡은 캐시를 남기면 안 된다") {
-                    verify { dailyFeedbackRepository.deleteByUserAndDate(user, date) }
+                Then("하루 피드백 캐시는 지우지 않는다 — 활동 에너지는 하루 종일 계속 갱신되는 값이라 지우면 화면을 열 때마다 LLM을 재호출하게 된다") {
+                    verify(exactly = 0) { dailyFeedbackRepository.deleteByUserAndDate(any(), any()) }
                 }
             }
         }

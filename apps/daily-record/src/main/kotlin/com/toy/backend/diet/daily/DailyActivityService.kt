@@ -2,7 +2,6 @@ package com.toy.backend.diet.daily
 
 import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.exception.CustomException
-import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
 import com.toy.backend.user.User
 import com.toy.backend.user.UserRepository
 import jakarta.validation.constraints.PositiveOrZero
@@ -20,11 +19,15 @@ data class ActivityUpsertRequest(
 class DailyActivityService(
     private val repository: DailyActivityRepository,
     private val userRepository: UserRepository,
-    private val dailyFeedbackRepository: DailyDietFeedbackRepository,
 ) {
     /**
-     * 활동 에너지는 하루 마감 피드백 프롬프트에 들어간다. 갱신했는데 캐시를 그대로 두면
-     * `Meal.updatedAt` 기반 무효화 조건이 이 변경을 못 잡아 낡은 활동 에너지로 만든 문장이 남는다.
+     * 활동 에너지 갱신은 하루 피드백 캐시를 지우지 않는다 — 의도적으로 두 가지를 지킨다.
+     * (1) `dayScore`에 활동 에너지가 들어가지 않으므로 캐시 재사용이 점수와 어긋날 일이 없다.
+     * (2) 활동 에너지는 하루 종일 계속 증가하는 값이라, iOS가 화면을 열 때마다
+     *     HealthKit 누적치로 이 API를 호출한다 — 여기서 캐시를 지우면 화면을 열 때마다
+     *     LLM을 다시 부르는 비용 폭증으로 이어진다(이 도메인은 자동 재시도를 넣지 않는 등
+     *     비용 경로를 의도적으로 막아 왔다). 피드백 문장이 조금 낡은 활동량을 말할 수 있는
+     *     정도는 감수한다 — 끼니가 바뀌면 `updatedAt` 조건으로 어차피 재생성된다.
      */
     @Transactional
     fun upsert(
@@ -32,7 +35,6 @@ class DailyActivityService(
         request: ActivityUpsertRequest,
     ) {
         val user = findUser(username)
-        dailyFeedbackRepository.deleteByUserAndDate(user, request.date)
         val existing = repository.findByUserAndDate(user, request.date)
         if (existing != null) {
             existing.updateEnergy(request.activeEnergyKcal)
