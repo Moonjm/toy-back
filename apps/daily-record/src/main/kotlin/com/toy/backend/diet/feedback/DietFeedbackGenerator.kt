@@ -2,15 +2,17 @@ package com.toy.backend.diet.feedback
 
 import com.toy.backend.diet.daily.DailyActivityRepository
 import com.toy.backend.diet.llm.OpenRouterClient
-import com.toy.backend.diet.meal.Meal
 import com.toy.backend.diet.meal.MealRepository
-import com.toy.backend.diet.profile.NutritionTargets
+import com.toy.backend.diet.score.DietScoreCalculator
+import com.toy.backend.user.UserRepository
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
+import java.time.LocalDateTime
 
 private val log = KotlinLogging.logger {}
 
@@ -22,6 +24,8 @@ private val log = KotlinLogging.logger {}
 class DietFeedbackGenerator(
     private val mealRepository: MealRepository,
     private val activityRepository: DailyActivityRepository,
+    private val feedbackRepository: DailyDietFeedbackRepository,
+    private val userRepository: UserRepository,
     @Autowired(required = false) private val client: OpenRouterClient?,
 ) {
     /**
@@ -47,18 +51,45 @@ class DietFeedbackGenerator(
         meal.markFeedback(openRouter.generateText(DietFeedbackPrompts.SYSTEM_PROMPT, prompt))
     }
 
-    /** 하루 마감 피드백. 호출자가 캐시를 관리하므로 여기서는 문장만 만들어 돌려준다(실패 시 null). */
+    /**
+     * 하루 마감 피드백. **호출자(`DailyDietService`)가 생성을 시작하기 전에 `DailyDietFeedback`
+     * 행을 `feedback = null`로 먼저 써 둔다** — "생성이 이미 걸렸다"는 표시라 폴링이 호출을 중복시키지
+     * 않는다. `@Async`라 엔티티가 아닌 id로 받아 사용자를 다시 조회한다.
+     *
+     * **생성이 실패하면(`generateText`가 null) 행을 그대로 둔다.** `feedback`은 null로 남고
+     * `generatedAt`은 마커를 쓴 시각이라, 끼니가 바뀌기 전까지(캐시 무효화 전까지) 재호출되지 않는다
+     * — 자동 재시도를 넣지 않는다는 설계와 맞물리는 지점이다.
+     */
+    @Async
+    @Transactional
     fun generateForDay(
-        meals: List<Meal>,
-        totals: NutritionTotals,
-        targets: NutritionTargets,
-        dayScore: Int,
-        activeEnergyKcal: Int?,
-    ): String? {
-        val openRouter = client ?: return null
-        return openRouter.generateText(
-            DietFeedbackPrompts.SYSTEM_PROMPT,
-            DietFeedbackPrompts.day(meals, totals, targets, dayScore, activeEnergyKcal),
-        )
+        userId: Long,
+        date: LocalDate,
+    ) {
+        val openRouter = client ?: return
+        val user = userRepository.findByIdOrNull(userId) ?: return log.warn { "피드백 대상 사용자가 없다: id=$userId" }
+        val meals = mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date)
+        // 마커를 쓴 뒤 끼니가 모두 삭제된 좁은 창 — 캐시 행은 delete 경로에서 이미 지워졌다.
+        if (meals.isEmpty()) return
+
+        val totals = meals.totals()
+        val targets = meals.first().targets()
+        val dayScore = DietScoreCalculator.scoreDay(totals.kcal, totals.carbsG, totals.proteinG, totals.fatG, targets).score
+        val activeEnergyKcal = activityRepository.findByUserAndDate(user, date)?.activeEnergyKcal
+
+        val generated =
+            openRouter.generateText(
+                DietFeedbackPrompts.SYSTEM_PROMPT,
+                DietFeedbackPrompts.day(meals, totals, targets, dayScore, activeEnergyKcal),
+            ) ?: return
+
+        val cached = feedbackRepository.findByUserAndDate(user, date)
+        if (cached == null) {
+            feedbackRepository.save(
+                DailyDietFeedback(user = user, date = date, dayScore = dayScore, feedback = generated, generatedAt = LocalDateTime.now()),
+            )
+        } else {
+            cached.update(dayScore, generated, LocalDateTime.now())
+        }
     }
 }

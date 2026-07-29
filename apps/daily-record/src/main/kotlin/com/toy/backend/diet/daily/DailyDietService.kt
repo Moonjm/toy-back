@@ -5,11 +5,11 @@ import com.toy.backend.common.exception.CustomException
 import com.toy.backend.diet.feedback.DailyDietFeedback
 import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
 import com.toy.backend.diet.feedback.DietFeedbackGenerator
-import com.toy.backend.diet.feedback.NutritionTotals
 import com.toy.backend.diet.feedback.totals
 import com.toy.backend.diet.meal.Meal
 import com.toy.backend.diet.meal.MealRepository
 import com.toy.backend.diet.meal.toResponse
+import com.toy.backend.diet.runAfterCommit
 import com.toy.backend.diet.score.DietScoreCalculator
 import com.toy.backend.file.FileService
 import com.toy.backend.user.User
@@ -29,7 +29,12 @@ class DailyDietService(
     private val feedbackGenerator: DietFeedbackGenerator,
     private val fileService: FileService,
 ) {
-    /** 조회지만 피드백을 lazy 생성·갱신하므로 쓰기 트랜잭션이다. 크론을 두지 않기 위한 선택이다. */
+    /**
+     * 조회지만 피드백 캐시를 lazy 생성·갱신하므로 쓰기 트랜잭션이다. **LLM은 여기서 부르지 않는다**
+     * — 캐시가 유효하면 그 문장을 싣고, 무효하거나 없으면 `feedback = null`로 즉시 응답한 뒤
+     * 뒤에서 생성을 시작한다. 동기로 부르면 OpenRouter가 죽어 있을 때 조회마다 호출이 나가고,
+     * 쓰기 트랜잭션이 요청 스레드를 최대 `openrouter.timeout-seconds`(60초)까지 붙잡는다.
+     */
     @Transactional
     fun getDay(
         username: String,
@@ -39,7 +44,6 @@ class DailyDietService(
         val meals = mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date)
         val activeEnergyKcal = activityRepository.findByUserAndDate(user, date)?.activeEnergyKcal
         val urls = fileService.getPresignedUrls(meals.flatMap { meal -> meal.photos.map { it.fileId } })
-        val totals = meals.totals()
 
         if (meals.isEmpty()) {
             return DayResponse(
@@ -56,11 +60,13 @@ class DailyDietService(
             )
         }
 
+        val totals = meals.totals()
         // 하루 목표는 **그날 첫 끼니의 스냅샷**에서 읽는다. 현재 프로필을 쓰면 오늘 몸무게를
-        // 갱신했을 때 지난주 하루 점수가 같이 바뀐다.
+        // 갱신했을 때 지난주 하루 점수가 같이 바뀐다. 목표를 뽑는 정렬(createdAt 오름차순)은
+        // 응답에 담을 끼니 순서와는 별개다 — 섞지 않는다.
         val targets = meals.first().targets()
         val dayScore = DietScoreCalculator.scoreDay(totals.kcal, totals.carbsG, totals.proteinG, totals.fatG, targets)
-        val feedback = resolveFeedback(user, date, meals, totals, dayScore.score, activeEnergyKcal)
+        val feedback = resolveFeedback(user, date, meals, dayScore.score)
 
         return DayResponse(
             date = date,
@@ -72,46 +78,39 @@ class DailyDietService(
             proteinG = totals.proteinG,
             fatG = totals.fatG,
             activeEnergyKcal = activeEnergyKcal,
-            meals = meals.map { it.toResponse(urls) },
+            // 응답에 담을 때만 끼니 순(아침→점심→저녁→간식)으로 정렬한다 — 확정한 순서(createdAt)
+            // 그대로 실으면 저녁을 먼저 확정한 날 화면이 저녁→아침으로 나온다.
+            meals = meals.sortedBy { it.mealType }.map { it.toResponse(urls) },
         )
     }
 
     /**
-     * 캐시가 없거나 `generatedAt`이 그날 `Meal`의 최종 `updatedAt`보다 이르면 버리고 재생성한다.
-     * 당일에는 식사가 계속 추가되므로 이 조건 없이 캐시하면 미완성 데이터로 만든 피드백이 고정된다.
+     * 캐시가 없거나 `generatedAt`이 그날 `Meal`의 최종 `updatedAt`보다 이르면 무효다. 이때
+     * **LLM을 부르지 않고** `feedback = null`인 마커 행을 먼저 upsert한다 — "생성이 이미 걸렸다"는
+     * 표시라, 사용자가 폴링하며 여러 번 조회해도 뒤에서 나가는 호출은 한 번뿐이다. 이 표시가 없으면
+     * 폴링이 곧 무제한 호출이 된다. 마커를 커밋한 뒤에 `runAfterCommit`으로 실제 생성을 트리거한다
+     * — 커밋 전에 출발하면 비동기 스레드가 방금 쓴 행을 못 본다.
      */
     private fun resolveFeedback(
         user: User,
         date: LocalDate,
         meals: List<Meal>,
-        totals: NutritionTotals,
         dayScore: Int,
-        activeEnergyKcal: Int?,
     ): String? {
         val cached = feedbackRepository.findByUserAndDate(user, date)
         val latestMealUpdate = meals.maxOf { it.updatedAt }
         if (cached != null && !cached.generatedAt.isBefore(latestMealUpdate)) return cached.feedback
 
-        val generated =
-            feedbackGenerator.generateForDay(meals, totals, meals.first().targets(), dayScore, activeEnergyKcal)
-        // 실패는 캐시하지 않는다 — 캐시해 버리면 끼니가 바뀌기 전까지 영영 재시도되지 않는다.
-        if (generated == null) return null
-
         val now = LocalDateTime.now()
         if (cached == null) {
             feedbackRepository.save(
-                DailyDietFeedback(
-                    user = user,
-                    date = date,
-                    dayScore = dayScore,
-                    feedback = generated,
-                    generatedAt = now,
-                ),
+                DailyDietFeedback(user = user, date = date, dayScore = dayScore, feedback = null, generatedAt = now),
             )
         } else {
-            cached.update(dayScore, generated, now)
+            cached.update(dayScore, null, now)
         }
-        return generated
+        runAfterCommit { feedbackGenerator.generateForDay(user.requiredId, date) }
+        return null
     }
 
     private fun findUser(username: String): User =

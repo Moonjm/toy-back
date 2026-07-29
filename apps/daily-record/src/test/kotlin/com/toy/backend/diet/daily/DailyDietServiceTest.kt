@@ -14,8 +14,10 @@ import com.toy.backend.diet.meal.MealType
 import com.toy.backend.file.FileService
 import com.toy.backend.user.UserRepository
 import io.kotest.core.spec.style.BehaviorSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.every
+import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.verify
 import java.time.LocalDate
@@ -84,6 +86,8 @@ class DailyDietServiceTest :
             every { userRepository.findByUsername("testuser") } returns user
             every { activityRepository.findByUserAndDate(user, date) } returns null
             every { fileService.getPresignedUrls(any()) } returns emptyMap()
+            // 트랜잭션 없는 단위 테스트에서는 runAfterCommit이 즉시 실행한다 — MealServiceTest와 같은 전제.
+            justRun { feedbackGenerator.generateForDay(any(), any()) }
         }
 
         Given("그날 끼니가 없으면") {
@@ -96,7 +100,7 @@ class DailyDietServiceTest :
                     response.dayScore shouldBe null
                     response.scoreBasis shouldBe null
                     response.feedback shouldBe null
-                    verify(exactly = 0) { feedbackGenerator.generateForDay(any(), any(), any(), any(), any()) }
+                    verify(exactly = 0) { feedbackGenerator.generateForDay(any(), any()) }
                 }
             }
         }
@@ -107,15 +111,84 @@ class DailyDietServiceTest :
                 val second = meal(2L, 1000.0, targetKcal = 1500, createdAt = LocalDateTime.of(2026, 7, 29, 19, 0))
                 every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(first, second)
                 every { feedbackRepository.findByUserAndDate(user, date) } returns null
-                every { feedbackGenerator.generateForDay(any(), any(), any(), any(), any()) } returns "오늘 잘 드셨어요."
                 every { feedbackRepository.save(any()) } answers { (firstArg() as DailyDietFeedback).withId(1L) }
 
                 val response = service.getDay("testuser", date)
 
                 Then("첫 끼니의 스냅샷 목표로 계산한다 — 몸무게를 갱신해도 과거 점수가 흔들리지 않는다") {
-                    response.scoreBasis!!.calorie.targetKcal shouldBe 2000
-                    response.scoreBasis!!.calorie.intakeKcal shouldBe 2000.0
+                    val basis = response.scoreBasis
+                    basis.shouldNotBeNull()
+                    basis.calorie.targetKcal shouldBe 2000
+                    basis.calorie.intakeKcal shouldBe 2000.0
                     response.dayScore shouldBe 100
+                }
+            }
+        }
+
+        Given("응답에 담기는 끼니 순서") {
+            When("저녁을 먼저, 아침을 나중에 확정했으면") {
+                val dinner =
+                    Meal(
+                        user = user,
+                        date = date,
+                        mealType = MealType.DINNER,
+                        weightKg = 70.0,
+                        targetKcal = 2000,
+                        targetCarbsG = 275,
+                        targetProteinG = 75,
+                        targetFatG = 67,
+                    ).withId(5L).withAudit(createdAt = LocalDateTime.of(2026, 7, 29, 8, 0))
+                dinner.replaceItems(
+                    listOf(
+                        MealItem(
+                            meal = dinner,
+                            foodName = "저녁 음식",
+                            foodCode = null,
+                            quantityG = 100.0,
+                            kcal = 100.0,
+                            carbsG = 10.0,
+                            proteinG = 5.0,
+                            fatG = 3.0,
+                            source = NutritionSource.DB_MATCHED,
+                        ).withId(500L),
+                    ),
+                )
+                val breakfast =
+                    Meal(
+                        user = user,
+                        date = date,
+                        mealType = MealType.BREAKFAST,
+                        weightKg = 70.0,
+                        targetKcal = 2000,
+                        targetCarbsG = 275,
+                        targetProteinG = 75,
+                        targetFatG = 67,
+                    ).withId(6L).withAudit(createdAt = LocalDateTime.of(2026, 7, 29, 19, 0))
+                breakfast.replaceItems(
+                    listOf(
+                        MealItem(
+                            meal = breakfast,
+                            foodName = "아침 음식",
+                            foodCode = null,
+                            quantityG = 100.0,
+                            kcal = 100.0,
+                            carbsG = 10.0,
+                            proteinG = 5.0,
+                            fatG = 3.0,
+                            source = NutritionSource.DB_MATCHED,
+                        ).withId(600L),
+                    ),
+                )
+                // 리포지토리 정렬(createdAt 오름차순)은 목표 스냅샷을 뽑기 위한 것이라 그대로 둔다 —
+                // 여기서는 저녁이 먼저 확정됐다는 뜻으로 저녁을 앞세워 반환한다.
+                every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(dinner, breakfast)
+                every { feedbackRepository.findByUserAndDate(user, date) } returns null
+                every { feedbackRepository.save(any()) } answers { (firstArg() as DailyDietFeedback).withId(1L) }
+
+                val response = service.getDay("testuser", date)
+
+                Then("응답에는 끼니 순(아침→저녁)으로 담긴다 — 목표는 여전히 첫 확정 건(저녁)의 스냅샷이다") {
+                    response.meals.map { it.mealType } shouldBe listOf(MealType.BREAKFAST, MealType.DINNER)
                 }
             }
         }
@@ -124,7 +197,25 @@ class DailyDietServiceTest :
             // 끼니 하나뿐이라 매크로는 목표의 절반이다 → 칼로리 100, 매크로 평균 50 → 0.4×100 + 0.6×50 = 70점
             val single = meal(3L, 2000.0, targetKcal = 2000, createdAt = LocalDateTime.of(2026, 7, 29, 8, 0))
 
-            When("캐시가 끼니 수정보다 나중에 만들어졌으면") {
+            When("캐시가 없으면") {
+                every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(single)
+                every { feedbackRepository.findByUserAndDate(user, date) } returns null
+                every { feedbackRepository.save(any()) } answers { (firstArg() as DailyDietFeedback).withId(1L) }
+
+                val response = service.getDay("testuser", date)
+
+                Then("LLM을 동기로 부르지 않고 feedback=null을 즉시 반환한다") {
+                    response.dayScore shouldBe 70
+                    response.feedback shouldBe null
+                }
+
+                Then("마커 행을 먼저 저장한 뒤 비동기 생성을 트리거한다 — 폴링이 호출을 중복시키지 않기 위한 표시다") {
+                    verify { feedbackRepository.save(match { it.dayScore == 70 && it.feedback == null }) }
+                    verify { feedbackGenerator.generateForDay(user.requiredId, date) }
+                }
+            }
+
+            When("캐시가 끼니 수정보다 나중에 만들어졌으면(유효)") {
                 every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(single)
                 every { feedbackRepository.findByUserAndDate(user, date) } returns
                     DailyDietFeedback(
@@ -137,13 +228,14 @@ class DailyDietServiceTest :
 
                 val response = service.getDay("testuser", date)
 
-                Then("LLM을 다시 부르지 않는다") {
+                Then("캐시된 문장을 그대로 쓰고 트리거는 걸지 않는다") {
                     response.feedback shouldBe "캐시된 피드백"
-                    verify(exactly = 0) { feedbackGenerator.generateForDay(any(), any(), any(), any(), any()) }
+                    verify(exactly = 0) { feedbackGenerator.generateForDay(any(), any()) }
+                    verify(exactly = 0) { feedbackRepository.save(any()) }
                 }
             }
 
-            When("끼니가 캐시보다 나중에 수정됐으면") {
+            When("끼니가 캐시보다 나중에 수정됐으면(무효)") {
                 val edited =
                     meal(
                         4L,
@@ -162,28 +254,14 @@ class DailyDietServiceTest :
                     ).withId(1L)
                 every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(edited)
                 every { feedbackRepository.findByUserAndDate(user, date) } returns cached
-                every { feedbackGenerator.generateForDay(any(), any(), any(), any(), any()) } returns "새 피드백"
 
                 val response = service.getDay("testuser", date)
 
-                Then("버리고 다시 만든다 — 미완성 데이터로 만든 피드백이 고정되면 안 된다") {
-                    response.feedback shouldBe "새 피드백"
-                    cached.feedback shouldBe "새 피드백"
-                    cached.dayScore shouldBe 70
-                }
-            }
-
-            When("피드백 생성이 실패하면") {
-                every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(single)
-                every { feedbackRepository.findByUserAndDate(user, date) } returns null
-                every { feedbackGenerator.generateForDay(any(), any(), any(), any(), any()) } returns null
-
-                val response = service.getDay("testuser", date)
-
-                Then("dayScore만 반환하고 실패를 캐시하지 않는다 — 다음 조회에서 다시 시도한다") {
-                    response.dayScore shouldBe 70
+                Then("낡은 문장 대신 feedback=null을 반환하고 마커로 갱신한 뒤 트리거한다") {
                     response.feedback shouldBe null
-                    verify(exactly = 0) { feedbackRepository.save(any()) }
+                    cached.feedback shouldBe null
+                    cached.dayScore shouldBe 70
+                    verify { feedbackGenerator.generateForDay(user.requiredId, date) }
                 }
             }
         }
