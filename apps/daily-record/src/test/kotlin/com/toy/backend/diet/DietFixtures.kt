@@ -4,6 +4,9 @@ import com.toy.backend.common.entity.withId
 import com.toy.backend.diet.food.Food
 import com.toy.backend.diet.food.FoodDataset
 import com.toy.backend.diet.food.FoodNameNormalizer
+import com.toy.backend.diet.meal.Meal
+import com.toy.backend.diet.meal.MealItem
+import com.toy.backend.diet.meal.MealType
 import com.toy.backend.diet.profile.ActivityLevel
 import com.toy.backend.diet.profile.DietGoal
 import com.toy.backend.diet.profile.NutritionProfile
@@ -66,4 +69,50 @@ fun dummyFood(
         carbsPer100g = carbsPer100g,
         proteinPer100g = proteinPer100g,
         fatPer100g = fatPer100g,
+    ).withId(id)
+
+fun dummyMeal(
+    user: User = dietUser(),
+    date: LocalDate = LocalDate.of(2026, 7, 29),
+    mealType: MealType = MealType.LUNCH,
+    weightKg: Double = 70.0,
+    targetKcal: Int = 2509,
+    targetCarbsG: Int = 345,
+    targetProteinG: Int = 94,
+    targetFatG: Int = 84,
+    id: Long = 1L,
+): Meal =
+    Meal(
+        user = user,
+        date = date,
+        mealType = mealType,
+        weightKg = weightKg,
+        targetKcal = targetKcal,
+        targetCarbsG = targetCarbsG,
+        targetProteinG = targetProteinG,
+        targetFatG = targetFatG,
+    ).withId(id)
+
+fun dummyMealItem(
+    meal: Meal = dummyMeal(),
+    foodName: String = "제육볶음",
+    foodCode: String? = "D000",
+    quantityG: Double = 200.0,
+    kcal: Double = 360.0,
+    carbsG: Double = 24.0,
+    proteinG: Double = 30.0,
+    fatG: Double = 16.0,
+    source: NutritionSource = NutritionSource.DB_MATCHED,
+    id: Long = 1L,
+): MealItem =
+    MealItem(
+        meal = meal,
+        foodName = foodName,
+        foodCode = foodCode,
+        quantityG = quantityG,
+        kcal = kcal,
+        carbsG = carbsG,
+        proteinG = proteinG,
+        fatG = fatG,
+        source = source,
     ).withId(id)
