@@ -5894,3 +5894,426 @@ OPENROUTER_API_KEY=<실제 키> ./gradlew :daily-record:bootRun
 - **타입 일관성** — `NutritionTargets`는 Task 1에서 정의해 Task 3·9·11·13이 그대로 쓴다. `AnalysisStatus`는 `MealAnalysis`(인식)와 `Meal`(피드백) 양쪽에서 같은 이름으로 쓴다. `applyItems`는 Task 9에서 정의해 Task 12가 재사용한다.
 - **의도적으로 뒤로 미룬 연결** — `MealService`의 피드백 트리거는 Task 11에서 붙인다(Task 9는 점수까지). 각 Task가 그 시점에 독립적으로 테스트 가능하도록 나눈 결과이며, Task 11 Step 6~7에 수정 지점을 명시했다.
 - **남은 판단 지점** — Task 5 Step 7의 `servingSizeG` 결측률. 실제 CSV를 받아보기 전에는 `DEFAULT_SERVING_SIZE_G = 200.0`이 타당한지 알 수 없다(설계 문서 리스크 1). 결측률이 높으면 그 자리에서 값을 정하고 문서에 남긴다.
+  - **2026-07-29 해소** — 실측 결과 `1인(회)분량 참고량`이 전 행 비어 있어 `식품중량`으로 폴백했고, 6,090행 중 6,078행이 채워졌다. 기본값에 기대는 행은 12개뿐이다.
+
+---
+
+### Task 15: 가공식품DB 추가와 데이터셋 분리 매칭
+
+> **실행 순서 주의** — 번호는 15지만 **Task 6보다 먼저 실행한다.** Task 7(`MealAnalyzer`)이 `FoodMatcher`를 소비하므로, 매칭 규칙 변경은 그전에 끝나야 한다. 번호를 15로 둔 것은 `task-brief` 스크립트가 `Task 5B` 같은 표기를 Task 5로 오인하기 때문이다.
+
+설계 개정(2026-07-29)에 따라 `가공식품` 298,288행을 함께 적재하되, **두 데이터셋을 같은 규칙으로 찾지 않는다.** 브랜드 행 30만 개를 부분일치 대상에 넣으면 "라면"·"우유" 같은 일반어가 수천 건을 긁어와 지금 잘 되는 매칭까지 망가진다.
+
+**Files:**
+- Modify: `apps/daily-record/src/main/kotlin/com/toy/backend/diet/food/Food.kt` (`FoodDataset` enum + `dataset` 컬럼 + 복합 인덱스)
+- Modify: `apps/daily-record/src/main/kotlin/com/toy/backend/diet/food/FoodRepository.kt`
+- Modify: `apps/daily-record/src/main/kotlin/com/toy/backend/diet/food/FoodMatcher.kt`
+- Modify: `apps/daily-record/src/main/kotlin/com/toy/backend/diet/food/FoodDtos.kt`
+- Modify: `apps/daily-record/src/main/kotlin/com/toy/backend/diet/food/FoodCsvParser.kt` (지연 평가 + dataset)
+- Modify: `apps/daily-record/src/main/kotlin/com/toy/backend/diet/food/FoodSeeder.kt` (두 파일 적재 + JDBC 배치)
+- Create: `apps/daily-record/src/main/resources/food/processed-food-nutrition.csv` (스크립트 산출물)
+- Test: `apps/daily-record/src/test/kotlin/com/toy/backend/diet/food/FoodMatcherTest.kt` (매칭 순서 케이스 추가)
+- Test: `apps/daily-record/src/test/kotlin/com/toy/backend/diet/food/FoodCsvParserTest.kt` (`dataset` 인자·지연 평가 반영)
+- Modify: `apps/daily-record/src/test/kotlin/com/toy/backend/diet/DietFixtures.kt` (`dummyFood`에 `dataset` 인자)
+
+**Interfaces:**
+- Consumes: Task 4·5가 만든 `Food`·`FoodNameNormalizer`·`FoodRepository`·`FoodMatcher`·`FoodCsvParser`·`FoodSeeder`
+- Produces:
+  - `enum class FoodDataset { DISH, PROCESSED }`
+  - `Food.dataset: FoodDataset`
+  - `FoodRepository.findFirstByDatasetAndNormalizedName(FoodDataset, String): Food?`
+  - `FoodRepository.searchByDatasetAndNormalizedName(FoodDataset, String, Pageable): List<Food>`
+  - `FoodCsvParser.parse(lines: Sequence<String>, dataset: FoodDataset): Sequence<Food>` — **반환 타입이 List에서 Sequence로 바뀐다**
+  - `FoodResponse.dataset`
+
+- [ ] **Step 1: 실패 테스트 작성 — 매칭 순서**
+
+`FoodMatcherTest.kt`의 `Given("음식명 매칭")` 블록을 아래로 **교체**한다(기존 정규화·영양소 환산 블록은 그대로 둔다):
+
+```kotlin
+        Given("음식명 매칭 — 데이터셋 우선순위") {
+            When("음식DB에 완전일치가 있으면") {
+                val dish = dummyFood(name = "김치찌개", normalizedName = "김치찌개", dataset = FoodDataset.DISH)
+                every { repository.findFirstByDatasetAndNormalizedName(FoodDataset.DISH, "김치찌개") } returns dish
+
+                val matched = matcher.match("김치 찌개")
+
+                Then("거기서 끝낸다 — 가공식품도, 부분일치도 보지 않는다") {
+                    matched shouldBe dish
+                    verify(exactly = 0) { repository.findFirstByDatasetAndNormalizedName(FoodDataset.PROCESSED, any()) }
+                    verify(exactly = 0) { repository.searchByDatasetAndNormalizedName(any(), any(), any()) }
+                }
+            }
+
+            When("음식DB엔 없고 가공식품에 완전일치가 있으면") {
+                val snack = dummyFood(code = "P001", name = "새우깡", normalizedName = "새우깡", dataset = FoodDataset.PROCESSED, id = 2L)
+                every { repository.findFirstByDatasetAndNormalizedName(FoodDataset.DISH, "새우깡") } returns null
+                every { repository.findFirstByDatasetAndNormalizedName(FoodDataset.PROCESSED, "새우깡") } returns snack
+
+                val matched = matcher.match("새우깡")
+
+                Then("포장 사진에서 읽힌 브랜드명이 여기서 걸린다") {
+                    matched shouldBe snack
+                }
+
+                Then("가공식품은 부분일치 대상이 아니다") {
+                    verify(exactly = 0) { repository.searchByDatasetAndNormalizedName(FoodDataset.PROCESSED, any(), any()) }
+                }
+            }
+
+            When("완전일치가 어느 쪽에도 없으면") {
+                val similar = dummyFood(name = "제육볶음", normalizedName = "제육볶음", dataset = FoodDataset.DISH, id = 3L)
+                every { repository.findFirstByDatasetAndNormalizedName(FoodDataset.DISH, "돼지고기제육볶음") } returns null
+                every { repository.findFirstByDatasetAndNormalizedName(FoodDataset.PROCESSED, "돼지고기제육볶음") } returns null
+                every {
+                    repository.searchByDatasetAndNormalizedName(FoodDataset.DISH, "돼지고기제육볶음", any<Pageable>())
+                } returns listOf(similar)
+
+                val matched = matcher.match("돼지고기 제육볶음")
+
+                Then("음식DB만 부분일치로 훑는다 — 브랜드 30만 행을 긁으면 매칭이 망가진다") {
+                    matched shouldBe similar
+                }
+            }
+
+            When("어디에도 없으면") {
+                every { repository.findFirstByDatasetAndNormalizedName(any(), "없는음식") } returns null
+                every { repository.searchByDatasetAndNormalizedName(FoodDataset.DISH, "없는음식", any<Pageable>()) } returns emptyList()
+
+                Then("null — 호출자가 LLM 추정값으로 fallback 한다") {
+                    matcher.match("없는 음식") shouldBe null
+                }
+            }
+
+            When("정규화하면 빈 문자열이 되는 이름이면") {
+                Then("조회하지 않고 null") {
+                    matcher.match("!!!") shouldBe null
+                    verify(exactly = 0) { repository.findFirstByDatasetAndNormalizedName(any(), "") }
+                }
+            }
+        }
+
+        Given("사용자 검색 — GET /diet/foods") {
+            When("검색어를 넣으면") {
+                every { repository.searchByNormalizedName("새우깡", any<Pageable>()) } returns
+                    listOf(dummyFood(code = "P001", name = "새우깡", dataset = FoodDataset.PROCESSED, id = 4L))
+
+                val found = matcher.search("새우깡", size = 20)
+
+                Then("두 데이터셋을 모두 뒤진다 — 사람이 목록에서 직접 고르는 화면이다") {
+                    found.size shouldBe 1
+                    found[0].dataset shouldBe FoodDataset.PROCESSED
+                }
+            }
+        }
+```
+
+파일 상단 import에 `com.toy.backend.diet.food.FoodDataset`는 같은 패키지라 필요 없고, `org.springframework.data.domain.Pageable`은 이미 있다.
+
+`DietFixtures.kt`의 `dummyFood`에 인자를 추가한다(기존 인자 순서·기본값은 유지):
+
+```kotlin
+    dataset: FoodDataset = FoodDataset.DISH,
+```
+
+그리고 `Food(...)` 생성자 호출에 `dataset = dataset,`를 넣는다.
+
+- [ ] **Step 2: 테스트 실행 — 실패 확인**
+
+Run: `./gradlew :daily-record:test --tests "*FoodMatcherTest*"`
+Expected: FAIL — `Unresolved reference: FoodDataset`
+
+- [ ] **Step 3: 엔티티에 dataset 추가**
+
+`Food.kt`의 `@Table` 애너테이션과 생성자를 고친다:
+
+```kotlin
+/** 적재 출처. 매칭 규칙을 가르는 축이라 값이 늘어날 일이 거의 없다. */
+enum class FoodDataset { DISH, PROCESSED }
+
+@Entity
+@Table(
+    name = "foods",
+    indexes = [
+        // 완전일치는 (dataset, normalized_name) 인덱스 조회라 30만 행이어도 빠르다.
+        // 부분일치(LIKE '%x%')는 인덱스를 못 쓰므로 DISH 6천 행으로만 제한해서 감당한다.
+        Index(name = "idx_foods_dataset_normalized_name", columnList = "dataset, normalized_name"),
+    ],
+)
+class Food(
+    @Column(nullable = false, length = 30, unique = true)
+    var code: String,
+    @Column(nullable = false, length = 200)
+    var name: String,
+    @Column(name = "normalized_name", nullable = false, length = 200)
+    var normalizedName: String,
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, columnDefinition = "varchar(20)")
+    var dataset: FoodDataset,
+    @Column(name = "serving_size_g", nullable = false)
+    var servingSizeG: Double,
+    // ... 이하 영양소 컬럼은 그대로
+```
+
+import에 `jakarta.persistence.EnumType`·`jakarta.persistence.Enumerated`를 추가한다.
+
+- [ ] **Step 4: 리포지토리에 데이터셋 조건 추가**
+
+`FoodRepository.kt`를 아래로 만든다(기존 `findFirstByNormalizedName`은 **지우고**, `searchByNormalizedName`은 사용자 검색용으로 남긴다):
+
+```kotlin
+package com.toy.backend.diet.food
+
+import org.springframework.data.domain.Pageable
+import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
+
+interface FoodRepository : JpaRepository<Food, Long> {
+    /** 완전일치는 (dataset, normalized_name) 인덱스를 탄다. 가공식품 30만 행이어도 비용이 일정하다. */
+    fun findFirstByDatasetAndNormalizedName(
+        dataset: FoodDataset,
+        normalizedName: String,
+    ): Food?
+
+    /**
+     * 부분일치 후보를 **이름이 짧은 순**으로 준다. 인식 파이프라인은 `DISH`로만 부른다 —
+     * 브랜드명 위주인 `PROCESSED`를 여기에 넣으면 "라면" 한 마디가 수천 건을 긁어오고,
+     * 그중 가장 짧은 것이 사용자가 먹은 것과 무관한 제품이 된다.
+     */
+    @Query(
+        """
+        select f from Food f
+        where f.dataset = :dataset
+          and f.normalizedName like concat('%', :normalized, '%')
+        order by length(f.normalizedName) asc, f.id asc
+        """,
+    )
+    fun searchByDatasetAndNormalizedName(
+        @Param("dataset") dataset: FoodDataset,
+        @Param("normalized") normalized: String,
+        pageable: Pageable,
+    ): List<Food>
+
+    /** 사용자가 직접 고르는 화면(`GET /diet/foods`)용 — 두 데이터셋을 모두 뒤진다. */
+    @Query(
+        """
+        select f from Food f
+        where f.normalizedName like concat('%', :normalized, '%')
+        order by length(f.normalizedName) asc, f.id asc
+        """,
+    )
+    fun searchByNormalizedName(
+        @Param("normalized") normalized: String,
+        pageable: Pageable,
+    ): List<Food>
+}
+```
+
+- [ ] **Step 5: 매처의 탐색 순서 구현**
+
+`FoodMatcher.match`를 아래로 교체한다(`search`는 그대로 둔다):
+
+```kotlin
+    /**
+     * 1) 음식 완전일치 → 2) 가공식품 완전일치 → 3) 음식 부분일치(가장 짧은 이름) → 4) null.
+     *
+     * **음식을 먼저 보는 이유**는 이름이 겹칠 때(배추김치·스파게티 등 2,818건) 조리된 음식 쪽이
+     * 사진에 찍힌 것에 가깝기 때문이다. 순서가 곧 우선순위다.
+     */
+    fun match(foodName: String): Food? {
+        val normalized = FoodNameNormalizer.normalize(foodName)
+        if (normalized.isBlank()) return null
+        return repository.findFirstByDatasetAndNormalizedName(FoodDataset.DISH, normalized)
+            ?: repository.findFirstByDatasetAndNormalizedName(FoodDataset.PROCESSED, normalized)
+            ?: repository
+                .searchByDatasetAndNormalizedName(FoodDataset.DISH, normalized, PageRequest.of(0, 1))
+                .firstOrNull()
+    }
+```
+
+- [ ] **Step 6: 테스트 실행 — 통과 확인**
+
+Run: `./gradlew :daily-record:test --tests "*FoodMatcherTest*"`
+Expected: PASS
+
+- [ ] **Step 7: 응답에 dataset 노출**
+
+`FoodDtos.kt`의 `FoodResponse`에 필드를 추가하고 `toResponse()`에 매핑한다:
+
+```kotlin
+data class FoodResponse(
+    val code: String,
+    val name: String,
+    /** 앱이 「가공식품」임을 표시할 수 있게 함께 내려준다. */
+    val dataset: FoodDataset,
+    val servingSizeG: Double,
+    val kcalPer100g: Double,
+    val carbsPer100g: Double,
+    val proteinPer100g: Double,
+    val fatPer100g: Double,
+)
+```
+
+`toResponse()`에 `dataset = dataset,`를 넣는다.
+
+- [ ] **Step 8: 파서를 지연 평가로 바꾸고 dataset을 받게 한다**
+
+30만 행을 `List`로 만들면 라즈베리파이에서 힙이 터진다. 반환 타입을 `Sequence`로 바꾼다.
+
+`FoodCsvParser.kt`의 `parse`와 `parseLine` 시그니처를 고친다:
+
+```kotlin
+    /**
+     * 지연 평가로 돌려준다 — 가공식품 30만 행을 List로 만들면 라즈베리파이 힙이 감당하지 못한다.
+     * 호출자가 청크 단위로 소비하는 것을 전제하며, **스트림이 열려 있는 동안 소비해야 한다.**
+     */
+    fun parse(
+        lines: Sequence<String>,
+        dataset: FoodDataset,
+    ): Sequence<Food> =
+        lines
+            .drop(1) // 헤더
+            .mapNotNull { parseLine(it, dataset) }
+
+    private fun parseLine(
+        line: String,
+        dataset: FoodDataset,
+    ): Food? {
+```
+
+`parseLine` 안의 `Food(...)` 생성에 `dataset = dataset,`를 `normalizedName` 다음 줄에 넣는다.
+버린 행 수를 세던 로직은 **제거한다** — 지연 평가라 집계 시점이 모호해지고, 어차피 버리는 판단은
+`scripts/build-food-csv.py`가 빌드 시점에 보고한다(그쪽이 조치 가능한 자리다).
+
+`FoodCsvParserTest.kt`는 각 호출을 `FoodCsvParser.parse(sequenceOf(...), FoodDataset.DISH).toList()`로 고치고, `foods[0].dataset shouldBe FoodDataset.DISH` 한 줄을 첫 케이스에 추가한다.
+
+- [ ] **Step 9: 시더를 두 파일·JDBC 배치로 바꾼다**
+
+JPA `saveAll`은 IDENTITY 키라 JDBC 배칭이 꺼져 30만 행이면 왕복이 30만 번이다. 시더만 JDBC 배치로 내린다.
+
+`FoodSeeder.kt`를 아래로 만든다:
+
+```kotlin
+package com.toy.backend.diet.food
+
+import io.github.oshai.kotlinlogging.KotlinLogging
+import org.springframework.boot.ApplicationArguments
+import org.springframework.boot.ApplicationRunner
+import org.springframework.core.io.ClassPathResource
+import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.stereotype.Component
+import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDateTime
+
+private val log = KotlinLogging.logger {}
+
+/**
+ * `foods`가 비어 있을 때만 CSV를 적재한다. 이름 정규화 규칙을 바꿨다면 테이블을 비워야 다시 돈다.
+ *
+ * **JPA가 아니라 JdbcTemplate 배치로 넣는다.** 엔티티 id가 IDENTITY라 Hibernate가 JDBC 배칭을
+ * 끄기 때문에, 가공식품 30만 행을 `saveAll`로 넣으면 왕복이 30만 번이 되어 라즈베리파이에서
+ * 최초 기동이 수십 분으로 늘어난다. 적재는 기동 1회뿐인 쓰기라 엔티티 편의를 포기할 값이 있다.
+ */
+@Component
+class FoodSeeder(
+    private val repository: FoodRepository,
+    private val jdbcTemplate: JdbcTemplate,
+) : ApplicationRunner {
+    @Transactional
+    override fun run(args: ApplicationArguments) {
+        if (repository.count() > 0) return
+
+        DATASETS.forEach { (path, dataset) -> seed(path, dataset) }
+    }
+
+    private fun seed(
+        path: String,
+        dataset: FoodDataset,
+    ) {
+        val resource = ClassPathResource(path)
+        if (!resource.exists()) {
+            // 데이터셋을 아직 받지 않았어도 앱은 떠야 한다 — 매칭이 실패해 LLM 추정으로 넘어갈 뿐이다.
+            log.warn { "식품DB CSV가 없어 적재를 건너뛴다: $path" }
+            return
+        }
+
+        var total = 0
+        resource.inputStream.bufferedReader().use { reader ->
+            FoodCsvParser.parse(reader.lineSequence(), dataset).chunked(BATCH_SIZE).forEach { chunk ->
+                insertAll(chunk)
+                total += chunk.size
+            }
+        }
+        log.info { "식품DB 적재 완료: dataset=$dataset, ${total}건" }
+    }
+
+    private fun insertAll(foods: List<Food>) {
+        val now = LocalDateTime.now()
+        jdbcTemplate.batchUpdate(INSERT_SQL, foods, foods.size) { ps, food ->
+            ps.setString(1, food.code)
+            ps.setString(2, food.name)
+            ps.setString(3, food.normalizedName)
+            ps.setString(4, food.dataset.name)
+            ps.setDouble(5, food.servingSizeG)
+            ps.setDouble(6, food.kcalPer100g)
+            ps.setDouble(7, food.carbsPer100g)
+            ps.setDouble(8, food.proteinPer100g)
+            ps.setDouble(9, food.fatPer100g)
+            ps.setObject(10, now)
+            ps.setObject(11, now)
+        }
+    }
+
+    companion object {
+        private val DATASETS =
+            listOf(
+                "food/food-nutrition.csv" to FoodDataset.DISH,
+                "food/processed-food-nutrition.csv" to FoodDataset.PROCESSED,
+            )
+        private const val BATCH_SIZE = 1000
+
+        /**
+         * 컬럼명은 `Food` 엔티티의 매핑과 손으로 맞춘 것이다 — 엔티티 컬럼을 바꾸면 여기도 바꿔야 한다.
+         * `on conflict` 는 같은 코드가 두 번 들어오는 사고를 조용히 흘려보낸다(코드에 unique 제약이 있다).
+         */
+        private val INSERT_SQL =
+            """
+            insert into foods (code, name, normalized_name, dataset, serving_size_g,
+                               kcal_per_100g, carbs_per_100g, protein_per_100g, fat_per_100g,
+                               created_at, updated_at)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            on conflict (code) do nothing
+            """.trimIndent()
+    }
+}
+```
+
+- [ ] **Step 10: 가공식품 CSV 생성**
+
+원본은 이미 CSV로 변환돼 있다(사용자가 받은 xlsx를 컨트롤러가 변환):
+`/private/tmp/claude-501/-Users-youngminmoon-Documents-moonjm-toy-back/1f0a7c3a-9d67-47c7-8d01-1263dbd86d93/scratchpad/processed-raw.csv`
+(298,288행, 9개 컬럼만 남긴 형태. 헤더 이름은 음식DB와 같아 `build-food-csv.py`가 그대로 읽는다.)
+
+```bash
+python3 scripts/build-food-csv.py \
+  /private/tmp/claude-501/-Users-youngminmoon-Documents-moonjm-toy-back/1f0a7c3a-9d67-47c7-8d01-1263dbd86d93/scratchpad/processed-raw.csv \
+  apps/daily-record/src/main/resources/food/processed-food-nutrition.csv
+wc -l apps/daily-record/src/main/resources/food/processed-food-nutrition.csv
+head -3 apps/daily-record/src/main/resources/food/processed-food-nutrition.csv
+```
+
+확인할 것:
+- 행 수가 29만 건대인가(탄단지가 전부 채워진 데이터셋이라 버려지는 행이 거의 없어야 한다)
+- **이름에 BOM(`﻿`)이나 깨진 문자가 섞여 있다** — 원본에 그런 행이 있다. `head`로 보고, 섞여 있으면 `build-food-csv.py`의 이름 정제에 BOM·제어문자 제거를 한 줄 더한다(`name.replace("﻿", "")` 및 `unicodedata` 정규화). 정규화된 이름에 보이지 않는 문자가 들어가면 완전일치가 영영 안 맞는다
+- 원본 몇 행을 골라 값이 그대로 옮겨졌는지 손으로 대조
+
+- [ ] **Step 11: 전체 테스트·포맷·커밋**
+
+```bash
+./gradlew spotlessApply :daily-record:test
+git add apps/daily-record/src scripts
+git commit -m "feat: 가공식품DB를 별도 데이터셋으로 적재하고 매칭 규칙을 분리한다"
+```
+
+커밋 본문에 남길 것: 가공식품은 완전일치에만 참여한다는 것과 그 이유(브랜드 30만 행이 부분일치에 들어오면 일반어 매칭이 망가진다), 적재 행 수.
