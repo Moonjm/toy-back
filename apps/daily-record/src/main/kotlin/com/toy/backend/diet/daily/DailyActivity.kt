@@ -14,9 +14,9 @@ import java.time.LocalDate
 /** iOS가 HealthKit에서 읽어 올린 하루 활동 에너지. 목표 계산에는 반영하지 않는다. */
 @Entity
 @Table(
-    name = "daily_activities",
+    name = "daily_activity",
     uniqueConstraints = [
-        UniqueConstraint(name = "uk_daily_activities_user_date", columnNames = ["user_id", "date"]),
+        UniqueConstraint(name = "uk_daily_activity_user_date", columnNames = ["user_id", "date"]),
     ],
 )
 class DailyActivity(

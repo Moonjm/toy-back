@@ -22,11 +22,11 @@ enum class FoodDataset { DISH, PROCESSED }
 /** 식약처 `전국통합식품영양성분정보(음식)` 표준데이터와 가공식품DB를 100g 기준으로 정규화해 적재한 표. */
 @Entity
 @Table(
-    name = "foods",
+    name = "food",
     indexes = [
         // 완전일치는 (dataset, normalized_name) 인덱스 조회라 30만 행이어도 빠르다.
         // 부분일치(LIKE '%x%')는 인덱스를 못 쓰므로 DISH 6천 행으로만 제한해서 감당한다.
-        Index(name = "idx_foods_dataset_normalized_name", columnList = "dataset, normalized_name"),
+        Index(name = "idx_food_dataset_normalized_name", columnList = "dataset, normalized_name"),
     ],
 )
 class Food(

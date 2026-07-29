@@ -18,9 +18,9 @@ import java.time.LocalDateTime
  */
 @Entity
 @Table(
-    name = "daily_diet_feedbacks",
+    name = "daily_diet_feedback",
     uniqueConstraints = [
-        UniqueConstraint(name = "uk_daily_diet_feedbacks_user_date", columnNames = ["user_id", "date"]),
+        UniqueConstraint(name = "uk_daily_diet_feedback_user_date", columnNames = ["user_id", "date"]),
     ],
 )
 class DailyDietFeedback(

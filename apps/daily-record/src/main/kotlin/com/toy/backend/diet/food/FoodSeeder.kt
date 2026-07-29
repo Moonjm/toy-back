@@ -12,7 +12,7 @@ import java.time.LocalDateTime
 private val log = KotlinLogging.logger {}
 
 /**
- * `foods`가 비어 있을 때만 CSV를 적재한다. 이름 정규화 규칙을 바꿨다면 테이블을 비워야 다시 돈다.
+ * `food`가 비어 있을 때만 CSV를 적재한다. 이름 정규화 규칙을 바꿨다면 테이블을 비워야 다시 돈다.
  *
  * **JPA가 아니라 JdbcTemplate 배치로 넣는다.** 엔티티 id가 IDENTITY라 Hibernate가 JDBC 배칭을
  * 끄기 때문에, 가공식품 30만 행을 `saveAll`로 넣으면 왕복이 30만 번이 되어 라즈베리파이에서
@@ -82,7 +82,7 @@ class FoodSeeder(
          */
         private val INSERT_SQL =
             """
-            insert into foods (code, name, normalized_name, dataset, serving_size_g,
+            insert into food (code, name, normalized_name, dataset, serving_size_g,
                                kcal_per_100g, carbs_per_100g, protein_per_100g, fat_per_100g,
                                created_at, updated_at)
             values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

@@ -41,9 +41,9 @@ enum class DietGoal(
 
 @Entity
 @Table(
-    name = "nutrition_profiles",
+    name = "nutrition_profile",
     uniqueConstraints = [
-        UniqueConstraint(name = "uk_nutrition_profiles_user", columnNames = ["user_id"]),
+        UniqueConstraint(name = "uk_nutrition_profile_user", columnNames = ["user_id"]),
     ],
 )
 class NutritionProfile(

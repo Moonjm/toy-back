@@ -29,9 +29,9 @@ enum class MealType { BREAKFAST, LUNCH, DINNER, SNACK }
  */
 @Entity
 @Table(
-    name = "meals",
+    name = "meal",
     indexes = [
-        Index(name = "idx_meals_user_date", columnList = "user_id, date"),
+        Index(name = "idx_meal_user_date", columnList = "user_id, date"),
     ],
 )
 class Meal(

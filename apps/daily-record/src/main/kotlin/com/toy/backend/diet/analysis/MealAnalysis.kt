@@ -19,9 +19,9 @@ import jakarta.persistence.Table
  */
 @Entity
 @Table(
-    name = "meal_analyses",
+    name = "meal_analysis",
     indexes = [
-        Index(name = "idx_meal_analyses_created_at", columnList = "created_at"),
+        Index(name = "idx_meal_analysis_created_at", columnList = "created_at"),
     ],
 )
 class MealAnalysis(

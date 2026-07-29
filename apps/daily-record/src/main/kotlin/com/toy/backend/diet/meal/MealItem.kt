@@ -19,10 +19,10 @@ import jakarta.persistence.Table
  */
 @Entity
 @Table(
-    name = "meal_items",
+    name = "meal_item",
     indexes = [
-        Index(name = "idx_meal_items_meal", columnList = "meal_id"),
-        Index(name = "idx_meal_items_food_code", columnList = "food_code"),
+        Index(name = "idx_meal_item_meal", columnList = "meal_id"),
+        Index(name = "idx_meal_item_food_code", columnList = "food_code"),
     ],
 )
 class MealItem(

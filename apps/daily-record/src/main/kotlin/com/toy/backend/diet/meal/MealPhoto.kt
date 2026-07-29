@@ -11,9 +11,9 @@ import jakarta.persistence.Table
 
 @Entity
 @Table(
-    name = "meal_photos",
+    name = "meal_photo",
     indexes = [
-        Index(name = "idx_meal_photos_meal", columnList = "meal_id"),
+        Index(name = "idx_meal_photo_meal", columnList = "meal_id"),
     ],
 )
 class MealPhoto(
