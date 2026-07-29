@@ -87,6 +87,25 @@ class FileService(
         return repository.findAllById(ids).associate { it.requiredId to generatePresignedUrl(it) }
     }
 
+    /**
+     * 저장된 객체의 바이트를 그대로 읽는다. 이미지 인식처럼 서버가 파일 내용을 직접 다뤄야 하는
+     * 경우에만 쓴다 — 클라이언트에게 줄 때는 presigned URL이 맞다.
+     */
+    fun download(id: Long): FileContent {
+        val entity =
+            repository.findByIdOrNull(id)
+                ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
+        val bytes =
+            s3Client.getObjectAsBytes(
+                GetObjectRequest
+                    .builder()
+                    .bucket(entity.bucketName)
+                    .key(entity.storedName)
+                    .build(),
+            )
+        return FileContent(bytes = bytes.asByteArray(), contentType = entity.contentType)
+    }
+
     private fun generatePresignedUrl(entity: FileEntity): String {
         val presignRequest =
             GetObjectPresignRequest
@@ -190,3 +209,8 @@ class FileService(
         repository.findAllById(ids).forEach { it.detach() }
     }
 }
+
+data class FileContent(
+    val bytes: ByteArray,
+    val contentType: String,
+)

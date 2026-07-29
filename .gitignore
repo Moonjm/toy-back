@@ -70,3 +70,6 @@ CLAUDE.md
 
 # Python venv
 scripts/ledger-import/venv
+
+# 식품DB 적재 데이터 — 원본에서 스크립트로 재생성한다 (resources/food/README.md 참조)
+apps/daily-record/src/main/resources/food/*.csv

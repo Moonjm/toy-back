@@ -1,0 +1,127 @@
+package com.toy.backend.diet.daily
+
+import com.toy.backend.common.constant.ErrorCode
+import com.toy.backend.common.exception.CustomException
+import com.toy.backend.diet.NutritionSource
+import com.toy.backend.diet.feedback.DailyDietFeedback
+import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
+import com.toy.backend.diet.feedback.DietFeedbackGenerator
+import com.toy.backend.diet.feedback.totals
+import com.toy.backend.diet.meal.Meal
+import com.toy.backend.diet.meal.MealRepository
+import com.toy.backend.diet.meal.toResponse
+import com.toy.backend.diet.runAfterCommit
+import com.toy.backend.diet.score.DietScoreCalculator
+import com.toy.backend.file.FileService
+import com.toy.backend.user.User
+import com.toy.backend.user.UserRepository
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
+import java.time.LocalDateTime
+
+@Service
+@Transactional(readOnly = true)
+class DailyDietService(
+    private val mealRepository: MealRepository,
+    private val feedbackRepository: DailyDietFeedbackRepository,
+    private val activityRepository: DailyActivityRepository,
+    private val userRepository: UserRepository,
+    private val feedbackGenerator: DietFeedbackGenerator,
+    private val fileService: FileService,
+) {
+    /**
+     * 조회지만 피드백 캐시를 lazy 생성·갱신하므로 쓰기 트랜잭션이다. **LLM은 여기서 부르지 않는다**
+     * — 캐시가 유효하면 그 문장을 싣고, 무효하거나 없으면 `feedback = null`로 즉시 응답한 뒤
+     * 뒤에서 생성을 시작한다. 동기로 부르면 OpenRouter가 죽어 있을 때 조회마다 호출이 나가고,
+     * 쓰기 트랜잭션이 요청 스레드를 최대 `openrouter.timeout-seconds`(60초)까지 붙잡는다.
+     */
+    @Transactional
+    fun getDay(
+        username: String,
+        date: LocalDate,
+    ): DayResponse {
+        val user = findUser(username)
+        val meals = mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date)
+        val activeEnergyKcal = activityRepository.findByUserAndDate(user, date)?.activeEnergyKcal
+        val urls = fileService.getPresignedUrls(meals.flatMap { meal -> meal.photos.map { it.fileId } })
+
+        if (meals.isEmpty()) {
+            return DayResponse(
+                date = date,
+                dayScore = null,
+                scoreBasis = null,
+                feedback = null,
+                totalKcal = 0.0,
+                carbsG = 0.0,
+                proteinG = 0.0,
+                fatG = 0.0,
+                activeEnergyKcal = activeEnergyKcal,
+                meals = emptyList(),
+                nutrientLimits = emptyList(),
+                estimatedItemCount = 0,
+            )
+        }
+
+        val totals = meals.totals()
+        // 하루 목표는 **그날 첫 끼니의 스냅샷**에서 읽는다. 현재 프로필을 쓰면 오늘 몸무게를
+        // 갱신했을 때 지난주 하루 점수가 같이 바뀐다. 목표를 뽑는 정렬(createdAt 오름차순)은
+        // 응답에 담을 끼니 순서와는 별개다 — 섞지 않는다.
+        val targets = meals.first().targets()
+        val dayScore = DietScoreCalculator.scoreDay(totals.kcal, totals.carbsG, totals.proteinG, totals.fatG, targets)
+        val feedback = resolveFeedback(user, date, meals, dayScore.score)
+        val nutrientLimits = NutrientLimitEvaluator.evaluate(totals, targets)
+
+        return DayResponse(
+            date = date,
+            dayScore = dayScore.score,
+            scoreBasis = dayScore.basis,
+            feedback = feedback,
+            totalKcal = totals.kcal,
+            carbsG = totals.carbsG,
+            proteinG = totals.proteinG,
+            fatG = totals.fatG,
+            activeEnergyKcal = activeEnergyKcal,
+            // 응답에 담을 때만 끼니 순(아침→점심→저녁→간식)으로 정렬한다 — 확정한 순서(createdAt)
+            // 그대로 실으면 저녁을 먼저 확정한 날 화면이 저녁→아침으로 나온다.
+            meals = meals.sortedBy { it.mealType }.map { it.toResponse(urls) },
+            nutrientLimits = nutrientLimits,
+            // 판정에 「이 숫자는 추정이 섞였다」를 달아 주는 값이다. 미매칭 항목도 이제 LLM 추정
+            // 수치를 갖지만, 그 오차까지 사라지는 것은 아니다.
+            estimatedItemCount = meals.sumOf { meal -> meal.items.count { it.source == NutritionSource.LLM_ESTIMATED } },
+        )
+    }
+
+    /**
+     * 캐시가 없거나 `generatedAt`이 그날 `Meal`의 최종 `updatedAt`보다 이르면 무효다. 이때
+     * **LLM을 부르지 않고** `feedback = null`인 마커 행을 먼저 upsert한다 — "생성이 이미 걸렸다"는
+     * 표시라, 사용자가 폴링하며 여러 번 조회해도 뒤에서 나가는 호출은 한 번뿐이다. 이 표시가 없으면
+     * 폴링이 곧 무제한 호출이 된다. 마커를 커밋한 뒤에 `runAfterCommit`으로 실제 생성을 트리거한다
+     * — 커밋 전에 출발하면 비동기 스레드가 방금 쓴 행을 못 본다.
+     */
+    private fun resolveFeedback(
+        user: User,
+        date: LocalDate,
+        meals: List<Meal>,
+        dayScore: Int,
+    ): String? {
+        val cached = feedbackRepository.findByUserAndDate(user, date)
+        val latestMealUpdate = meals.maxOf { it.updatedAt }
+        if (cached != null && !cached.generatedAt.isBefore(latestMealUpdate)) return cached.feedback
+
+        val now = LocalDateTime.now()
+        if (cached == null) {
+            feedbackRepository.save(
+                DailyDietFeedback(user = user, date = date, dayScore = dayScore, feedback = null, generatedAt = now),
+            )
+        } else {
+            cached.update(dayScore, null, now)
+        }
+        runAfterCommit { feedbackGenerator.generateForDay(user.requiredId, date) }
+        return null
+    }
+
+    private fun findUser(username: String): User =
+        userRepository.findByUsername(username)
+            ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, username)
+}

@@ -39,6 +39,20 @@ apps/daily-record, apps/family-tree   각 앱 (전용 DB 사용)
 반대로 **데이터 정합성·보안 문제는 규모와 무관하게 엄격히** 다룬다:
 사용자 데이터 격리, 잘못된 레코드 삭제, 금액·통화 오류, 자격 증명 노출 등.
 
+## 알려진 미해결 — 리뷰에서 다시 지적하지 말 것
+
+**의도적 선택이 아니라 아직 안 고친 것들이다.** 위 목록과 성격이 다르므로 섞지 않는다.
+새로 발견한 같은 계열 문제는 여전히 지적하라 — 여기 적힌 것만 제외한다.
+
+- **`FileEntity`에 소유자가 없다** — `common/file`이 파일을 사용자에 묶지 않아
+  `FileService`의 `getPresignedUrl`·`getPresignedUrls`·`download`·`attachFile`이 전부 id만
+  받는다. 그 결과 `GET /files/{id}/url`이 아무 파일이나 presigned URL로 내주고,
+  `MealAnalysisService.create`가 남의 `fileId`를 받아 OpenRouter로 넘길 수 있으며,
+  `GET /diet/analyses/{id}`가 그 URL을 그대로 돌려준다. `family-tree`의 `attachFile`도 같다.
+
+  `common/file`·`common-auth`·두 앱을 함께 고쳐야 하는 별건이라 식단 브랜치 범위 밖으로 뒀다.
+  **배포 전에 별도 브랜치에서 처리한다.** 그때까지 이 계열 지적은 이 항목을 가리키면 된다.
+
 ## 코드 관례
 
 - Kotlin + Spring Boot. 버전은 `gradle/libs.versions.toml`에서 관리

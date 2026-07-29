@@ -1,5 +1,6 @@
 package com.toy.backend.file
 
+import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.entity.withId
 import com.toy.backend.common.exception.CustomException
 import io.kotest.assertions.throwables.shouldThrow
@@ -15,10 +16,13 @@ import io.mockk.verify
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.mock.web.MockMultipartFile
 import org.springframework.transaction.support.TransactionSynchronizationManager
+import software.amazon.awssdk.core.ResponseBytes
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.CopyObjectRequest
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
+import software.amazon.awssdk.services.s3.model.GetObjectRequest
+import software.amazon.awssdk.services.s3.model.GetObjectResponse
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.services.s3.presigner.S3Presigner
 
@@ -144,6 +148,31 @@ class FileServiceTest :
                     attached.status shouldBe FileStatus.TEMP
                     other.status shouldBe FileStatus.TEMP
                     verify(exactly = 0) { s3Client.deleteObject(any<DeleteObjectRequest>()) }
+                }
+            }
+        }
+
+        Given("파일 내용 다운로드") {
+            When("저장된 파일이면") {
+                val entity = FileEntity("a.jpg", "temp/a.jpg", "image/jpeg", 3L, "daily").withId(30L)
+                every { repository.findByIdOrNull(30L) } returns entity
+                every { s3Client.getObjectAsBytes(any<GetObjectRequest>()) } returns
+                    ResponseBytes.fromByteArray(GetObjectResponse.builder().build(), byteArrayOf(1, 2, 3))
+
+                val content = service.download(30L)
+
+                Then("바이트와 contentType을 함께 준다") {
+                    content.bytes.size shouldBe 3
+                    content.contentType shouldBe "image/jpeg"
+                }
+            }
+
+            When("없는 파일이면") {
+                every { repository.findByIdOrNull(99L) } returns null
+
+                Then("RESOURCE_NOT_FOUND") {
+                    val e = shouldThrow<CustomException> { service.download(99L) }
+                    e.errorCode shouldBe ErrorCode.RESOURCE_NOT_FOUND
                 }
             }
         }
