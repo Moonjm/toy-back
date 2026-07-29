@@ -116,6 +116,25 @@ class DietStatsServiceTest :
                 }
             }
 
+            // 쿼리가 between이라 양 끝이 포함된다. 「최대 366일」은 366일치라는 뜻이고,
+            // 에러 메시지가 사용자에게 그렇게 말하므로 동작이 거기 맞아야 한다.
+            When("기간이 정확히 366일이면(양 끝 포함)") {
+                val last = from.plusDays(365)
+                every { mealRepository.findByUserAndDateBetweenOrderByDateAscCreatedAtAscIdAsc(user, from, last) } returns emptyList()
+                every { frequentItemService.aggregate(user, from, last) } returns emptyList()
+
+                Then("통과한다 — 상한은 거절이 아니라 경계다") {
+                    service.stats("testuser", from, last).recordedDays shouldBe 0
+                }
+            }
+
+            When("기간이 367일이면") {
+                Then("INVALID_REQUEST — plusDays(366) < to로 재면 여기가 통과해 버린다") {
+                    val e = shouldThrow<CustomException> { service.stats("testuser", from, from.plusDays(366)) }
+                    e.errorCode shouldBe ErrorCode.INVALID_REQUEST
+                }
+            }
+
             When("aggregate가 상한보다 많은 음식 종류를 주면") {
                 every { mealRepository.findByUserAndDateBetweenOrderByDateAscCreatedAtAscIdAsc(user, from, to) } returns emptyList()
                 every { frequentItemService.aggregate(user, from, to) } returns

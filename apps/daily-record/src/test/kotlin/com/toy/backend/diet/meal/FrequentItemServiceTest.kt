@@ -148,6 +148,27 @@ class FrequentItemServiceTest :
                 }
             }
 
+            // @Size(max=30)이 ""를 막지 않아 저장 시 null로 정규화하지만, 그 전에 쌓인 행이 있을 수 있다.
+            When("foodCode가 빈 문자열인 항목이 여럿이면") {
+                every { repository.findEatenBetween(user, any(), any()) } returns
+                    listOf(
+                        item(1L, "된장찌개", LocalDate.of(2026, 7, 28), foodCode = ""),
+                        item(2L, "고등어구이", LocalDate.of(2026, 7, 27), foodCode = ""),
+                    )
+
+                val result = service.list("testuser", days = 30, size = 20)
+
+                Then("이름으로 갈라진다 — 빈 코드끼리 묶으면 무관한 음식이 한 건으로 합쳐진다") {
+                    result.size shouldBe 2
+                    result.map { it.foodName }.toSet() shouldBe setOf("된장찌개", "고등어구이")
+                    result.forEach { it.count shouldBe 1 }
+                }
+
+                Then("응답에는 빈 코드를 되돌려주지 않는다 — 그대로 MealItemRequest가 되는 값이다") {
+                    result.forEach { it.foodCode shouldBe null }
+                }
+            }
+
             When("기록이 없으면") {
                 every { repository.findEatenBetween(user, any(), any()) } returns emptyList()
 

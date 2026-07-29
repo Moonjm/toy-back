@@ -242,5 +242,25 @@ class MealConfirmTest :
                     verify { feedbackGenerator.generateForMeal(51L) }
                 }
             }
+
+            // @Size(max=30)은 ""를 막지 않는다. 그대로 저장하면 자주 먹는 음식 집계가
+            // 빈 코드끼리 한 덩어리로 묶어 무관한 음식들을 합친다.
+            When("foodCode가 빈 문자열로 들어오면") {
+                every { repository.save(any()) } answers { (firstArg() as Meal).withId(52L) }
+
+                service.confirm(
+                    "testuser",
+                    MealConfirmRequest(
+                        date = LocalDate.of(2026, 7, 29),
+                        mealType = MealType.SNACK,
+                        analysisId = null,
+                        items = userItems.map { it.copy(foodCode = "") },
+                    ),
+                )
+
+                Then("null로 정규화해 저장한다") {
+                    verify { repository.save(match { meal -> meal.items.all { it.foodCode == null } }) }
+                }
+            }
         }
     })

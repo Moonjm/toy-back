@@ -61,7 +61,9 @@ class FrequentItemService(
         repository
             .findEatenBetween(user, from, to)
             // foodCode가 없는 직접 입력 항목은 정규화한 이름으로 묶어 띄어쓰기 차이를 흡수한다.
-            .groupBy { it.foodCode ?: FoodNameNormalizer.normalize(it.foodName) }
+            // 빈 문자열도 「없음」으로 본다 — 저장 시 null로 정규화하지만 그 전에 쌓인 행이 있을 수 있고,
+            // 여기서 놓치면 무관한 음식들이 "" 키 하나로 뭉쳐 엉뚱한 한 건이 목록 위로 올라온다.
+            .groupBy { it.foodCode?.takeIf { code -> code.isNotBlank() } ?: FoodNameNormalizer.normalize(it.foodName) }
             .map { (_, group) -> group.toResponse() }
             .sortedWith(compareByDescending<FrequentItemResponse> { it.count }.thenByDescending { it.lastEatenOn })
 
@@ -70,7 +72,8 @@ class FrequentItemService(
         val latest = first()
         return FrequentItemResponse(
             foodName = latest.foodName,
-            foodCode = latest.foodCode,
+            // 응답이 그대로 MealItemRequest가 되므로 빈 코드를 되돌려주지 않는다.
+            foodCode = latest.foodCode?.takeIf { it.isNotBlank() },
             quantityG = latest.quantityG,
             kcal = latest.kcal,
             carbsG = latest.carbsG,

@@ -94,7 +94,9 @@ fun MealItemRequest.toEntity(meal: Meal): MealItem =
     MealItem(
         meal = meal,
         foodName = foodName,
-        foodCode = foodCode,
+        // 빈 문자열은 「코드 없음」으로 저장한다. @Size(max=30)이 ""를 막지 않으므로 그대로 두면
+        // 자주 먹는 음식 집계가 빈 코드끼리 한 덩어리로 묶어 무관한 음식들을 합쳐 버린다.
+        foodCode = foodCode?.takeIf { it.isNotBlank() },
         quantityG = quantityG,
         kcal = kcal,
         carbsG = carbsG,

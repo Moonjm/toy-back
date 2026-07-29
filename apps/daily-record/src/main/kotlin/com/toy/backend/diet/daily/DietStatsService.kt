@@ -15,6 +15,7 @@ import com.toy.backend.user.UserRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import kotlin.math.roundToInt
 
 data class DailyScore(
@@ -51,7 +52,11 @@ class DietStatsService(
         to: LocalDate,
     ): DietStatsResponse {
         if (from.isAfter(to)) throw CustomException(ErrorCode.INVALID_REQUEST, "from이 to보다 이후일 수 없습니다")
-        if (from.plusDays(MAX_RANGE_DAYS) < to) throw CustomException(ErrorCode.INVALID_REQUEST, "기간은 최대 ${MAX_RANGE_DAYS}일입니다")
+        // 쿼리가 between이라 양 끝을 포함한다 — 「366일」은 366일치이지 366일 간격이 아니다.
+        // plusDays(366) < to로 재면 367일이 통과해, 사용자에게 말한 상한과 실제가 어긋난다.
+        if (ChronoUnit.DAYS.between(from, to) + 1 > MAX_RANGE_DAYS) {
+            throw CustomException(ErrorCode.INVALID_REQUEST, "기간은 최대 ${MAX_RANGE_DAYS}일입니다")
+        }
 
         val user = findUser(username)
         // createdAt 순으로 받으므로 날짜별로 묶었을 때 각 그룹의 first()가 「그날 첫 끼니」다 —
