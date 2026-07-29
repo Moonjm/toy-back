@@ -6,6 +6,7 @@ import com.toy.backend.common.entity.withId
 import com.toy.backend.common.exception.CustomException
 import com.toy.backend.diet.NutritionSource
 import com.toy.backend.diet.dietUser
+import com.toy.backend.diet.meal.FrequentItemResponse
 import com.toy.backend.diet.meal.FrequentItemService
 import com.toy.backend.diet.meal.Meal
 import com.toy.backend.diet.meal.MealItem
@@ -112,6 +113,34 @@ class DietStatsServiceTest :
                 Then("INVALID_REQUEST") {
                     val e = shouldThrow<CustomException> { service.stats("testuser", to, from) }
                     e.errorCode shouldBe ErrorCode.INVALID_REQUEST
+                }
+            }
+
+            When("aggregate가 상한보다 많은 음식 종류를 주면") {
+                every { mealRepository.findByUserAndDateBetweenOrderByDateAscCreatedAtAscIdAsc(user, from, to) } returns emptyList()
+                every { frequentItemService.aggregate(user, from, to) } returns
+                    (1..30).map {
+                        FrequentItemResponse(
+                            foodName = "음식$it",
+                            foodCode = "D$it",
+                            quantityG = 100.0,
+                            kcal = 100.0,
+                            carbsG = 10.0,
+                            proteinG = 10.0,
+                            fatG = 10.0,
+                            sugarG = 1.0,
+                            sodiumMg = 100.0,
+                            fiberG = 1.0,
+                            source = NutritionSource.DB_MATCHED,
+                            count = 1,
+                            lastEatenOn = from,
+                        )
+                    }
+
+                val stats = service.stats("testuser", from, to)
+
+                Then("topFoods는 상한(20)으로 잘린다 — /diet/items/frequent와 같은 상한을 지킨다") {
+                    stats.topFoods.size shouldBe 20
                 }
             }
 

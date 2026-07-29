@@ -57,7 +57,9 @@ class DietStatsService(
         // createdAt 순으로 받으므로 날짜별로 묶었을 때 각 그룹의 first()가 「그날 첫 끼니」다 —
         // 하루 집계(findByUserAndDateOrderByCreatedAtAscIdAsc)와 같은 정의라 두 화면이 어긋나지 않는다.
         val byDate = mealRepository.findByUserAndDateBetweenOrderByDateAscCreatedAtAscIdAsc(user, from, to).groupBy { it.date }
-        val topFoods = frequentItemService.aggregate(user, from, to)
+        // aggregate()는 정렬만 하고 자르지 않는다 — `/diet/items/frequent`(FrequentItemService.list)와
+        // 같은 상한을 둬 API 표면을 맞춘다. 안 그러면 최대 366일 조회에서 음식 수백 종이 통째로 실린다.
+        val topFoods = frequentItemService.aggregate(user, from, to).take(TOP_FOODS_LIMIT)
 
         if (byDate.isEmpty()) {
             return DietStatsResponse(from, to, 0, null, emptyList(), null, null, topFoods)
@@ -117,5 +119,6 @@ class DietStatsService(
 
     companion object {
         private const val MAX_RANGE_DAYS = 366L
+        private const val TOP_FOODS_LIMIT = 20
     }
 }
