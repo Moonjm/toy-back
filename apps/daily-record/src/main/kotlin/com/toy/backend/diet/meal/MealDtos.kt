@@ -5,6 +5,7 @@ import com.toy.backend.diet.NutritionSource
 import com.toy.backend.diet.score.DietScoreCalculator
 import com.toy.backend.diet.score.MealScoreBasis
 import jakarta.validation.Valid
+import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.PositiveOrZero
 import jakarta.validation.constraints.Size
@@ -29,7 +30,7 @@ data class MealItemsRequest(
 
 /** 서버는 인식 결과와 대조하지 않고 그대로 신뢰한다 — 확인 단계의 존재 이유가 사용자 판단을 최종으로 삼는 것이다. */
 data class MealItemRequest(
-    @field:Size(max = 200)
+    @field:NotBlank @field:Size(max = 200)
     val foodName: String,
     @field:Size(max = 30)
     val foodCode: String? = null,
@@ -91,17 +92,19 @@ fun MealItemRequest.toEntity(meal: Meal): MealItem =
     )
 
 /**
- * 점수 근거는 저장하지 않고 저장된 매크로에서 다시 계산한다 — 같은 입력에서 같은 값이 나오는
- * 순수 함수라 중복 저장할 이유가 없다. 감점 기울기를 튜닝하면 과거 끼니의 근거 표시도 함께 따라온다.
+ * 점수와 근거를 저장된 매크로에서 **한 번에 함께** 다시 계산한다 — 같은 입력에서 같은 값이 나오는
+ * 순수 함수라 중복 저장할 이유가 없다. 저장된 `Meal.score` 컬럼(프롬프트·집계용)을 따로 읽으면
+ * 감점 기울기를 튜닝했을 때 `score`와 `scoreBasis`가 서로 어긋난다.
  */
-fun Meal.toResponse(urls: Map<Long, String>): MealResponse =
-    MealResponse(
+fun Meal.toResponse(urls: Map<Long, String>): MealResponse {
+    val scored = DietScoreCalculator.scoreMeal(carbsG, proteinG, fatG)
+    return MealResponse(
         id = requiredId,
         date = date,
         mealType = mealType,
         status = status,
-        score = score,
-        scoreBasis = DietScoreCalculator.scoreMeal(carbsG, proteinG, fatG).basis,
+        score = scored.score,
+        scoreBasis = scored.basis,
         totalKcal = totalKcal,
         carbsG = carbsG,
         proteinG = proteinG,
@@ -125,3 +128,4 @@ fun Meal.toResponse(urls: Map<Long, String>): MealResponse =
                 )
             },
     )
+}

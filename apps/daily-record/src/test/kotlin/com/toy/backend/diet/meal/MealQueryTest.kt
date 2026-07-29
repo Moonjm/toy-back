@@ -12,12 +12,14 @@ import com.toy.backend.diet.dummyMealItem
 import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
 import com.toy.backend.diet.feedback.DietFeedbackGenerator
 import com.toy.backend.diet.profile.NutritionProfileService
+import com.toy.backend.diet.score.DietScoreCalculator
 import com.toy.backend.file.FileService
 import com.toy.backend.user.UserRepository
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -76,15 +78,19 @@ class MealQueryTest :
                 // 그래서 항목·사진 모두 withId로 영속된 상태를 흉내낸다.
                 val meal = dummyMeal(user = user, id = 10L)
                 meal.replaceItems(listOf(dummyMealItem(meal = meal, id = 1L, source = NutritionSource.DB_MATCHED)))
-                meal.applyScore(76)
+                // 저장된 score는 낡았다고 가정한다(정책 튜닝 후 과거 끼니가 재계산되지 않은 경우를 흉내낸다) —
+                // 응답의 score는 이 값이 아니라 scoreBasis와 같은 계산에서 나와야 한다.
+                meal.applyScore(999)
                 meal.addPhoto(MealPhoto(meal = meal, fileId = 21L, sortOrder = 0).withId(2L))
                 every { repository.findByIdOrNull(10L) } returns meal
                 every { fileService.getPresignedUrls(listOf(21L)) } returns mapOf(21L to "https://example.com/21")
 
                 val response = service.get("testuser", 10L)
 
-                Then("점수·근거가 채워진다") {
-                    response.score shouldBe 76
+                Then("score는 저장된 컬럼이 아니라 scoreBasis와 같은 계산에서 나온 값이다") {
+                    val expected = DietScoreCalculator.scoreMeal(meal.carbsG, meal.proteinG, meal.fatG)
+                    response.score shouldBe expected.score
+                    response.score shouldNotBe 999
                     val basis = response.scoreBasis.shouldNotBeNull()
                     basis.macros.size shouldBe 3
                 }

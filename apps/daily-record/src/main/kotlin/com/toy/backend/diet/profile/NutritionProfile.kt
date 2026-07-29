@@ -59,7 +59,7 @@ class NutritionProfile(
     @Column(name = "activity_level", nullable = false, columnDefinition = "varchar(20)")
     var activityLevel: ActivityLevel,
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, columnDefinition = "varchar(10)")
+    @Column(nullable = false, columnDefinition = "varchar(20)")
     var goal: DietGoal,
     @Column(name = "target_kcal", nullable = false)
     var targetKcal: Int = 0,
