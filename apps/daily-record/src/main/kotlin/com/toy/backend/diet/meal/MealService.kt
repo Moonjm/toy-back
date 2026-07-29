@@ -101,6 +101,47 @@ class MealService(
         return meals.map { it.toResponse(urls) }
     }
 
+    /** 항목을 고치면 영양소·점수를 다시 계산하고 피드백도 재생성한다 — 낡은 조언을 남기지 않는다. */
+    @Transactional
+    fun updateItems(
+        username: String,
+        id: Long,
+        request: MealItemsRequest,
+    ) {
+        if (request.items.isEmpty()) throw CustomException(ErrorCode.INVALID_REQUEST, "항목이 비어 있습니다")
+        val meal = requireOwned(findUser(username), id)
+        applyItems(meal, request.items)
+        meal.markFeedbackPending()
+        runAfterCommit { feedbackGenerator.generateForMeal(id) }
+    }
+
+    /**
+     * 삭제. **파일을 물리 삭제하지 않고 detach 한다** — 상태를 `TEMP`로 되돌리기만 하고 S3 객체는
+     * 매일 04:00 정리 배치가 수거한다. 트랜잭션이 롤백되면 상태 변경도 함께 되돌아가므로
+     * "레코드는 살아났는데 객체는 사라진" 상태가 생기지 않는다.
+     */
+    @Transactional
+    fun delete(
+        username: String,
+        id: Long,
+    ) {
+        val meal = requireOwned(findUser(username), id)
+        fileService.detachFiles(meal.photos.map { it.fileId })
+        repository.delete(meal)
+    }
+
+    /** 자동 재시도를 넣지 않는 대신 수동 재시도를 연다. 실패 상태에서만 허용해 중복 호출을 막는다. */
+    @Transactional
+    fun retryFeedback(
+        username: String,
+        id: Long,
+    ) {
+        val meal = requireOwned(findUser(username), id)
+        if (meal.status != AnalysisStatus.FAILED) throw CustomException(DietErrorCode.FEEDBACK_NOT_RETRYABLE, id)
+        meal.markFeedbackPending()
+        runAfterCommit { feedbackGenerator.generateForMeal(id) }
+    }
+
     /** 항목 교체 → 영양소 합산 → 점수 재계산. 확정과 수정이 이 한 곳을 공유한다. */
     fun applyItems(
         meal: Meal,
