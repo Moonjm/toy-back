@@ -253,11 +253,26 @@ id로 `GET /diet/analyses/{id}`를 폴링한다. `@EnableAsync`를 `DailyRecordA
    **리사이즈는 하지 않는다** — iOS가 업로드 전에 장변 1024px로 줄여서 보낸다.
    라즈베리파이에서 이미지를 재인코딩하는 건 낭비다.
 2. OpenRouter `chat/completions` 호출 (vision 모델, `response_format: json_schema` strict).
-   응답 스키마: `{items:[{name, portion, estimatedKcal, estimatedCarbsG, estimatedProteinG, estimatedFatG}]}`
-   `name`은 한국어 음식명, `portion`은 1인분 대비 배수(0.5 = 반 인분).
+   응답 스키마: `{items:[{name, servingWeightG, portion, estimated*}]}`
+
+   **모든 수치가 「1인분」 기준이다.** `servingWeightG`는 그 음식 1인분의 중량,
+   `estimated*`는 1인분 기준 영양소, `portion`은 사진에 몇 인분이 보이는지다.
+   프롬프트가 이 셋을 각각 정의하고 「탄+단+지 ≤ servingWeightG」를 명시한다.
 3. 각 `name`을 `FoodMatcher`로 식품DB에 매칭한다.
    - 성공: `quantityG = servingSizeG × portion` → 100g당 값으로 영양소 산출, `source = DB_MATCHED`
-   - 실패: 2번에서 함께 받아둔 LLM 추정값을 그대로 쓰고 `source = LLM_ESTIMATED`
+   - 실패: `quantityG = servingWeightG × portion`, 영양소도 `estimated* × portion`.
+     `source = LLM_ESTIMATED`. `servingWeightG`가 상한을 넘으면 식품DB와 같은 기준으로 걸러
+     기본 1인분으로 되돌린다(모델이 포장 단위로 답하는 경우가 있다).
+
+> **2026-07-30 — 수량과 영양소의 기준을 1인분으로 통일했다.**
+> 원래 매칭 실패 항목은 `quantityG = 고정 200g × portion`이고 영양소는 모델이 **사진 전체**를
+> 보고 부른 값을 그대로 썼다. 두 값의 기준이 달라서 실기동에서 치킨 한 상자가
+> `200g / 2500kcal / 탄120 단170 지150`으로 나왔다 — **200g 안에 매크로가 440g** 들어간,
+> 물리적으로 불가능한 값이다. 하루 총량·나트륨 판정·점수가 통째로 무너진다.
+>
+> 사진만으로 절대량을 맞히는 건 되는 문제가 아니다. 필라이즈도 「1인분 조절」을 전면에 두고
+> **기준을 1인분으로 고정한 뒤 사용자가 배수를 조절**하게 한다. 확인 화면이 이미 그 역할이므로
+> 우리도 기준만 맞추면 된다 — 사용자가 `portion`을 만지면 수량과 영양소가 함께 비례한다.
 
 사진을 전부 처리하면 결과를 `resultJson`에 모아 쓰고 `MealAnalysis.status`를 갱신한다.
 **여기까지가 인식이다. 점수도 피드백도 만들지 않는다** — 사용자가 항목을 고칠 수 있으므로
@@ -567,6 +582,19 @@ dayScore   = round(0.4 × calorieScore + 0.6 × macroScore)
    `scripts/build-food-csv.py`(정제), 그리고 `resources/food/README.md`(출처 링크·명령·판단 근거).
    빌드하는 기계에 파일이 있어야 도커 이미지에 실려 파이에서도 채워진다
 4. `FoodSeeder`가 기동 시 **아직 적재되지 않은 데이터셋만** 배치 삽입한다(라즈베리파이 메모리).
+
+> **2026-07-30 — `1인분 기준량`을 그대로 믿지 않는다.**
+> 원본의 `1인(회)분량 참고량` 컬럼이 2026-07-28 판에서 사라져 `식품중량`으로 폴백했는데,
+> **가공식품의 식품중량은 1회 제공량이 아니라 포장 총중량이다.** 실기동에서 드러났다 —
+> 사진 속 해쉬브라운 한 조각이 `640g / 1069kcal / 나트륨 1510mg`으로 기록됐다(냉동 한 봉지가 640g).
+> 306,293행의 중앙값은 208g으로 멀쩡하지만 평균이 5,916g이고 **26%가 500g, 12%가 1kg을 넘는다**
+> (치킨볼 2kg, 콜라 1.8L). 폴백을 넣을 때 "스크립트가 폴백하므로 그대로 동작한다"고 적었던 것이
+> 틀렸다 — 죽지 않을 뿐 값이 무의미하다.
+> `FoodCsvParser`가 `FoodPolicy.MAX_TRUSTED_SERVING_SIZE_G`(500g)를 넘는 값을 결측으로 보고
+> 기본 1인분으로 되돌린다. **파서에서 거르는 이유는 인식 경로와 앱 검색 경로가 같은 값을 쓰기
+> 때문이다** — 읽는 쪽마다 클램프하면 한 곳을 빠뜨린다(주의 영양소에서 이미 겪었다).
+> 100g당 값은 건드리지 않는다. 틀린 것은 기준량이지 영양소가 아니다.
+> **이미 적재된 DB에는 반영되지 않는다** — `delete from food` 후 재기동해야 한다.
    가공식품 30만 행 때문에 최초 기동이 수 분 걸리지만 1회뿐이다
 
 ### 정제 시 주의 — 기준량 정규화

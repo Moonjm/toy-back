@@ -75,6 +75,38 @@ class FoodCsvParserTest :
             }
         }
 
+        // 원본의 `1인(회)분량 참고량` 컬럼이 사라져 `식품중량`으로 폴백하는데, 가공식품의
+        // 식품중량은 포장 총중량이다(냉동 해쉬브라운 한 봉지 640g, 치킨볼 2kg). 그대로 두면
+        // 한 조각이 640g·1069kcal로 기록된다.
+        Given("1인분 기준량이 포장 총중량인 행") {
+            When("상한(500g)을 넘으면") {
+                val foods =
+                    FoodCsvParser
+                        .parse(sequenceOf(header, "D000004,640,167,23,3,7,0,236,0,해쉬브라운"), FoodDataset.PROCESSED)
+                        .toList()
+
+                Then("믿지 않고 기본값으로 되돌린다") {
+                    foods[0].servingSizeG shouldBe 200.0
+                }
+
+                Then("100g당 값은 건드리지 않는다 — 틀린 것은 기준량이지 영양소가 아니다") {
+                    foods[0].kcalPer100g shouldBe 167.0
+                    foods[0].sodiumMgPer100g shouldBe 236.0
+                }
+            }
+
+            When("정확히 상한이면") {
+                val foods =
+                    FoodCsvParser
+                        .parse(sequenceOf(header, "D000005,500,167,23,3,7,0,236,0,경계값"), FoodDataset.PROCESSED)
+                        .toList()
+
+                Then("그대로 쓴다 — 경계는 포함이다") {
+                    foods[0].servingSizeG shouldBe 500.0
+                }
+            }
+        }
+
         Given("망가진 행") {
             When("컬럼 수가 모자라거나 숫자가 아니면") {
                 val foods =

@@ -80,18 +80,23 @@ class MealAnalyzer(
     private fun toItem(recognized: RecognizedFood): AnalyzedItem {
         val matched = foodMatcher.match(recognized.name)
         if (matched == null) {
+            // **수량과 영양소가 같은 기준(1인분)에서 나와야 한다.** 예전에는 수량만 고정 200g에
+            // portion을 곱하고 영양소는 모델이 사진 전체를 보고 부른 값을 그대로 썼다. 그 결과
+            // 치킨 한 상자가 `200g / 2500kcal / 탄120 단170 지150` — 200g 안에 매크로 440g이
+            // 들어간 값으로 저장됐다. 이제 둘 다 1인분 값에 portion을 곱한다.
+            val servings = recognized.portion
             return AnalyzedItem(
                 foodName = recognized.name,
                 foodCode = null,
-                quantityG = FoodPolicy.DEFAULT_SERVING_SIZE_G * recognized.portion,
-                kcal = recognized.estimatedKcal,
-                carbsG = recognized.estimatedCarbsG,
-                proteinG = recognized.estimatedProteinG,
-                fatG = recognized.estimatedFatG,
+                quantityG = recognized.servingWeightG.trustedServingSize() * servings,
+                kcal = recognized.estimatedKcal * servings,
+                carbsG = recognized.estimatedCarbsG * servings,
+                proteinG = recognized.estimatedProteinG * servings,
+                fatG = recognized.estimatedFatG * servings,
                 // 0으로 두면 「없음」이 아니라 하루 합계를 낮추는 값이 되어, 나트륨 경고가 영영 안 뜬다.
-                sugarG = recognized.estimatedSugarG,
-                sodiumMg = recognized.estimatedSodiumMg,
-                fiberG = recognized.estimatedFiberG,
+                sugarG = recognized.estimatedSugarG * servings,
+                sodiumMg = recognized.estimatedSodiumMg * servings,
+                fiberG = recognized.estimatedFiberG * servings,
                 source = NutritionSource.LLM_ESTIMATED,
             )
         }
@@ -110,6 +115,14 @@ class MealAnalyzer(
             source = NutritionSource.DB_MATCHED,
         )
     }
+
+    /**
+     * 모델이 1인분 중량을 비우거나 포장 단위(치킨 한 박스 2kg)로 답하는 경우가 있어 식품DB와
+     * 같은 기준으로 거른다 — 걸리면 기본 1인분으로 되돌린다. 영양소는 모델 값을 그대로 두므로
+     * 중량만 보수적으로 잡히고 열량이 사라지지는 않는다.
+     */
+    private fun Double.trustedServingSize(): Double =
+        takeIf { it > 0 && it <= FoodPolicy.MAX_TRUSTED_SERVING_SIZE_G } ?: FoodPolicy.DEFAULT_SERVING_SIZE_G
 
     private fun readResult(analysis: MealAnalysis): AnalysisResult = objectMapper.readValue<AnalysisResult>(analysis.resultJson)
 

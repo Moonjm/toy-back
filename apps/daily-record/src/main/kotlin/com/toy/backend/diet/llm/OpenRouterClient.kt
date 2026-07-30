@@ -7,11 +7,19 @@ import tools.jackson.databind.JsonNode
 
 private val log = KotlinLogging.logger {}
 
+/**
+ * **모든 수치가 「1인분」 기준이다.** 사진 전체 기준이 아니다 — 실제로 먹은 양은 `portion`을
+ * 곱해서 구한다. 기준을 하나로 묶지 않으면 수량과 영양소가 따로 논다: 예전에는 수량이
+ * 「고정 200g × portion」이고 영양소는 모델이 사진 전체를 보고 부른 값이라, 치킨 한 상자가
+ * `200g / 2500kcal / 탄120 단170 지150`처럼 **200g 안에 매크로 440g이 든** 결과가 나왔다.
+ */
 data class RecognizedFood(
     /** 한국어 음식명 */
     val name: String,
-    /** 1인분 대비 배수 (0.5 = 반 인분) */
+    /** 1인분 대비 배수 (0.5 = 반 인분, 4 = 4인분) */
     val portion: Double,
+    /** 이 음식 **1인분**의 중량(g). 식품DB 매칭이 실패했을 때 수량의 근거가 된다. */
+    val servingWeightG: Double,
     val estimatedKcal: Double,
     val estimatedCarbsG: Double,
     val estimatedProteinG: Double,
@@ -125,6 +133,7 @@ class OpenRouterClient(
             RecognizedFood(
                 name = item.path("name").asString(),
                 portion = item.path("portion").asDouble(),
+                servingWeightG = item.path("servingWeightG").asDouble(),
                 estimatedKcal = item.path("estimatedKcal").asDouble(),
                 estimatedCarbsG = item.path("estimatedCarbsG").asDouble(),
                 estimatedProteinG = item.path("estimatedProteinG").asDouble(),
@@ -138,10 +147,16 @@ class OpenRouterClient(
 
     companion object {
         private const val VISION_PROMPT =
-            "사진 속 음식을 하나씩 식별해 주세요. 각 음식의 한국어 이름과, 1인분 대비 양(portion, 0.5는 반 인분), " +
-                "그리고 대략적인 영양소 추정치를 알려 주세요. 당류·나트륨·식이섬유도 그 음식의 통상적인 " +
-                "조리법을 기준으로 추정해 주세요(모르겠으면 0 대신 비슷한 음식의 값을 쓰세요). " +
-                "음식이 아닌 물건은 넣지 마세요."
+            "사진 속 음식을 하나씩 식별해 주세요. 음식이 아닌 물건은 넣지 마세요.\n" +
+                "각 음식마다 아래를 알려 주세요.\n" +
+                "① name — 한국어 음식명\n" +
+                "② servingWeightG — 그 음식 **1인분**의 중량(g). 한 사람이 한 번에 먹는 양이며, " +
+                "포장 단위나 사진에 보이는 전체 양이 아닙니다. 치킨이면 2~3조각, 라면이면 1봉지입니다.\n" +
+                "③ portion — 사진에 **몇 인분**이 보이는지 (0.5는 반 인분, 4는 4인분)\n" +
+                "④ estimated* — **1인분 기준** 영양소. 사진 전체 기준이 아닙니다. " +
+                "당류·나트륨·식이섬유도 그 음식의 통상적인 조리법을 기준으로 추정해 주세요" +
+                "(모르겠으면 0 대신 비슷한 음식의 값을 쓰세요).\n" +
+                "탄수화물+단백질+지방의 합은 servingWeightG를 넘을 수 없습니다."
 
         private val NUMBER = mapOf("type" to "number")
 
@@ -166,6 +181,7 @@ class OpenRouterClient(
                                                         "properties" to
                                                             mapOf(
                                                                 "name" to mapOf("type" to "string"),
+                                                                "servingWeightG" to NUMBER,
                                                                 "portion" to NUMBER,
                                                                 "estimatedKcal" to NUMBER,
                                                                 "estimatedCarbsG" to NUMBER,
@@ -178,6 +194,7 @@ class OpenRouterClient(
                                                         "required" to
                                                             listOf(
                                                                 "name",
+                                                                "servingWeightG",
                                                                 "portion",
                                                                 "estimatedKcal",
                                                                 "estimatedCarbsG",

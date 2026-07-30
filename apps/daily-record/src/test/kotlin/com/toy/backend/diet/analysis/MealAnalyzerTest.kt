@@ -32,6 +32,8 @@ class MealAnalyzerTest :
             RecognizedFood(
                 name = "제육볶음",
                 portion = 0.5,
+                // 아래 estimated* 는 전부 **1인분** 값이다. 저장되는 값은 여기에 portion을 곱한 것이다.
+                servingWeightG = 300.0,
                 estimatedKcal = 400.0,
                 estimatedCarbsG = 30.0,
                 estimatedProteinG = 25.0,
@@ -141,18 +143,48 @@ class MealAnalyzerTest :
 
                 val item = objectMapper.readValue<AnalysisResult>(analysis.resultJson).photos[0].items[0]
 
-                Then("LLM 추정값을 그대로 쓰고 출처를 남긴다") {
-                    item.kcal shouldBe 400.0
-                    item.carbsG shouldBe 30.0
+                // 수량과 영양소가 같은 기준(1인분)에서 나와야 한다. 수량만 portion을 곱하고
+                // 영양소는 모델이 부른 값을 그대로 쓰면 「200g 안에 매크로 440g」 같은 값이 저장된다.
+                Then("수량과 영양소 모두 1인분 값에 portion을 곱한다 — 300g × 0.5 = 150g") {
+                    item.quantityG shouldBe 150.0
+                    item.kcal shouldBe 200.0
+                    item.carbsG shouldBe 15.0
+                    item.proteinG shouldBe 12.5
+                    item.fatG shouldBe 9.0
                     item.foodCode shouldBe null
                     item.source shouldBe NutritionSource.LLM_ESTIMATED
-                    item.quantityG shouldBe 100.0 // 기본 1인분 200g × 0.5
                 }
 
-                Then("주의 영양소도 LLM 추정값을 쓴다 — 0으로 두면 하루 나트륨이 늘 실제보다 낮게 잡힌다") {
-                    item.sugarG shouldBe 7.5
-                    item.sodiumMg shouldBe 880.0
-                    item.fiberG shouldBe 2.2
+                Then("주의 영양소도 같은 배수를 탄다 — 0으로 두면 하루 나트륨이 늘 실제보다 낮게 잡힌다") {
+                    item.sugarG shouldBe 3.75
+                    item.sodiumMg shouldBe 440.0
+                    item.fiberG shouldBe 1.1
+                }
+
+                Then("탄단지 합이 수량을 넘지 않는다 — 물리적으로 불가능한 값이 저장되면 안 된다") {
+                    (item.carbsG + item.proteinG + item.fatG <= item.quantityG) shouldBe true
+                }
+            }
+
+            When("모델이 1인분 중량을 포장 단위로 답하면") {
+                val analyzer = MealAnalyzer(repository, fileService, foodMatcher, objectMapper, client)
+                val analysis = pendingAnalysis(31L)
+                every { repository.findByIdOrNull(1L) } returns analysis
+                every { fileService.download(31L) } returns FileContent(byteArrayOf(1), "image/jpeg")
+                // 치킨 한 박스 2kg — 한 사람이 한 번에 먹는 양이 아니다.
+                every { client.recognizeFoods(any(), any()) } returns listOf(recognized.copy(servingWeightG = 2000.0, portion = 1.0))
+                every { foodMatcher.match("제육볶음") } returns null
+
+                analyzer.analyze(1L)
+
+                val item = objectMapper.readValue<AnalysisResult>(analysis.resultJson).photos[0].items[0]
+
+                Then("기본 1인분으로 되돌린다 — 식품DB의 포장 총중량을 거르는 것과 같은 기준이다") {
+                    item.quantityG shouldBe 200.0
+                }
+
+                Then("영양소는 모델 값을 그대로 둔다 — 중량만 보수적으로 잡고 열량을 지우지 않는다") {
+                    item.kcal shouldBe 400.0
                 }
             }
         }

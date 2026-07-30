@@ -48,7 +48,12 @@ object FoodCsvParser {
             name = name,
             normalizedName = FoodNameNormalizer.normalize(name),
             dataset = dataset,
-            servingSizeG = if (servingSizeG > 0) servingSizeG else FoodPolicy.DEFAULT_SERVING_SIZE_G,
+            // 0 이하는 결측이고, 상한을 넘는 값은 1회 제공량이 아니라 포장 총중량이다
+            // (`MAX_TRUSTED_SERVING_SIZE_G` 주석 참고). 둘 다 기본값으로 되돌린다 —
+            // 여기서 거르지 않으면 인식 경로와 앱 검색 경로 양쪽이 같은 값을 그대로 쓴다.
+            servingSizeG =
+                servingSizeG.takeIf { it > 0 && it <= FoodPolicy.MAX_TRUSTED_SERVING_SIZE_G }
+                    ?: FoodPolicy.DEFAULT_SERVING_SIZE_G,
             kcalPer100g = kcal,
             carbsPer100g = carbs,
             proteinPer100g = protein,
