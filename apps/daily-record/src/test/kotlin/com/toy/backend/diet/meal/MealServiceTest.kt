@@ -94,6 +94,7 @@ class MealServiceTest :
         beforeContainer {
             every { userRepository.findByUsername("testuser") } returns user
             justRun { feedbackGenerator.generateForMeal(any()) }
+            every { feedbackGenerator.isAvailable } returns true
         }
 
         Given("항목 전체 교체") {
@@ -207,6 +208,18 @@ class MealServiceTest :
                 Then("FEEDBACK_NOT_RETRYABLE — 비용이 나가는 호출을 중복으로 하지 않는다") {
                     val e = shouldThrow<CustomException> { service.retryFeedback("testuser", 64L) }
                     e.errorCode shouldBe DietErrorCode.FEEDBACK_NOT_RETRYABLE
+                }
+            }
+
+            // MealAnalysisService.retry와 대칭이다. 안 막으면 204를 돌려주고도 생성기가
+            // publish(null)로 다시 FAILED를 만들어, 「접수됐다」가 거짓말이 된다.
+            When("API 키가 없어 생성기가 준비되지 않았으면") {
+                every { feedbackGenerator.isAvailable } returns false
+
+                Then("LLM_UNAVAILABLE — 끼니를 건드리지도 않는다") {
+                    val e = shouldThrow<CustomException> { service.retryFeedback("testuser", 63L) }
+                    e.errorCode shouldBe DietErrorCode.LLM_UNAVAILABLE
+                    verify(exactly = 0) { feedbackGenerator.generateForMeal(any()) }
                 }
             }
         }

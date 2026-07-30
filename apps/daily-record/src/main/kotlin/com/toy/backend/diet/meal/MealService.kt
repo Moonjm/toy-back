@@ -163,6 +163,10 @@ class MealService(
         username: String,
         id: Long,
     ) {
+        // `MealAnalysisService.retry`와 같은 가드다. 키가 없으면 생성기가 publish(null)로 다시
+        // FAILED를 만드는 것밖에 못 하는데, 여기서 204를 돌려주면 「접수됐다」는 거짓말이 된다.
+        if (!feedbackGenerator.isAvailable) throw CustomException(DietErrorCode.LLM_UNAVAILABLE)
+
         val meal = requireOwned(findUser(username), id)
         if (meal.status != AnalysisStatus.FAILED) throw CustomException(DietErrorCode.FEEDBACK_NOT_RETRYABLE, id)
         meal.markFeedbackPending()

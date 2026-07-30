@@ -82,7 +82,7 @@ class MealAnalysisService(
         val analysis = requireOwned(findUser(username), id)
         // markPending()은 status만 바꾸고 resultJson의 failed 표시는 그대로 둔다 — 진행 중인 재인식이
         // 끝나기 전에 또 들어오면 아래 검사를 통과해 같은 사진에 유료 호출이 한 번 더 나간다.
-        // `MealService.retryFeedback`이 이미 같은 모양으로 막고 있다.
+        // `MealService.retryFeedback`도 같은 이유로 「진행 중이 아닐 것」을 요구한다(거긴 FAILED 한정).
         if (analysis.status == AnalysisStatus.PENDING) throw CustomException(DietErrorCode.ANALYSIS_IN_PROGRESS, id)
         val result = objectMapper.readValue<AnalysisResult>(analysis.resultJson)
         if (result.photos.none { it.failed }) throw CustomException(DietErrorCode.ANALYSIS_NOT_RETRYABLE, id)

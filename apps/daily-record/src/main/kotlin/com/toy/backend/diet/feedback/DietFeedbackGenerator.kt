@@ -29,6 +29,13 @@ class DietFeedbackGenerator(
     @Autowired(required = false) private val client: OpenRouterClient?,
 ) {
     /**
+     * `MealAnalyzer.isAvailable`과 같은 뜻이다 — 키가 없으면 빈이 등록되지 않는다.
+     * **수동 재시도를 받는 쪽이 이걸 보고 미리 거절해야 한다** — 안 그러면 204를 돌려주고도
+     * 여기서 `publish(null)`로 다시 FAILED가 되어, 사용자는 성공했다고 알고 또 누른다.
+     */
+    val isAvailable: Boolean get() = client != null
+
+    /**
      * 끼니 피드백은 **확정 시점**에 만든다. 인식 직후가 아니라 사용자가 항목을 고친 뒤라야
      * 실제로 먹은 것에 대한 조언이 된다. `@Async`라 엔티티가 아닌 id를 받아 다시 조회한다.
      *
