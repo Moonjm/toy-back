@@ -23,6 +23,13 @@ data class FoodResponse(
     val sugarPer100g: Double,
     val sodiumMgPer100g: Double,
     val fiberPer100g: Double,
+    /**
+     * 포화지방산·트랜스지방산·콜레스테롤. **검색 결과에만 있다** — 자주 먹는 음식과 사진 인식
+     * 항목은 `Food`가 아니라 저장된 `MealItem`에서 오므로 이 값을 못 싣는다. 알고 받는 한계다.
+     */
+    val saturatedFatPer100g: Double,
+    val transFatPer100g: Double,
+    val cholesterolMgPer100g: Double,
 )
 
 fun Food.toResponse(): FoodResponse =
@@ -39,4 +46,7 @@ fun Food.toResponse(): FoodResponse =
         sugarPer100g = sugarPer100g,
         sodiumMgPer100g = sodiumMgPer100g,
         fiberPer100g = fiberPer100g,
+        saturatedFatPer100g = saturatedFatPer100g,
+        transFatPer100g = transFatPer100g,
+        cholesterolMgPer100g = cholesterolMgPer100g,
     )

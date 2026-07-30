@@ -35,14 +35,28 @@ class FoodMatcher(
                 .firstOrNull()
     }
 
-    /** iOS 항목 수정 화면용 — 자동 선택 없이 후보 목록을 그대로 준다. */
+    /**
+     * iOS 항목 수정 화면용 — 자동 선택 없이 후보 목록을 그대로 준다.
+     *
+     * `dataset`은 검색 화면의 `전체 / 음식 / 원재료 / 가공식품` 칩이다. **앱에서 거르면 안 되는
+     * 이유** — 상위 N건이 전부 가공식품이면 「음식」 칩이 빈 목록이 된다. 실제로 매칭되는 조리
+     * 음식이 뒤에 있는데도 그렇다. 거르기는 페이징 전에, 즉 여기서 해야 한다.
+     *
+     * 위 `match`의 데이터셋 우선순위와는 무관하다 — 그쪽은 사진 인식이 하나를 고르는 경로다.
+     */
     fun search(
         keyword: String,
         size: Int,
+        dataset: FoodDataset? = null,
     ): List<Food> {
         val normalized = FoodNameNormalizer.normalize(keyword)
         if (normalized.isBlank()) return emptyList()
-        return repository.searchByNormalizedName(normalized, PageRequest.of(0, size.coerceIn(1, MAX_SEARCH_SIZE)))
+        val pageable = PageRequest.of(0, size.coerceIn(1, MAX_SEARCH_SIZE))
+        return if (dataset == null) {
+            repository.searchByNormalizedName(normalized, pageable)
+        } else {
+            repository.searchByDatasetAndNormalizedName(dataset, normalized, pageable)
+        }
     }
 
     companion object {

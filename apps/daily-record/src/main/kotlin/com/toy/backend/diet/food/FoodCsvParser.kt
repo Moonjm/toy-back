@@ -4,10 +4,11 @@ package com.toy.backend.diet.food
  * `scripts/build-food-csv.py`가 만든 정제본을 읽는다.
  *
  * **이름 컬럼을 마지막에 둔 이유** — 음식명에는 쉼표가 들어갈 수 있다. 이름이 마지막이면
- * `split(',', limit = 10)`의 10번째 조각이 나머지 전부라 인용부호 처리 없이 안전하다.
+ * `split(',', limit = COLUMN_COUNT)`의 마지막 조각이 나머지 전부라 인용부호 처리 없이 안전하다.
+ * **컬럼을 더할 때는 반드시 `name` 앞에 넣는다** — 뒤에 넣으면 이름에 쉼표가 있는 행이 밀린다.
  */
 object FoodCsvParser {
-    private const val COLUMN_COUNT = 10
+    private const val COLUMN_COUNT = 13
 
     /**
      * 지연 평가로 돌려준다 — 가공식품 30만 행을 List로 만들면 라즈베리파이 힙이 감당하지 못한다.
@@ -30,7 +31,7 @@ object FoodCsvParser {
         if (columns.size < COLUMN_COUNT) return null
 
         val code = columns[0].trim().takeIf { it.isNotBlank() } ?: return null
-        val name = columns[9].trim().takeIf { it.isNotBlank() } ?: return null
+        val name = columns[12].trim().takeIf { it.isNotBlank() } ?: return null
         // 탄단지 값이 없는 행은 틀린 값을 넣느니 버리고 LLM 추정에 맡긴다.
         // **기준량은 기본값을 채우기 전에 판단해야 한다** — 먼저 채우면 결측이 「200g을 아는 것」이
         // 되어 `servingSizeKnown`이 참으로 잡힌다(원재료 523행이 통째로 그렇게 됐던 자리다).
@@ -43,6 +44,9 @@ object FoodCsvParser {
         val sugar = columns[6].trim().toDoubleOrNull() ?: 0.0
         val sodium = columns[7].trim().toDoubleOrNull() ?: 0.0
         val fiber = columns[8].trim().toDoubleOrNull() ?: 0.0
+        val saturatedFat = columns[9].trim().toDoubleOrNull() ?: 0.0
+        val transFat = columns[10].trim().toDoubleOrNull() ?: 0.0
+        val cholesterol = columns[11].trim().toDoubleOrNull() ?: 0.0
         val trustedServing = parsedServing?.takeIf { it > 0 && it <= FoodPolicy.MAX_TRUSTED_SERVING_SIZE_G }
 
         return Food(
@@ -63,6 +67,9 @@ object FoodCsvParser {
             sugarPer100g = sugar,
             sodiumMgPer100g = sodium,
             fiberPer100g = fiber,
+            saturatedFatPer100g = saturatedFat,
+            transFatPer100g = transFat,
+            cholesterolMgPer100g = cholesterol,
         )
     }
 }

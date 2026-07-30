@@ -23,6 +23,8 @@ class FoodController(
         @RequestParam q: String,
         @Parameter(description = "최대 건수 (1~50)", example = "20")
         @RequestParam(defaultValue = "20") size: Int,
+        @Parameter(description = "데이터셋 필터. 없으면 전체", example = "DISH")
+        @RequestParam(required = false) dataset: FoodDataset?,
     ): ResponseEntity<DataResponseBody<List<FoodResponse>>> =
-        ResponseEntity.ok(DataResponseBody(matcher.search(q, size).map { it.toResponse() }))
+        ResponseEntity.ok(DataResponseBody(matcher.search(q, size, dataset).map { it.toResponse() }))
 }

@@ -103,15 +103,42 @@ class FoodMatcherTest :
         }
 
         Given("사용자 검색 — GET /diet/foods") {
-            When("검색어를 넣으면") {
+            When("검색어만 넣으면") {
                 every { repository.searchByNormalizedName("새우깡", any<Pageable>()) } returns
                     listOf(dummyFood(code = "P001", name = "새우깡", dataset = FoodDataset.PROCESSED, id = 4L))
 
                 val found = matcher.search("새우깡", size = 20)
 
-                Then("두 데이터셋을 모두 뒤진다 — 사람이 목록에서 직접 고르는 화면이다") {
+                Then("세 데이터셋을 모두 뒤진다 — 사람이 목록에서 직접 고르는 화면이다") {
                     found.size shouldBe 1
                     found[0].dataset shouldBe FoodDataset.PROCESSED
+                }
+
+                Then("데이터셋별 조회는 하지 않는다") {
+                    verify(exactly = 0) { repository.searchByDatasetAndNormalizedName(any(), any(), any()) }
+                }
+            }
+
+            // 앱에서 걸러 봐야 소용없다 — 상위 N건이 전부 가공식품이면 「음식」 칩이 빈 목록이 된다.
+            // 실제로 매칭되는 조리 음식이 뒤에 있는데도 그렇다. 페이징 전에 걸러야 한다.
+            When("데이터셋 칩을 함께 넣으면") {
+                val dish = dummyFood(code = "D001", name = "새우볶음밥", dataset = FoodDataset.DISH, id = 5L)
+                every {
+                    repository.searchByDatasetAndNormalizedName(FoodDataset.DISH, "새우", any<Pageable>())
+                } returns listOf(dish)
+
+                val found = matcher.search("새우", size = 20, dataset = FoodDataset.DISH)
+
+                Then("그 데이터셋만 뒤진다") {
+                    found shouldBe listOf(dish)
+                    verify(exactly = 0) { repository.searchByNormalizedName(any(), any()) }
+                }
+            }
+
+            When("정규화하면 빈 문자열이 되는 검색어면") {
+                Then("데이터셋을 줬어도 조회하지 않는다") {
+                    matcher.search("!!!", size = 20, dataset = FoodDataset.RAW) shouldBe emptyList()
+                    verify(exactly = 0) { repository.searchByDatasetAndNormalizedName(FoodDataset.RAW, any(), any()) }
                 }
             }
         }

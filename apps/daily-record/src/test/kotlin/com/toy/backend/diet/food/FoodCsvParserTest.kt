@@ -7,14 +7,15 @@ class FoodCsvParserTest :
     BehaviorSpec({
         val header =
             "code,servingSizeG,kcalPer100g,carbsPer100g,proteinPer100g,fatPer100g," +
-                "sugarPer100g,sodiumMgPer100g,fiberPer100g,name"
+                "sugarPer100g,sodiumMgPer100g,fiberPer100g," +
+                "saturatedFatPer100g,transFatPer100g,cholesterolMgPer100g,name"
 
         Given("정상 행") {
             When("한 줄을 파싱하면") {
                 val foods =
                     FoodCsvParser
                         .parse(
-                            sequenceOf(header, "D000001,300,180.5,12.3,15.1,8.2,3.4,620,2.1,제육볶음"),
+                            sequenceOf(header, "D000001,300,180.5,12.3,15.1,8.2,3.4,620,2.1,2.6,0.05,58,제육볶음"),
                             FoodDataset.DISH,
                         ).toList()
 
@@ -30,6 +31,15 @@ class FoodCsvParserTest :
                     foods[0].sodiumMgPer100g shouldBe 620.0
                     foods[0].fiberPer100g shouldBe 2.1
                 }
+
+                // 정제 스크립트가 컬럼을 부분 문자열로 찾는데 `"지방"`은 `"포화지방산(g)"`도 잡는다.
+                // 뒤바뀌면 오류 없이 지방 값이 통째로 틀어지므로, 둘이 다른 값인 픽스처로 고정한다.
+                Then("지방과 포화지방산이 각자 제자리에 들어간다") {
+                    foods[0].fatPer100g shouldBe 8.2
+                    foods[0].saturatedFatPer100g shouldBe 2.6
+                    foods[0].transFatPer100g shouldBe 0.05
+                    foods[0].cholesterolMgPer100g shouldBe 58.0
+                }
             }
         }
 
@@ -37,7 +47,7 @@ class FoodCsvParserTest :
             When("파싱하면") {
                 val foods =
                     FoodCsvParser
-                        .parse(sequenceOf(header, "D000007,200,150,20,10,3,,,,된장국"), FoodDataset.DISH)
+                        .parse(sequenceOf(header, "D000007,200,150,20,10,3,,,,,,,된장국"), FoodDataset.DISH)
                         .toList()
 
                 Then("0으로 채우고 행은 살린다 — 탄단지가 멀쩡한데 버리면 그 음식을 못 쓴다") {
@@ -45,6 +55,9 @@ class FoodCsvParserTest :
                     foods[0].sugarPer100g shouldBe 0.0
                     foods[0].sodiumMgPer100g shouldBe 0.0
                     foods[0].fiberPer100g shouldBe 0.0
+                    foods[0].saturatedFatPer100g shouldBe 0.0
+                    foods[0].transFatPer100g shouldBe 0.0
+                    foods[0].cholesterolMgPer100g shouldBe 0.0
                 }
             }
         }
@@ -53,11 +66,17 @@ class FoodCsvParserTest :
             When("파싱하면") {
                 val foods =
                     FoodCsvParser
-                        .parse(sequenceOf(header, "D000002,200,100,10,5,2,1,300,1,밥, 국"), FoodDataset.DISH)
+                        .parse(sequenceOf(header, "D000002,200,100,10,5,2,1,300,1,0.5,0,20,밥, 국"), FoodDataset.DISH)
                         .toList()
 
                 Then("이름 컬럼이 마지막이라 쉼표가 그대로 살아난다") {
                     foods[0].name shouldBe "밥, 국"
+                }
+
+                // 새 컬럼을 `name` 뒤에 넣었다면 여기서 컬럼이 한 칸씩 밀려 이름이 `0.5`가 된다.
+                Then("앞 컬럼들도 밀리지 않는다") {
+                    foods[0].saturatedFatPer100g shouldBe 0.5
+                    foods[0].cholesterolMgPer100g shouldBe 20.0
                 }
             }
         }
@@ -66,7 +85,7 @@ class FoodCsvParserTest :
             When("파싱하면") {
                 val foods =
                     FoodCsvParser
-                        .parse(sequenceOf(header, "D000003,,150,20,10,3,1,300,1,김치찌개"), FoodDataset.DISH)
+                        .parse(sequenceOf(header, "D000003,,150,20,10,3,1,300,1,0.5,0,20,김치찌개"), FoodDataset.DISH)
                         .toList()
 
                 Then("기본값 200g으로 채운다 — 없다고 버리면 매칭 자체가 안 된다") {
@@ -88,8 +107,10 @@ class FoodCsvParserTest :
             When("상한(500g)을 넘으면") {
                 val foods =
                     FoodCsvParser
-                        .parse(sequenceOf(header, "D000004,640,167,23,3,7,0,236,0,해쉬브라운"), FoodDataset.PROCESSED)
-                        .toList()
+                        .parse(
+                            sequenceOf(header, "D000004,640,167,23,3,7,0,236,0,1.2,0.1,15,해쉬브라운"),
+                            FoodDataset.PROCESSED,
+                        ).toList()
 
                 Then("믿지 않고 기본값으로 되돌린다") {
                     foods[0].servingSizeG shouldBe 200.0
@@ -110,8 +131,10 @@ class FoodCsvParserTest :
             When("정확히 상한이면") {
                 val foods =
                     FoodCsvParser
-                        .parse(sequenceOf(header, "D000005,500,167,23,3,7,0,236,0,경계값"), FoodDataset.PROCESSED)
-                        .toList()
+                        .parse(
+                            sequenceOf(header, "D000005,500,167,23,3,7,0,236,0,1.2,0.1,15,경계값"),
+                            FoodDataset.PROCESSED,
+                        ).toList()
 
                 Then("그대로 쓴다 — 경계는 포함이다") {
                     foods[0].servingSizeG shouldBe 500.0
@@ -128,9 +151,9 @@ class FoodCsvParserTest :
                             sequenceOf(
                                 header,
                                 "D000004,200,150",
-                                "D000005,200,없음,20,10,3,1,300,1,된장찌개",
+                                "D000005,200,없음,20,10,3,1,300,1,0.5,0,20,된장찌개",
                                 "",
-                                "D000006,200,150,20,10,3,1,300,1,비빔밥",
+                                "D000006,200,150,20,10,3,1,300,1,0.5,0,20,비빔밥",
                             ),
                             FoodDataset.DISH,
                         ).toList()
@@ -138,6 +161,19 @@ class FoodCsvParserTest :
                 Then("그 행만 버리고 나머지는 살린다") {
                     foods.size shouldBe 1
                     foods[0].code shouldBe "D000006"
+                }
+            }
+
+            // 영양소 3종을 넣기 전에 만든 정제본이 남아 있을 수 있다. 컬럼이 모자라 통째로
+            // 버려지는 편이 낫다 — 마지막 조각이 이름이 아니게 되면 값이 한 칸씩 어긋난다.
+            When("컬럼이 10개뿐인 옛 정제본이면") {
+                val foods =
+                    FoodCsvParser
+                        .parse(sequenceOf(header, "D000008,200,150,20,10,3,1,300,1,비빔밥"), FoodDataset.DISH)
+                        .toList()
+
+                Then("한 행도 살리지 않는다 — 조용히 어긋난 값을 넣는 것보다 낫다") {
+                    foods.size shouldBe 0
                 }
             }
         }

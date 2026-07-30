@@ -91,6 +91,34 @@ class Food(
     var sodiumMgPer100g: Double,
     @Column(name = "fiber_per_100g", nullable = false)
     var fiberPer100g: Double,
+    /**
+     * 포화지방산·트랜스지방산·콜레스테롤. **표시 전용이다** — 검색 화면 상세 시트가 보여주기만 하고
+     * `nutritionFor`·`NutritionAmount`·`MealItem` 어디에도 흐르지 않는다. 끼니에 저장하려면
+     * 미매칭 항목을 채울 LLM 인식 스키마·프롬프트까지 번져서, 화면을 먼저 써 보고 판단하기로 했다.
+     *
+     * 원본에는 처음부터 있던 컬럼인데(음식·원재료·가공식품 셋 다) 정제 스크립트가 버렸을 뿐이다.
+     *
+     * `columnDefinition`에 default를 두는 이유 — `ddl-auto: update`는 **행이 있는 테이블에 NOT NULL
+     * 컬럼을 붙이지 못한다.** `servingSizeKnown`이 같은 이유로 default를 달고 있다.
+     */
+    @Column(
+        name = "saturated_fat_per_100g",
+        nullable = false,
+        columnDefinition = "double precision not null default 0",
+    )
+    var saturatedFatPer100g: Double = 0.0,
+    @Column(
+        name = "trans_fat_per_100g",
+        nullable = false,
+        columnDefinition = "double precision not null default 0",
+    )
+    var transFatPer100g: Double = 0.0,
+    @Column(
+        name = "cholesterol_mg_per_100g",
+        nullable = false,
+        columnDefinition = "double precision not null default 0",
+    )
+    var cholesterolMgPer100g: Double = 0.0,
 ) : BaseEntity()
 
 data class NutritionAmount(

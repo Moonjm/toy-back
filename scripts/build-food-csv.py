@@ -24,10 +24,13 @@ import re
 import sys
 import unicodedata
 
+# `name`은 반드시 마지막이다 — Kotlin 파서가 `split(',', limit = N)`으로 읽어 마지막 조각이
+# 줄의 나머지 전부다. 그래야 이름에 쉼표가 있어도 컬럼이 밀리지 않는다.
 OUT_HEADER = [
     "code", "servingSizeG", "kcalPer100g",
     "carbsPer100g", "proteinPer100g", "fatPer100g",
-    "sugarPer100g", "sodiumMgPer100g", "fiberPer100g", "name",
+    "sugarPer100g", "sodiumMgPer100g", "fiberPer100g",
+    "saturatedFatPer100g", "transFatPer100g", "cholesterolMgPer100g", "name",
 ]
 
 # 원본 헤더는 공백·괄호 표기가 판번마다 조금씩 달라 부분 문자열로 찾는다.
@@ -38,10 +41,16 @@ COLUMN_HINTS = {
     "kcal": ["에너지(kcal)", "에너지"],
     "carbs": ["탄수화물"],
     "protein": ["단백질"],
-    "fat": ["지방"],
+    # `지방(g)`을 먼저 시도한다 — 힌트가 `지방`뿐이면 `포화지방산(g)`도 걸린다.
+    # 중간 CSV에서 `지방(g)`이 앞에 있어 순서만으로도 안전하지만, 순서에 기대지 않는다.
+    "fat": ["지방(g)", "지방"],
     "sugar": ["당류"],
     "sodium": ["나트륨"],
     "fiber": ["식이섬유"],
+    # 표시 전용(iOS 상세 시트). `fat` 아래에 둔다 — 위 주석의 이유와 같다.
+    "saturatedFat": ["포화지방산"],
+    "transFat": ["트랜스지방산"],
+    "cholesterol": ["콜레스테롤"],
     # 1인분 기준량 우선, 없으면 식품중량으로 폴백한다(아래 main 참고). 둘 다 선택 컬럼이다.
     "servingReference": ["1인(회)분량참고량", "1회분량", "분량참고량"],
     "servingWeight": ["식품중량"],
@@ -52,7 +61,11 @@ COLUMN_HINTS = {
 
 # 이 컬럼들은 없어도 되는 컬럼이다 — 없으면 그 경로로는 못 채울 뿐 전체를 중단하지 않는다.
 # 당류·나트륨·식이섬유는 판본이 바뀌어 컬럼이 빠지더라도 탄단지는 살려야 하므로 포함한다.
-OPTIONAL_COLUMNS = {"servingReference", "servingWeight", "sugar", "sodium", "fiber", "representative", "subcategory"}
+OPTIONAL_COLUMNS = {
+    "servingReference", "servingWeight", "sugar", "sodium", "fiber",
+    "saturatedFat", "transFat", "cholesterol",
+    "representative", "subcategory",
+}
 
 # `--representative`에서 남길 세분류. 사진에 찍히는 원재료는 대개 생것이고, 같은 대표명 안에
 # 말린것·동결건조가 섞여 있으면 열량이 4~6배 뛴다(바나나 생것 77 / 말린것 314, 사과 52 / 동결건조 332).
@@ -169,6 +182,9 @@ def main(src_path, dst_path, representative=False):
             sugar = to_float(row.get(columns["sugar"])) if columns["sugar"] else None
             sodium = to_float(row.get(columns["sodium"])) if columns["sodium"] else None
             fiber = to_float(row.get(columns["fiber"])) if columns["fiber"] else None
+            saturated_fat = to_float(row.get(columns["saturatedFat"])) if columns["saturatedFat"] else None
+            trans_fat = to_float(row.get(columns["transFat"])) if columns["transFat"] else None
+            cholesterol = to_float(row.get(columns["cholesterol"])) if columns["cholesterol"] else None
 
             # 출력은 인용부호 없이 그대로 join한다(아래 참고). code는 원본 값을 그대로
             # 옮기는 유일한 자유 텍스트 필드라 여기 구분자·개행이 섞이면 컬럼이 밀린다.
@@ -211,6 +227,10 @@ def main(src_path, dst_path, representative=False):
                 f"{sugar * factor:.2f}" if sugar is not None else "",
                 f"{sodium * factor:.1f}" if sodium is not None else "",
                 f"{fiber * factor:.2f}" if fiber is not None else "",
+                # 이 셋도 기준량 환산(`factor`)을 똑같이 탄다 — 빼면 기준량 200g인 행만 2배가 된다.
+                f"{saturated_fat * factor:.2f}" if saturated_fat is not None else "",
+                f"{trans_fat * factor:.2f}" if trans_fat is not None else "",
+                f"{cholesterol * factor:.1f}" if cholesterol is not None else "",
                 # 원재료는 계층형 식품명 대신 대표명을 싣는다 — 인식 결과와 맞추기 위해서다.
                 clean_name(row.get(columns["representative"]) or "") if representative else name,
             ])

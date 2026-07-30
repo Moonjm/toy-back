@@ -67,6 +67,10 @@ fun dummyFood(
     sugarPer100g: Double = 3.0,
     sodiumMgPer100g: Double = 500.0,
     fiberPer100g: Double = 2.0,
+    // 지방(8.0)과 다른 값으로 둔다 — 둘이 뒤바뀌어도 같은 값이면 테스트가 못 잡는다.
+    saturatedFatPer100g: Double = 2.5,
+    transFatPer100g: Double = 0.1,
+    cholesterolMgPer100g: Double = 45.0,
     id: Long = 1L,
 ): Food =
     Food(
@@ -83,6 +87,9 @@ fun dummyFood(
         sugarPer100g = sugarPer100g,
         sodiumMgPer100g = sodiumMgPer100g,
         fiberPer100g = fiberPer100g,
+        saturatedFatPer100g = saturatedFatPer100g,
+        transFatPer100g = transFatPer100g,
+        cholesterolMgPer100g = cholesterolMgPer100g,
     ).withId(id)
 
 fun dummyMeal(
