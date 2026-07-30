@@ -36,9 +36,28 @@ class FoodMatcherTest :
                 }
             }
 
+            // 실기동에서 과일 접시의 「복숭아」가 가공식품(말린 것으로 보이는 225kcal/100g)에 걸려
+            // 200g이 450kcal로 잡혔다. 생복숭아는 80kcal다. 원재료가 가공식품보다 앞서야 한다.
+            When("음식DB엔 없고 원재료와 가공식품 양쪽에 완전일치가 있으면") {
+                val raw = dummyFood(code = "R001", name = "복숭아", normalizedName = "복숭아", dataset = FoodDataset.RAW, id = 7L)
+                every { repository.findFirstByDatasetAndNormalizedName(FoodDataset.DISH, "복숭아") } returns null
+                every { repository.findFirstByDatasetAndNormalizedName(FoodDataset.RAW, "복숭아") } returns raw
+
+                val matched = matcher.match("복숭아")
+
+                Then("원재료를 고른다 — 이름이 같으면 말린 가공품보다 생것이 사진에 가깝다") {
+                    matched shouldBe raw
+                }
+
+                Then("가공식품은 조회조차 하지 않는다") {
+                    verify(exactly = 0) { repository.findFirstByDatasetAndNormalizedName(FoodDataset.PROCESSED, "복숭아") }
+                }
+            }
+
             When("음식DB엔 없고 가공식품에 완전일치가 있으면") {
                 val snack = dummyFood(code = "P001", name = "새우깡", normalizedName = "새우깡", dataset = FoodDataset.PROCESSED, id = 2L)
                 every { repository.findFirstByDatasetAndNormalizedName(FoodDataset.DISH, "새우깡") } returns null
+                every { repository.findFirstByDatasetAndNormalizedName(FoodDataset.RAW, "새우깡") } returns null
                 every { repository.findFirstByDatasetAndNormalizedName(FoodDataset.PROCESSED, "새우깡") } returns snack
 
                 val matched = matcher.match("새우깡")
@@ -54,8 +73,7 @@ class FoodMatcherTest :
 
             When("완전일치가 어느 쪽에도 없으면") {
                 val similar = dummyFood(name = "제육볶음", normalizedName = "제육볶음", dataset = FoodDataset.DISH, id = 3L)
-                every { repository.findFirstByDatasetAndNormalizedName(FoodDataset.DISH, "돼지고기제육볶음") } returns null
-                every { repository.findFirstByDatasetAndNormalizedName(FoodDataset.PROCESSED, "돼지고기제육볶음") } returns null
+                every { repository.findFirstByDatasetAndNormalizedName(any(), "돼지고기제육볶음") } returns null
                 every {
                     repository.searchByDatasetAndNormalizedName(FoodDataset.DISH, "돼지고기제육볶음", any<Pageable>())
                 } returns listOf(similar)

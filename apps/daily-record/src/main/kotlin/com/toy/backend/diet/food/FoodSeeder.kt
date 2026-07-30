@@ -85,6 +85,7 @@ class FoodSeeder(
         private val DATASETS =
             listOf(
                 "food/food-nutrition.csv" to FoodDataset.DISH,
+                "food/raw-food-nutrition.csv" to FoodDataset.RAW,
                 "food/processed-food-nutrition.csv" to FoodDataset.PROCESSED,
             )
         private const val BATCH_SIZE = 1000

@@ -30,8 +30,14 @@ object FoodPolicy {
     const val MAX_TRUSTED_SERVING_SIZE_G = 500.0
 }
 
-/** 적재 출처. 매칭 규칙을 가르는 축이라 값이 늘어날 일이 거의 없다. */
-enum class FoodDataset { DISH, PROCESSED }
+/**
+ * 적재 출처. 매칭 규칙을 가르는 축이다.
+ *
+ * - `DISH` 조리된 음식(제육볶음·김치찌개) — 사진에 가장 흔히 찍히는 것
+ * - `RAW` 원재료성식품(복숭아·바나나·계란) — 손질만 해서 그대로 먹는 것
+ * - `PROCESSED` 가공식품(브랜드 제품) — 30만 행이라 완전일치에만 참여시킨다
+ */
+enum class FoodDataset { DISH, RAW, PROCESSED }
 
 /** 식약처 `전국통합식품영양성분정보(음식)` 표준데이터와 가공식품DB를 100g 기준으로 정규화해 적재한 표. */
 @Entity
