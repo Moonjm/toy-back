@@ -72,6 +72,12 @@ class FoodCsvParserTest :
                 Then("기본값 200g으로 채운다 — 없다고 버리면 매칭 자체가 안 된다") {
                     foods[0].servingSizeG shouldBe 200.0
                 }
+
+                // 기본값을 먼저 채운 뒤 신뢰 여부를 판단하면 결측이 「200g을 아는 것」이 된다.
+                // 실제로 원재료 523행(1인분 컬럼이 아예 없는 데이터셋)이 통째로 그렇게 잡혔었다.
+                Then("아는 값이 아니라고 표시한다 — 상한 초과와 같은 취급이다") {
+                    foods[0].servingSizeKnown shouldBe false
+                }
             }
         }
 
@@ -89,6 +95,12 @@ class FoodCsvParserTest :
                     foods[0].servingSizeG shouldBe 200.0
                 }
 
+                // 이 표시가 없으면 저장된 200과 원래 200을 구분할 수 없어, 근거 없는 기본값이
+                // 「DB가 아는 값」처럼 쓰인다 — 1kg 새우칩이 200g이 된 뒤 2인분이 곱해졌다.
+                Then("기본값으로 채웠다는 사실을 남긴다") {
+                    foods[0].servingSizeKnown shouldBe false
+                }
+
                 Then("100g당 값은 건드리지 않는다 — 틀린 것은 기준량이지 영양소가 아니다") {
                     foods[0].kcalPer100g shouldBe 167.0
                     foods[0].sodiumMgPer100g shouldBe 236.0
@@ -103,6 +115,7 @@ class FoodCsvParserTest :
 
                 Then("그대로 쓴다 — 경계는 포함이다") {
                     foods[0].servingSizeG shouldBe 500.0
+                    foods[0].servingSizeKnown shouldBe true
                 }
             }
         }

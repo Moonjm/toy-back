@@ -170,7 +170,7 @@ class MealAnalyzerTest :
 
             // 원재료성식품 원본에는 1인분 컬럼이 아예 없어 523행 전부 기본값 200g이다.
             // 그대로 쓰면 달걀 한 개(50g)가 4배로 잡힌다.
-            When("원재료(RAW)에 매칭되면") {
+            When("식품DB의 1인분이 기본값으로 채워진 행이면") {
                 val analyzer = MealAnalyzer(repository, fileService, foodMatcher, objectMapper, client)
                 val analysis = pendingAnalysis(32L)
                 every { repository.findByIdOrNull(1L) } returns analysis
@@ -183,6 +183,7 @@ class MealAnalyzerTest :
                         name = "달걀",
                         dataset = FoodDataset.RAW,
                         servingSizeG = FoodPolicy.DEFAULT_SERVING_SIZE_G,
+                        servingSizeKnown = false,
                         kcalPer100g = 156.0,
                         carbsPer100g = 1.0,
                         proteinPer100g = 12.0,

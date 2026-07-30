@@ -31,9 +31,10 @@ object FoodCsvParser {
 
         val code = columns[0].trim().takeIf { it.isNotBlank() } ?: return null
         val name = columns[9].trim().takeIf { it.isNotBlank() } ?: return null
-        // 기준량이 비면 기본값으로 채운다. 탄단지 값이 없는 행은 틀린 값을 넣느니 버리고
-        // LLM 추정에 맡긴다.
-        val servingSizeG = columns[1].trim().toDoubleOrNull() ?: FoodPolicy.DEFAULT_SERVING_SIZE_G
+        // 탄단지 값이 없는 행은 틀린 값을 넣느니 버리고 LLM 추정에 맡긴다.
+        // **기준량은 기본값을 채우기 전에 판단해야 한다** — 먼저 채우면 결측이 「200g을 아는 것」이
+        // 되어 `servingSizeKnown`이 참으로 잡힌다(원재료 523행이 통째로 그렇게 됐던 자리다).
+        val parsedServing = columns[1].trim().toDoubleOrNull()
         val kcal = columns[2].trim().toDoubleOrNull() ?: return null
         val carbs = columns[3].trim().toDoubleOrNull() ?: return null
         val protein = columns[4].trim().toDoubleOrNull() ?: return null
@@ -42,6 +43,7 @@ object FoodCsvParser {
         val sugar = columns[6].trim().toDoubleOrNull() ?: 0.0
         val sodium = columns[7].trim().toDoubleOrNull() ?: 0.0
         val fiber = columns[8].trim().toDoubleOrNull() ?: 0.0
+        val trustedServing = parsedServing?.takeIf { it > 0 && it <= FoodPolicy.MAX_TRUSTED_SERVING_SIZE_G }
 
         return Food(
             code = code,
@@ -49,11 +51,11 @@ object FoodCsvParser {
             normalizedName = FoodNameNormalizer.normalize(name),
             dataset = dataset,
             // 0 이하는 결측이고, 상한을 넘는 값은 1회 제공량이 아니라 포장 총중량이다
-            // (`MAX_TRUSTED_SERVING_SIZE_G` 주석 참고). 둘 다 기본값으로 되돌린다 —
-            // 여기서 거르지 않으면 인식 경로와 앱 검색 경로 양쪽이 같은 값을 그대로 쓴다.
-            servingSizeG =
-                servingSizeG.takeIf { it > 0 && it <= FoodPolicy.MAX_TRUSTED_SERVING_SIZE_G }
-                    ?: FoodPolicy.DEFAULT_SERVING_SIZE_G,
+            // (`MAX_TRUSTED_SERVING_SIZE_G` 주석 참고). 둘 다 기본값으로 되돌리되
+            // **기본값으로 채웠다는 사실을 함께 남긴다** — 안 남기면 저장된 200과 원래 200을
+            // 구분할 수 없어, 근거 없는 기본값이 「DB가 아는 값」처럼 쓰인다.
+            servingSizeG = trustedServing ?: FoodPolicy.DEFAULT_SERVING_SIZE_G,
+            servingSizeKnown = trustedServing != null,
             kcalPer100g = kcal,
             carbsPer100g = carbs,
             proteinPer100g = protein,

@@ -61,6 +61,22 @@ class Food(
     var dataset: FoodDataset,
     @Column(name = "serving_size_g", nullable = false)
     var servingSizeG: Double,
+    /**
+     * `servingSizeG`가 **원본에서 온 값인지**. false면 파서가 기본값으로 채운 것이라 근거가 없다.
+     *
+     * 원본이 비었거나(원재료성식품은 컬럼 자체가 없어 523행 전부) 1회 제공량으로 볼 수 없는
+     * 값일 때(가공식품 26%가 포장 총중량) 기본값 200g이 들어가는데, **저장된 200과 원래 200을
+     * 구분할 수 없으면 「DB가 아는 값」처럼 쓰이게 된다.** 실제로 1kg짜리 새우칩이 200g으로
+     * 바뀌었고 모델이 2인분이라 해서 400g·1320kcal로 기록됐다(실제 8조각 ≈ 40g).
+     *
+     * false면 인식 경로가 **모델이 준 1인분 중량**을 대신 쓴다. 밀도(100g당)는 어느 쪽이든
+     * 식품DB 값이 정확하므로 그대로 둔다.
+     *
+     * 기존 행이 있는 채로 컬럼이 붙어도 깨지지 않도록 기본값을 `true`로 둔다 — 재적재 전까지는
+     * 지금과 같은 동작이다(`ddl-auto`가 NOT NULL 컬럼을 채울 수 없는 문제를 피한다).
+     */
+    @Column(name = "serving_size_known", nullable = false, columnDefinition = "boolean not null default true")
+    var servingSizeKnown: Boolean = true,
     @Column(name = "kcal_per_100g", nullable = false)
     var kcalPer100g: Double,
     @Column(name = "carbs_per_100g", nullable = false)
