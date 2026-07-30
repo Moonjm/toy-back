@@ -154,22 +154,47 @@ class FileService(
         )
 
         entity.attach(newStoredName)
-        deleteTempAfterCommit(entity.bucketName, tempStoredName)
+        registerCopyCleanup(
+            tempBucket = entity.bucketName,
+            tempStoredName = tempStoredName,
+            copyBucket = properties.bucket,
+            copyStoredName = newStoredName,
+        )
         return entity.requiredId
     }
 
-    // temp 원본은 커밋이 확정된 뒤에만 지운다 — 롤백되면 storedName 도 temp 경로로 되돌아가므로
-    // 원본이 남아 있어야 레코드와 객체가 계속 맞물린다.
-    private fun deleteTempAfterCommit(
-        bucket: String,
-        storedName: String,
+    /**
+     * 커밋되면 temp 원본을, 롤백되면 방금 만든 사본을 지운다. **양쪽 다 필요하다.**
+     *
+     * - 커밋: `storedName` 이 영구 경로로 확정되므로 temp 원본은 쓸모가 없다.
+     * - 롤백: DB 행은 temp 경로로 되돌아가지만 **S3 복사는 트랜잭션 밖이라 되돌아가지 않는다.**
+     *   사본을 지우지 않으면 그것을 가리키는 레코드가 없어 정리 배치도 못 찾는 영구 고아가 된다
+     *   (배치는 `TEMP` 행의 `storedName`, 즉 temp 경로만 지운다). 스토리지가 쌓이는 것보다
+     *   **저장에 실패한 개인 사진이 무기한 남는 것**이 문제다.
+     *
+     * 끼니 확정처럼 한 트랜잭션에서 여러 장을 붙이는 경로는 중간 실패 시 앞서 복사한 사본이
+     * 전부 여기 걸린다 — 장수만큼 고아가 생기던 자리다.
+     */
+    private fun registerCopyCleanup(
+        tempBucket: String,
+        tempStoredName: String,
+        copyBucket: String,
+        copyStoredName: String,
     ) {
+        // 트랜잭션이 없으면 되돌아갈 일도 없다 — 복사는 이미 확정이므로 원본만 정리한다.
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            return deleteQuietly(bucket, storedName)
+            return deleteQuietly(tempBucket, tempStoredName)
         }
         TransactionSynchronizationManager.registerSynchronization(
             object : TransactionSynchronization {
-                override fun afterCommit() = deleteQuietly(bucket, storedName)
+                // afterCommit 이 아니라 afterCompletion 을 쓴다 — 롤백에서도 호출되어야 한다.
+                override fun afterCompletion(status: Int) {
+                    if (status == TransactionSynchronization.STATUS_COMMITTED) {
+                        deleteQuietly(tempBucket, tempStoredName)
+                    } else {
+                        deleteQuietly(copyBucket, copyStoredName)
+                    }
+                }
             },
         )
     }
