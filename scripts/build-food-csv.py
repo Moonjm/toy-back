@@ -45,11 +45,18 @@ COLUMN_HINTS = {
     # 1인분 기준량 우선, 없으면 식품중량으로 폴백한다(아래 main 참고). 둘 다 선택 컬럼이다.
     "servingReference": ["1인(회)분량참고량", "1회분량", "분량참고량"],
     "servingWeight": ["식품중량"],
+    # 원재료성식품 전용 (`--representative`). 다른 데이터셋에는 없다.
+    "representative": ["대표식품명"],
+    "subcategory": ["식품세분류명"],
 }
 
 # 이 컬럼들은 없어도 되는 컬럼이다 — 없으면 그 경로로는 못 채울 뿐 전체를 중단하지 않는다.
 # 당류·나트륨·식이섬유는 판본이 바뀌어 컬럼이 빠지더라도 탄단지는 살려야 하므로 포함한다.
-OPTIONAL_COLUMNS = {"servingReference", "servingWeight", "sugar", "sodium", "fiber"}
+OPTIONAL_COLUMNS = {"servingReference", "servingWeight", "sugar", "sodium", "fiber", "representative", "subcategory"}
+
+# `--representative`에서 남길 세분류. 사진에 찍히는 원재료는 대개 생것이고, 같은 대표명 안에
+# 말린것·동결건조가 섞여 있으면 열량이 4~6배 뛴다(바나나 생것 77 / 말린것 314, 사과 52 / 동결건조 332).
+FRESH_SUBCATEGORY = "생것"
 
 AMOUNT_PATTERN = re.compile(r"([0-9]+(?:\.[0-9]+)?)\s*(g|ml|mL|ML|㎖)")
 
@@ -104,7 +111,35 @@ def to_float(text):
         return None
 
 
-def main(src_path, dst_path):
+def pick_representatives(rows, subcategories):
+    """대표식품명 하나당 한 행만 남긴다. `--representative` 전용.
+
+    원재료성식품의 `식품명`은 `복숭아_천중도_생것`처럼 계층형이라 「복숭아」와 완전일치하지
+    않는다. 대표명(`복숭아`)으로 바꿔 넣어야 인식 결과와 맞는다.
+
+    두 단계로 고른다:
+      1. `생것`만 남긴다 — 같은 대표명에 말린것·동결건조가 섞여 있으면 열량이 몇 배 뛴다
+         (바나나 생것 77 / 말린것 314, 사과 52 / 동결건조 332).
+      2. 남은 것 중 **열량이 중앙값인 행**을 고른다.
+
+    ②를 중앙값으로 두는 이유 — 처음에는 「식품명이 가장 짧은 행」으로 했는데, 수식어 없는 행이
+    아예 없는 대표명에서 무너졌다. `닭고기`는 부위별 행만 있어서 가장 짧은 `닭고기_목_생것`이
+    뽑혔고 그게 하필 342kcal(가슴살 106의 3배)였다. 중앙값은 부위 편차를 타지 않는다.
+    합성하지 않고 **실제 행 하나**를 고르므로 탄단지·나트륨이 서로 어긋나지 않는다.
+
+    생것이 하나도 없는 대표명은 통째로 버린다. 말린것을 대신 넣느니 매칭을 실패시켜
+    LLM 추정으로 넘기는 편이 낫다 — 「말린 바나나 314kcal」가 생바나나로 기록되면 안 된다.
+    """
+    groups = {}
+    for index, row in enumerate(rows):
+        if subcategories[index] != FRESH_SUBCATEGORY:
+            continue
+        groups.setdefault(row[-1], []).append(row)
+    # 짝수 개면 위쪽 중앙값을 쓴다. 정렬 키가 같을 때 순서가 흔들리지 않도록 식품코드를 함께 본다.
+    return [sorted(group, key=lambda r: (float(r[2]), r[0]))[len(group) // 2] for group in groups.values()]
+
+
+def main(src_path, dst_path, representative=False):
     with open(src_path, encoding="utf-8-sig", newline="") as src:
         reader = csv.DictReader(src)
         columns = {key: find_column(reader.fieldnames, hints) for key, hints in COLUMN_HINTS.items()}
@@ -112,7 +147,11 @@ def main(src_path, dst_path):
         if missing:
             sys.exit(f"원본에서 컬럼을 찾지 못했습니다: {missing}\n헤더: {reader.fieldnames}")
 
+        if representative and not (columns["representative"] and columns["subcategory"]):
+            sys.exit("--representative 는 `대표식품명`·`식품세분류명` 컬럼이 있어야 한다(원재료성식품 전용)")
+
         rows = []
+        subcategories = []
         dropped = 0
         malformed = 0
         serving_from_reference = 0
@@ -172,8 +211,16 @@ def main(src_path, dst_path):
                 f"{sugar * factor:.2f}" if sugar is not None else "",
                 f"{sodium * factor:.1f}" if sodium is not None else "",
                 f"{fiber * factor:.2f}" if fiber is not None else "",
-                name,
+                # 원재료는 계층형 식품명 대신 대표명을 싣는다 — 인식 결과와 맞추기 위해서다.
+                clean_name(row.get(columns["representative"]) or "") if representative else name,
             ])
+            if representative:
+                subcategories.append((row.get(columns["subcategory"]) or "").strip())
+
+    if representative:
+        before = len(rows)
+        rows = pick_representatives(rows, subcategories)
+        print(f"대표명 정리: {before}행 → {len(rows)}행 (생것만 남기고 대표명당 중앙값 1건)")
 
     # 같은 식품코드가 중복되면 뒤엣것을 버린다(코드에 unique 제약이 있다).
     seen, unique_rows = set(), []
@@ -204,6 +251,8 @@ def main(src_path, dst_path):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        sys.exit("usage: build-food-csv.py <원본.csv> <출력.csv>")
-    main(sys.argv[1], sys.argv[2])
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    flags = {a for a in sys.argv[1:] if a.startswith("--")}
+    if len(args) != 2 or flags - {"--representative"}:
+        sys.exit("usage: build-food-csv.py [--representative] <원본.csv> <출력.csv>")
+    main(args[0], args[1], representative="--representative" in flags)

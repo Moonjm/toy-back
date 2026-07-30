@@ -6,7 +6,7 @@
 | 파일 | 내용 | 대략 크기 |
 | --- | --- | --- |
 | `food-nutrition.csv` | 음식(조리된 한식) 6,090행 | 440KB |
-| `raw-food-nutrition.csv` | 원재료성식품(과일·채소·계란·육류) | — |
+| `raw-food-nutrition.csv` | 원재료성식품(과일·채소·달걀·육류) 523행 | 40KB |
 | `processed-food-nutrition.csv` | 가공식품(브랜드 제품) 306,293행 | 26MB |
 
 **파일이 없어도 앱은 뜬다.** `FoodSeeder`가 경고만 남기고 넘어가고, 음식 매칭이 전부 실패해
@@ -55,9 +55,9 @@ python3 scripts/xlsx-to-csv.py ~/Downloads/음식DB.xlsx /tmp/food-raw.csv
 python3 scripts/build-food-csv.py /tmp/food-raw.csv \
   apps/daily-record/src/main/resources/food/food-nutrition.csv
 
-# 원재료성식품
-python3 scripts/xlsx-to-csv.py ~/Downloads/원재료성식품DB.xlsx /tmp/raw-raw.csv
-python3 scripts/build-food-csv.py /tmp/raw-raw.csv \
+# 원재료성식품 — 포털이 .xls(구형)로 준다. --representative 가 필수다
+python3 scripts/xlsx-to-csv.py "~/Downloads/전국통합식품영양성분정보_원재료성식품_표준데이터-YYYYMMDD.xls" /tmp/raw-raw.csv
+python3 scripts/build-food-csv.py --representative /tmp/raw-raw.csv \
   apps/daily-record/src/main/resources/food/raw-food-nutrition.csv
 
 # 가공식품
@@ -68,6 +68,15 @@ python3 scripts/build-food-csv.py /tmp/processed-raw.csv \
 
 한글 파일명은 **경로를 통째로 따옴표로 감싼다** — macOS 파일명이 NFD라 글로브가 조용히 빈
 결과를 내는 일이 있었다.
+
+**원재료성식품은 다른 두 개와 형태가 다르다.** `식품명`이 `복숭아_천중도_생것`처럼 계층형이라
+그대로 넣으면 「복숭아」와 완전일치하지 않는다. `--representative`가 `대표식품명`으로 바꾸고,
+같은 대표명 안에서 **`생것`만 남긴 뒤 열량이 중앙값인 행**을 고른다(3,704행 → 523행).
+
+- 생것만 남기는 이유 — 말린것·동결건조가 섞이면 열량이 몇 배 뛴다(바나나 77 / 말린것 314)
+- 중앙값인 이유 — 처음엔 「이름이 가장 짧은 행」이었는데 `닭고기`는 부위별 행만 있어
+  가장 짧은 `닭고기_목_생것`(342kcal, 가슴살의 3배)이 뽑혔다. 중앙값은 부위 편차를 타지 않는다
+- 1인분량 컬럼이 아예 없어 523행 전부 `DEFAULT_SERVING_SIZE_G`(200g)로 채워진다
 
 `build-food-csv.py`가 마지막에 적재 행 수·버린 행 수·1인분량 출처를 찍는다. 판본이 바뀌었을 때
 이 숫자가 크게 달라지면 원본 컬럼 구성이 바뀐 것이니 스크립트를 확인해야 한다.

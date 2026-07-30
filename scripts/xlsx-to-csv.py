@@ -8,7 +8,8 @@
   python3 scripts/build-food-csv.py /tmp/food-raw.csv \
     apps/daily-record/src/main/resources/food/food-nutrition.csv
 
-`openpyxl`이 필요하다: `pip3 install openpyxl`
+`.xlsx`는 `openpyxl`, `.xls`는 `xlrd`가 필요하다: `pip3 install openpyxl xlrd`
+(포털이 데이터셋마다 다른 형식을 준다 — 원재료성식품은 `.xls`다)
 """
 
 import csv
@@ -31,11 +32,23 @@ WANTED = [
     "식이섬유(g)",
     "1인(회)분량참고량",
     "식품중량",
+    # 원재료성식품에만 있다. `식품명`이 `복숭아_천중도_생것`처럼 계층형이라 완전일치가 안 되므로
+    # 대표명으로 묶고, 같은 대표명 안에서 `생것`만 남긴다(`build-food-csv.py --representative`).
+    "대표식품명",
+    "식품세분류명",
 ]
 
 # 없어도 되는 컬럼 — 데이터셋에 따라 빠져 있다. `build-food-csv.py`의 OPTIONAL_COLUMNS와 정책을
 # 맞춘다 — 당류·나트륨·식이섬유는 판본이 바뀌어 컬럼이 빠지더라도 탄단지는 살려야 한다.
-OPTIONAL = {"1인(회)분량참고량", "식품중량", "당류(g)", "나트륨(mg)", "식이섬유(g)"}
+OPTIONAL = {
+    "1인(회)분량참고량",
+    "식품중량",
+    "당류(g)",
+    "나트륨(mg)",
+    "식이섬유(g)",
+    "대표식품명",
+    "식품세분류명",
+}
 
 
 def find_column(header, hint):
@@ -46,12 +59,33 @@ def find_column(header, hint):
     return None
 
 
-def main(src_path, dst_path):
-    workbook = openpyxl.load_workbook(src_path, read_only=True, data_only=True)
-    sheet = workbook[workbook.sheetnames[0]]
-    rows = sheet.iter_rows(values_only=True)
+def read_rows(src_path):
+    """행을 튜플로 흘려보낸다. `.xls`(구형 OLE2)와 `.xlsx`(OOXML)는 읽는 라이브러리가 다르다.
 
-    header = ["" if v is None else str(v).strip() for v in next(rows)]
+    포털이 데이터셋마다 다른 형식을 준다 — 음식·가공식품은 `.xlsx`인데 원재료성식품은 `.xls`다.
+    `openpyxl`은 `.xls`를 못 읽고 오류 메시지도 형식 문제임을 알려주지 않아서, 확장자로 갈라
+    `xlrd`를 쓴다(`pip3 install xlrd`).
+    """
+    if src_path.lower().endswith(".xls"):
+        import xlrd
+
+        book = xlrd.open_workbook(src_path)
+        sheet = book.sheet_by_index(0)
+        for index in range(sheet.nrows):
+            yield tuple(cell.value for cell in sheet.row(index))
+        return
+
+    workbook = openpyxl.load_workbook(src_path, read_only=True, data_only=True)
+    yield from workbook[workbook.sheetnames[0]].iter_rows(values_only=True)
+
+
+def main(src_path, dst_path):
+    rows = read_rows(src_path)
+
+    # 헤더가 첫 줄이 아닌 판본이 있다 — 원재료성식품 `.xls`는 1행이 통째로 비어 있고 2행이 헤더다.
+    header = []
+    while not any(header):
+        header = ["" if v is None else str(v).strip() for v in next(rows)]
     columns = [(hint, find_column(header, hint)) for hint in WANTED]
     missing = [hint for hint, index in columns if index is None and hint not in OPTIONAL]
     if missing:
