@@ -1,6 +1,9 @@
 package com.toy.backend.diet.profile
 
+import com.toy.backend.common.constant.ErrorCode
+import com.toy.backend.common.exception.CustomException
 import com.toy.backend.user.Gender
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
 import java.time.LocalDate
@@ -74,6 +77,38 @@ class NutritionTargetCalculatorTest :
                         (goal.proteinPercent in 10..20) shouldBe true
                         (goal.fatPercent in 15..30) shouldBe true
                     }
+                }
+            }
+        }
+        // 목표는 끼니 스냅샷에 복사돼 영구히 남는다 — 잘못 계산된 값이 과거 기록까지 오염시킨다.
+        Given("생년월일이 말이 안 되면") {
+            fun calc(birthDate: LocalDate) =
+                NutritionTargetCalculator.calculate(
+                    gender = Gender.MALE,
+                    birthDate = birthDate,
+                    heightCm = 175.0,
+                    weightKg = 70.0,
+                    activityLevel = ActivityLevel.MODERATE,
+                    goal = DietGoal.MAINTAIN,
+                    today = today,
+                )
+
+            When("미래 날짜면") {
+                Then("거절한다 — 나이가 음수가 되어 `-5 × age`가 BMR을 부풀린다") {
+                    val e = shouldThrow<CustomException> { calc(LocalDate.of(2030, 1, 1)) }
+                    e.errorCode shouldBe ErrorCode.INVALID_REQUEST
+                }
+            }
+
+            When("120살을 넘으면") {
+                Then("거절한다 — BMR이 음수가 되어 목표 칼로리가 음수로 저장된다") {
+                    shouldThrow<CustomException> { calc(LocalDate.of(1800, 1, 1)) }
+                }
+            }
+
+            When("경계(120살)면") {
+                Then("통과한다 — 상한은 포함이다") {
+                    calc(today.minusYears(120)).kcal shouldBe 1858
                 }
             }
         }
