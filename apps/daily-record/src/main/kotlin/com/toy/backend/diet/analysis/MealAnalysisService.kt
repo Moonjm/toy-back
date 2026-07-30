@@ -74,6 +74,11 @@ class MealAnalysisService(
         username: String,
         id: Long,
     ) {
+        // create와 같은 가드다 — 클라이언트가 없으면 `retryFailed`가 사진을 다시 실패로 표시하는
+        // 것밖에 못 하는데 여기서 204를 돌려주면, 앱은 성공으로 알고 폴링하다 또 실패를 본다.
+        // FAILED에서 재시도 버튼을 띄우는 화면과 맞물려 **빠져나갈 수 없는 고리**가 된다.
+        if (!analyzer.isAvailable) throw CustomException(DietErrorCode.LLM_UNAVAILABLE)
+
         val analysis = requireOwned(findUser(username), id)
         // markPending()은 status만 바꾸고 resultJson의 failed 표시는 그대로 둔다 — 진행 중인 재인식이
         // 끝나기 전에 또 들어오면 아래 검사를 통과해 같은 사진에 유료 호출이 한 번 더 나간다.

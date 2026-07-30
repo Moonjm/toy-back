@@ -193,6 +193,18 @@ class MealAnalysisServiceTest :
                     verify(exactly = 0) { analyzer.retryFailed(any()) }
                 }
             }
+
+            // create와 대칭이어야 한다. 안 막으면 204를 돌려주고도 아무것도 못 해서, FAILED에서
+            // 재시도 버튼을 띄우는 화면과 맞물려 빠져나갈 수 없는 고리가 된다.
+            When("API 키가 없어 인식기가 준비되지 않았으면") {
+                every { analyzer.isAvailable } returns false
+
+                Then("LLM_UNAVAILABLE — 분석을 건드리지도 않는다") {
+                    val e = shouldThrow<CustomException> { service.retry("testuser", 7L) }
+                    e.errorCode shouldBe DietErrorCode.LLM_UNAVAILABLE
+                    verify(exactly = 0) { analyzer.retryFailed(any()) }
+                }
+            }
         }
 
         Given("확인 취소") {
