@@ -88,9 +88,19 @@ data class NutritionAmount(
     val fiberG: Double,
 )
 
-/** LLM이 주는 `portion`은 1인분 대비 배수다(0.5 = 반 인분). 이를 g으로 바꿔 100g당 값에 곱한다. */
-fun Food.nutritionFor(portion: Double): NutritionAmount {
-    val quantityG = servingSizeG * portion
+/**
+ * LLM이 주는 `portion`은 1인분 대비 배수다(0.5 = 반 인분). 이를 g으로 바꿔 100g당 값에 곱한다.
+ *
+ * `servingSize`를 따로 받을 수 있게 열어 둔 것은 **1인분 중량을 식품DB가 모르는 데이터셋**
+ * 때문이다 — `RAW`(원재료성식품)는 원본에 1인분 컬럼이 아예 없어 523행 전부 기본값 200g이다.
+ * 사과·복숭아는 우연히 맞지만 달걀 한 개(50g)가 4배, 잣 한 줌(15g)이 13배로 잡힌다.
+ * 그때는 **밀도(100g당)만 식품DB에서 쓰고 양은 모델이 준 1인분 중량**을 넘긴다.
+ */
+fun Food.nutritionFor(
+    portion: Double,
+    servingSize: Double = servingSizeG,
+): NutritionAmount {
+    val quantityG = servingSize * portion
     val ratio = quantityG / 100.0
     return NutritionAmount(
         quantityG = quantityG,

@@ -2,6 +2,7 @@ package com.toy.backend.diet.analysis
 
 import com.toy.backend.diet.AnalysisStatus
 import com.toy.backend.diet.NutritionSource
+import com.toy.backend.diet.food.FoodDataset
 import com.toy.backend.diet.food.FoodMatcher
 import com.toy.backend.diet.food.FoodPolicy
 import com.toy.backend.diet.food.nutritionFor
@@ -100,7 +101,16 @@ class MealAnalyzer(
                 source = NutritionSource.LLM_ESTIMATED,
             )
         }
-        val amount = matched.nutritionFor(recognized.portion)
+        // 원재료는 원본에 1인분 컬럼이 없어 전부 기본값 200g이라, 그대로 쓰면 달걀 한 개가
+        // 312kcal(4배)이 된다. **밀도는 식품DB가, 양은 모델이 준 1인분 중량이 맞다** —
+        // 매칭의 이점(정확한 100g당 값)은 유지하면서 수량만 사진을 본 쪽에 맡긴다.
+        val servingSize =
+            if (matched.dataset == FoodDataset.RAW) {
+                recognized.servingWeightG.trustedServingSize()
+            } else {
+                matched.servingSizeG
+            }
+        val amount = matched.nutritionFor(recognized.portion, servingSize)
         return AnalyzedItem(
             foodName = matched.name,
             foodCode = matched.code,

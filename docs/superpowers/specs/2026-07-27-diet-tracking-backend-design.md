@@ -259,7 +259,10 @@ id로 `GET /diet/analyses/{id}`를 폴링한다. `@EnableAsync`를 `DailyRecordA
    `estimated*`는 1인분 기준 영양소, `portion`은 사진에 몇 인분이 보이는지다.
    프롬프트가 이 셋을 각각 정의하고 「탄+단+지 ≤ servingWeightG」를 명시한다.
 3. 각 `name`을 `FoodMatcher`로 식품DB에 매칭한다.
-   - 성공: `quantityG = servingSizeG × portion` → 100g당 값으로 영양소 산출, `source = DB_MATCHED`
+   - 성공: `quantityG = servingSizeG × portion` → 100g당 값으로 영양소 산출, `source = DB_MATCHED`.
+     단 **`RAW`는 `servingSizeG` 대신 모델이 준 `servingWeightG`를 쓴다** — 원재료성식품 원본에
+     1인분 컬럼이 아예 없어 523행 전부 기본값 200g이고, 그대로 쓰면 달걀 한 개가 4배(312kcal),
+     잣 한 줌이 13배로 잡힌다. **밀도(100g당)는 식품DB가, 양은 사진을 본 모델이 맡는다.**
    - 실패: `quantityG = servingWeightG × portion`, 영양소도 `estimated* × portion`.
      `source = LLM_ESTIMATED`. `servingWeightG`가 상한을 넘으면 식품DB와 같은 기준으로 걸러
      기본 1인분으로 되돌린다(모델이 포장 단위로 답하는 경우가 있다).

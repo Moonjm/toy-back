@@ -5,7 +5,9 @@ import com.toy.backend.diet.AnalysisStatus
 import com.toy.backend.diet.NutritionSource
 import com.toy.backend.diet.dietUser
 import com.toy.backend.diet.dummyFood
+import com.toy.backend.diet.food.FoodDataset
 import com.toy.backend.diet.food.FoodMatcher
+import com.toy.backend.diet.food.FoodPolicy
 import com.toy.backend.diet.llm.OpenRouterClient
 import com.toy.backend.diet.llm.RecognizedFood
 import com.toy.backend.file.FileContent
@@ -163,6 +165,41 @@ class MealAnalyzerTest :
 
                 Then("탄단지 합이 수량을 넘지 않는다 — 물리적으로 불가능한 값이 저장되면 안 된다") {
                     (item.carbsG + item.proteinG + item.fatG <= item.quantityG) shouldBe true
+                }
+            }
+
+            // 원재료성식품 원본에는 1인분 컬럼이 아예 없어 523행 전부 기본값 200g이다.
+            // 그대로 쓰면 달걀 한 개(50g)가 4배로 잡힌다.
+            When("원재료(RAW)에 매칭되면") {
+                val analyzer = MealAnalyzer(repository, fileService, foodMatcher, objectMapper, client)
+                val analysis = pendingAnalysis(32L)
+                every { repository.findByIdOrNull(1L) } returns analysis
+                every { fileService.download(32L) } returns FileContent(byteArrayOf(1), "image/jpeg")
+                // 모델은 달걀 1인분을 50g으로 본다. 식품DB의 200g은 컬럼이 없어 채워진 기본값이다.
+                every { client.recognizeFoods(any(), any()) } returns
+                    listOf(recognized.copy(name = "달걀", servingWeightG = 50.0, portion = 2.0))
+                every { foodMatcher.match("달걀") } returns
+                    dummyFood(
+                        name = "달걀",
+                        dataset = FoodDataset.RAW,
+                        servingSizeG = FoodPolicy.DEFAULT_SERVING_SIZE_G,
+                        kcalPer100g = 156.0,
+                        carbsPer100g = 1.0,
+                        proteinPer100g = 12.0,
+                        fatPer100g = 11.0,
+                    )
+
+                analyzer.analyze(1L)
+
+                val item = objectMapper.readValue<AnalysisResult>(analysis.resultJson).photos[0].items[0]
+
+                Then("양은 모델이 준 1인분 중량을 쓴다 — 50g × 2인분 = 100g") {
+                    item.quantityG shouldBe 100.0
+                }
+
+                Then("밀도는 식품DB 값을 그대로 쓴다 — 156kcal/100g × 1.0 = 156kcal") {
+                    item.kcal shouldBe 156.0
+                    item.source shouldBe NutritionSource.DB_MATCHED
                 }
             }
 
