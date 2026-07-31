@@ -97,6 +97,7 @@ class DailyDietServiceTest :
             every { fileService.getPresignedUrls(any()) } returns emptyMap()
             // 트랜잭션 없는 단위 테스트에서는 runAfterCommit이 즉시 실행한다 — MealServiceTest와 같은 전제.
             justRun { feedbackGenerator.generateForDay(any(), any()) }
+            every { feedbackGenerator.isAvailable } returns true
         }
 
         Given("그날 끼니가 없으면") {
@@ -318,6 +319,47 @@ class DailyDietServiceTest :
                     cached.feedback shouldBe null
                     cached.dayScore shouldBe 70
                     verify { feedbackGenerator.generateForDay(user.requiredId, date) }
+                }
+            }
+
+            // 마커를 남기면 `generateForDay`가 즉시 반환한 뒤에도 generatedAt이 끼니 updatedAt보다
+            // 뒤라 유효한 캐시로 굳는다. 나중에 키를 넣어도 그 판정이 그대로여서 그날 피드백은
+            // 영영 안 만들어지고, 하루 피드백에는 재시도 엔드포인트가 없어 빠져나갈 길도 없다.
+            When("API 키가 없어 생성기가 준비되지 않았으면") {
+                every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(single)
+                every { feedbackRepository.findByUserAndDate(user, date) } returns null
+                every { feedbackGenerator.isAvailable } returns false
+
+                val response = service.getDay("testuser", date)
+
+                Then("마커를 남기지 않는다 — 남기면 키를 넣은 뒤에도 캐시가 유효해 보인다") {
+                    response.feedback shouldBe null
+                    verify(exactly = 0) { feedbackRepository.save(any()) }
+                    verify(exactly = 0) { feedbackGenerator.generateForDay(any(), any()) }
+                }
+
+                Then("점수는 그대로 나온다 — 룰 기반이라 LLM과 무관하다") {
+                    response.dayScore shouldBe 70
+                }
+            }
+
+            // 가드를 캐시 적중 검사보다 앞에 두면 여기서 잡힌다.
+            When("키가 없는데 유효한 캐시가 이미 있으면") {
+                every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(single)
+                every { feedbackRepository.findByUserAndDate(user, date) } returns
+                    DailyDietFeedback(
+                        user = user,
+                        date = date,
+                        dayScore = 70,
+                        feedback = "예전에 만든 피드백",
+                        generatedAt = LocalDateTime.of(2026, 7, 29, 9, 0),
+                    ).withId(1L)
+                every { feedbackGenerator.isAvailable } returns false
+
+                val response = service.getDay("testuser", date)
+
+                Then("이미 만들어 둔 문장은 그대로 보여준다") {
+                    response.feedback shouldBe "예전에 만든 피드백"
                 }
             }
         }

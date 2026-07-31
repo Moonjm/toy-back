@@ -98,6 +98,15 @@ class DailyDietService(
      * 표시라, 사용자가 폴링하며 여러 번 조회해도 뒤에서 나가는 호출은 한 번뿐이다. 이 표시가 없으면
      * 폴링이 곧 무제한 호출이 된다. 마커를 커밋한 뒤에 `runAfterCommit`으로 실제 생성을 트리거한다
      * — 커밋 전에 출발하면 비동기 스레드가 방금 쓴 행을 못 본다.
+     *
+     * **키가 없으면 마커조차 남기지 않는다.** `MealAnalysisService.retry`·`MealService.retryFeedback`과
+     * 같은 계열의 가드인데, 여기만 빠져 있었다. 마커를 남기면 `generateForDay`가 즉시 반환한 뒤에도
+     * `generatedAt`이 끼니 `updatedAt`보다 뒤라 **유효한 캐시로 굳는다.** 나중에 키를 넣어도 그 판정은
+     * 그대로여서 그날 피드백은 영영 안 만들어지고, 하루 피드백에는 재시도 엔드포인트가 없어
+     * 빠져나갈 길도 없다(끼니를 고쳐 `updatedAt`을 올리는 우회뿐이다).
+     *
+     * 생성이 **실패**했을 때 마커를 남겨 두는 것은 이와 달리 의도된 설계다(`DietFeedbackGenerator`
+     * 주석 — 자동 재시도를 넣지 않는다). 실패는 일시적이지만 키 없음은 설정을 바꿔도 안 풀린다.
      */
     private fun resolveFeedback(
         user: User,
@@ -108,6 +117,10 @@ class DailyDietService(
         val cached = feedbackRepository.findByUserAndDate(user, date)
         val latestMealUpdate = meals.maxOf { it.updatedAt }
         if (cached != null && !cached.generatedAt.isBefore(latestMealUpdate)) return cached.feedback
+
+        // **캐시 적중 검사보다 뒤에 둔다.** 앞에 두면 키가 없는 동안 이미 만들어 둔 피드백까지
+        // 가려진다 — 막으려는 건 「생성할 수 없으면서 생성했다는 표시를 남기는 것」뿐이다.
+        if (!feedbackGenerator.isAvailable) return null
 
         val now = LocalDateTime.now()
         if (cached == null) {
