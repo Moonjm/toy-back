@@ -105,6 +105,8 @@ class MealConfirmTest :
             every { userRepository.findByUsername("testuser") } returns user
             every { profileService.requireProfile(user) } returns profile
             justRun { feedbackGenerator.generateForMeal(any()) }
+            // 기본은 「그날 그 끼니가 아직 없다」 — 병합 케이스만 따로 덮어쓴다.
+            every { repository.findFirstByUserAndDateAndMealTypeOrderByCreatedAtAscIdAsc(any(), any(), any()) } returns null
         }
 
         Given("끼니 확정") {

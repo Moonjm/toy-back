@@ -18,7 +18,24 @@ import jakarta.persistence.OrderBy
 import jakarta.persistence.Table
 import java.time.LocalDate
 
-enum class MealType { BREAKFAST, LUNCH, DINNER, SNACK }
+enum class MealType {
+    BREAKFAST,
+    LUNCH,
+    DINNER,
+    SNACK,
+    ;
+
+    /**
+     * 같은 날 같은 종류를 다시 확정하면 **기존 끼니에 합칠 것인가**.
+     *
+     * **간식만 아니다.** 아침·점심·저녁은 하루에 하나가 자연스럽지만 간식은 본래 여러 번이다.
+     * 오전 과자와 밤 아이스크림을 한 카드에 합치면 끼니 점수가 뒤섞이고, 사진 없는 기록을
+     * 열어 둔 이유(「과자 하나를 적으려고 사진을 찍게 만들지 말자」)와도 어긋난다.
+     *
+     * 판단을 여기 두는 것은 서비스에 `if (mealType != SNACK)`을 흩어 두지 않기 위해서다.
+     */
+    val mergesWithinDay: Boolean get() = this != SNACK
+}
 
 /**
  * **확정된 끼니만 존재한다.** 인식만 되고 확정되지 않은 결과는 `MealAnalysis`에 있고 `Meal`이 되지
@@ -90,10 +107,31 @@ class Meal(
     @OrderBy("id asc")
     var items: MutableList<MealItem> = mutableListOf()
 
-    /** 항목은 항상 전체 교체다 — 확정과 수정이 같은 경로를 쓰도록 편집 로직을 한 벌만 만든다. */
+    /** 항목 **수정**은 전체 교체다 — 화면에서 목록째 넘어오므로 남은 것을 추려낼 필요가 없다. */
     fun replaceItems(newItems: List<MealItem>) {
         items.clear()
         items.addAll(newItems)
+        recalculateTotals()
+    }
+
+    /**
+     * 같은 날 같은 끼니에 다시 기록했을 때 **기존 항목 위에 얹는다.**
+     *
+     * `replaceItems`를 쓰면 안 된다. `items`가 `orphanRemoval = true`라 `clear()` 순간 기존
+     * 엔티티가 삭제 대상이 되고, 「기존 + 새 항목」을 만들어 다시 넣으면 Hibernate가 삭제된
+     * 인스턴스를 되살리는 것으로 보고 던진다.
+     */
+    fun addItems(newItems: List<MealItem>) {
+        items.addAll(newItems)
+        recalculateTotals()
+    }
+
+    /**
+     * 합계는 **항상 항목에서 다시 센다** — 누적 가산이 아니다. 병합이든 수정이든 같은 식이라
+     * 한쪽만 갱신되는 일이 없다. 주의 영양소 셋도 여기서 함께 센다(이 도메인에서 조용히
+     * 0이 됐던 전력이 있는 자리다).
+     */
+    private fun recalculateTotals() {
         totalKcal = items.sumOf { it.kcal }
         carbsG = items.sumOf { it.carbsG }
         proteinG = items.sumOf { it.proteinG }

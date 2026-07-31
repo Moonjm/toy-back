@@ -40,6 +40,12 @@ class MealService(
      * 확정. **점수는 동기, 피드백은 비동기다** — 점수는 룰 기반이라 즉시 나오고 사용자가 바로
      * 봐야 하는 값이지만, 피드백은 LLM 텍스트 호출이라 수 초 걸린다.
      *
+     * **같은 날 같은 끼니가 이미 있으면 새로 만들지 않고 거기 합친다**(간식 제외 —
+     * `MealType.mergesWithinDay`). 아침을 먹다가 하나 더 먹어서 추가하면 아침 카드가 두 개
+     * 생기던 것을 막는다. 합칠 때도 응답은 그대로 201 + `Location`이고 id는 합쳐진 기존
+     * 끼니의 것이다 — 생성하지 않았는데 201이라 HTTP 의미와는 어긋나지만, 이 API의 유일한
+     * 소비자인 앱이 201만 받도록 돼 있어 시맨틱을 맞추자고 클라이언트를 깨뜨리지 않는다.
+     *
      * `analysisId`가 없으면 **사진 없는 기록**이다. 분석 조회·`attachFile`·분석 삭제를 통째로
      * 건너뛴다. 프로필은 사진 유무와 무관하게 필요하다 — 목표 스냅샷을 떠야 하기 때문이다.
      *
@@ -57,30 +63,54 @@ class MealService(
         // 분석은 끼니를 만들기 전에 검증한다 — 확정할 수 없는 분석이면 아무것도 만들지 않고 끝낸다.
         val analysis = request.analysisId?.let { confirmableAnalysis(user, it) }
 
+        val existing = mergeTargetOf(user, request)
         val meal =
-            Meal(
-                user = user,
-                date = request.date,
-                mealType = request.mealType,
-                // 확정 시점 스냅샷 — 나중에 몸무게를 갱신해도 이 끼니가 속한 날의 점수는 흔들리지 않는다.
-                weightKg = profile.weightKg,
-                targetKcal = profile.targetKcal,
-                targetCarbsG = profile.targetCarbsG,
-                targetProteinG = profile.targetProteinG,
-                targetFatG = profile.targetFatG,
-                targetSugarG = profile.targetSugarG,
-                targetSodiumMg = profile.targetSodiumMg,
-                targetFiberG = profile.targetFiberG,
-            )
-        applyItems(meal, request.items)
+            existing
+                ?: Meal(
+                    user = user,
+                    date = request.date,
+                    mealType = request.mealType,
+                    // 확정 시점 스냅샷 — 나중에 몸무게를 갱신해도 이 끼니가 속한 날의 점수는 흔들리지 않는다.
+                    // **병합할 때는 갱신하지 않는다.** 그 끼니를 처음 확정한 시점의 값이 그 끼니를
+                    // 설명하는 값이고, 아침 점수의 근거가 저녁에 잰 몸무게로 바뀌면 「과거 점수는
+                    // 바뀌지 않는다」는 약속이 깨진다.
+                    weightKg = profile.weightKg,
+                    targetKcal = profile.targetKcal,
+                    targetCarbsG = profile.targetCarbsG,
+                    targetProteinG = profile.targetProteinG,
+                    targetFatG = profile.targetFatG,
+                    targetSugarG = profile.targetSugarG,
+                    targetSodiumMg = profile.targetSodiumMg,
+                    targetFiberG = profile.targetFiberG,
+                )
+
+        // 새 끼니는 `items`가 비어 있어 얹기와 교체가 같다 — 분기하지 않는다.
+        meal.addItems(request.items.map { it.toEntity(meal) })
+        meal.applyScore(DietScoreCalculator.scoreMeal(meal.carbsG, meal.proteinG, meal.fatG).score)
+        // 항목이 늘었으므로 옛 피드백은 버린다(`updateItems`와 같은 처리). 새 끼니에는 이미
+        // 그 상태라 무해하다. 하루 피드백 캐시는 따로 지우지 않아도 된다 — 무효화 판정이
+        // `Meal.updatedAt`을 보는데 병합이 그 값을 올린다.
+        meal.markFeedbackPending()
         analysis?.let { attachPhotos(meal, it) }
 
-        val saved = repository.save(meal)
+        // 기존 끼니는 영속 상태라 더티 체킹으로 반영된다. 새 끼니만 저장한다.
+        val saved = existing ?: repository.save(meal)
         analysis?.let { analysisRepository.delete(it) }
         // 커밋 뒤에 시작해야 비동기 스레드가 저장된 끼니를 볼 수 있다.
         runAfterCommit { feedbackGenerator.generateForMeal(saved.requiredId) }
         return saved.requiredId
     }
+
+    /** 합칠 기존 끼니. 간식은 본래 여러 번이라 묶지 않는다(`MealType.mergesWithinDay`). */
+    private fun mergeTargetOf(
+        user: User,
+        request: MealConfirmRequest,
+    ): Meal? =
+        if (request.mealType.mergesWithinDay) {
+            repository.findFirstByUserAndDateAndMealTypeOrderByCreatedAtAscIdAsc(user, request.date, request.mealType)
+        } else {
+            null
+        }
 
     private fun confirmableAnalysis(
         user: User,
@@ -93,14 +123,21 @@ class MealService(
         return analysis
     }
 
-    /** 인식이 실패한 사진도 붙인다 — 인식이 안 됐을 뿐 사용자가 찍은 그 끼니의 사진이다. */
+    /**
+     * 인식이 실패한 사진도 붙인다 — 인식이 안 됐을 뿐 사용자가 찍은 그 끼니의 사진이다.
+     *
+     * **`sortOrder`는 기존 최대값 다음부터 매긴다.** `Meal.photos`가 `@OrderBy("sortOrder asc")`라
+     * 병합할 때 0부터 다시 매기면 `0,1,0,1`이 되어 앱의 사진 순서가 뒤섞인다. 새 끼니는
+     * `photos`가 비어 있어 0부터 시작하므로 분기하지 않는다.
+     */
     private fun attachPhotos(
         meal: Meal,
         analysis: MealAnalysis,
     ) {
+        val startOrder = (meal.photos.maxOfOrNull { it.sortOrder } ?: -1) + 1
         objectMapper.readValue<AnalysisResult>(analysis.resultJson).photos.forEachIndexed { index, photo ->
             fileService.attachFile(photo.fileId, MEAL_FILE_PREFIX)
-            meal.addPhoto(MealPhoto(meal = meal, fileId = photo.fileId, sortOrder = index))
+            meal.addPhoto(MealPhoto(meal = meal, fileId = photo.fileId, sortOrder = startOrder + index))
         }
     }
 
@@ -173,8 +210,13 @@ class MealService(
         runAfterCommit { feedbackGenerator.generateForMeal(id) }
     }
 
-    /** 항목 교체 → 영양소 합산 → 점수 재계산. 확정과 수정이 이 한 곳을 공유한다. */
-    fun applyItems(
+    /**
+     * 항목 **교체** → 영양소 합산 → 점수 재계산. 수정 전용이다.
+     *
+     * 확정은 이 경로를 쓰지 않는다 — 같은 끼니에 다시 기록하면 합쳐야 하는데 교체는 기존
+     * 항목을 지운다(`Meal.addItems` 주석 참조).
+     */
+    private fun applyItems(
         meal: Meal,
         items: List<MealItemRequest>,
     ) {

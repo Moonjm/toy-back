@@ -28,4 +28,18 @@ interface MealRepository : JpaRepository<Meal, Long> {
         user: User,
         date: LocalDate,
     ): List<Meal>
+
+    /**
+     * 병합 대상 조회 — 같은 날 같은 종류의 끼니가 이미 있으면 새로 만들지 않고 거기 합친다
+     * (`MealService.confirm`). **간식에는 부르지 않는다**(`MealType.mergesWithinDay`).
+     *
+     * 유니크 제약이 없어 `First`를 붙이지 않으면 중복 행이 있을 때 예외가 난다. 병합을 넣기 전에
+     * 생긴 중복은 그대로 두기로 했으므로(소급 병합하면 과거 점수가 바뀐다) 실제로 있을 수 있다.
+     * 그때는 가장 먼저 만든 것에 합친다 — 하루 목표를 읽는 「첫 끼니」와 같은 행이다.
+     */
+    fun findFirstByUserAndDateAndMealTypeOrderByCreatedAtAscIdAsc(
+        user: User,
+        date: LocalDate,
+        mealType: MealType,
+    ): Meal?
 }
