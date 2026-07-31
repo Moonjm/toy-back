@@ -145,6 +145,15 @@ class Meal(
         photos.add(photo)
     }
 
+    /**
+     * 사진 한 장을 뺀다. **`orphanRemoval`이 실제 행을 지우므로 리포지토리를 따로 부르지 않는다** —
+     * `MealPhotoRepository.delete`를 부르면 이 컬렉션에는 인스턴스가 남아 있어, 같은 트랜잭션에서
+     * flush 할 때 되살아나거나 삭제된 엔티티를 다시 저장하는 것으로 보고 터진다.
+     *
+     * 없는 `fileId`면 아무것도 하지 않고 false를 돌려준다 — 호출부가 404로 옮긴다.
+     */
+    fun removePhoto(fileId: Long): Boolean = photos.removeIf { it.fileId == fileId }
+
     fun applyScore(score: Int?) {
         this.score = score
     }

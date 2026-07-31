@@ -194,6 +194,32 @@ class MealService(
         dailyFeedbackRepository.deleteByUserAndDate(meal.user, meal.date)
     }
 
+    /**
+     * 사진 한 장 삭제. 잘못 찍은 사진 하나 때문에 끼니를 통째로 지우고 항목을 다시 넣게 만들지 않는다.
+     *
+     * **항목·점수·피드백은 건드리지 않는다.** 점수는 항목에서만 나오고(`scoreMeal(탄, 단, 지)`)
+     * 피드백 프롬프트에도 사진이 안 들어간다 — 사진이 줄어도 먹은 것은 그대로다. `updateItems`를
+     * 흉내 내 재생성을 걸면 같은 내용의 문장을 다시 만들면서 LLM 비용만 나간다. 하루 피드백 캐시도
+     * 건드리지 않는다(구성이 안 바뀌었다).
+     *
+     * 파일은 물리 삭제하지 않고 detach 한다 — `delete`와 같은 이유다.
+     *
+     * **`sortOrder`는 다시 매기지 않는다.** 0,1,2에서 1을 빼면 0,2가 남는데 `@OrderBy("sortOrder asc")`라
+     * 순서는 그대로 맞다. 오히려 구멍을 남기는 편이 낫다 — 끼니 병합이 사진을 이어 붙일 때
+     * `maxOfOrNull { it.sortOrder } + 1`을 쓰므로, 다시 매기면 그쪽과 값이 겹칠 여지가 생긴다.
+     */
+    @Transactional
+    fun deletePhoto(
+        username: String,
+        mealId: Long,
+        fileId: Long,
+    ) {
+        val meal = requireOwned(findUser(username), mealId)
+        // 그 끼니에 없는 사진이면 404 — 남의 사진 id를 넣어도 지워지지 않는다.
+        if (!meal.removePhoto(fileId)) throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, fileId)
+        fileService.detachFiles(listOf(fileId))
+    }
+
     /** 자동 재시도를 넣지 않는 대신 수동 재시도를 연다. 실패 상태에서만 허용해 중복 호출을 막는다. */
     @Transactional
     fun retryFeedback(

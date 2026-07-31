@@ -75,6 +75,17 @@ class MealController(
         return ResponseEntity.noContent().build()
     }
 
+    @DeleteMapping("/{mealId}/photos/{fileId}")
+    @Operation(summary = "사진 한 장 삭제 — detach 후 정리 배치가 수거한다. 점수·피드백은 그대로다")
+    fun deletePhoto(
+        @PathVariable mealId: Long,
+        @PathVariable fileId: Long,
+        authentication: Authentication,
+    ): ResponseEntity<Void> {
+        service.deletePhoto(authentication.name, mealId, fileId)
+        return ResponseEntity.noContent().build()
+    }
+
     @PostMapping("/{id}/retry")
     @Operation(summary = "피드백 재생성 (FAILED 상태에서만)")
     fun retryFeedback(
