@@ -126,7 +126,7 @@ class MealServiceTest :
                     meal.items.size shouldBe 1
                     meal.items[0].foodName shouldBe "제육볶음"
                     meal.totalKcal shouldBe 700.0
-                    meal.score shouldBe 76
+                    meal.score shouldBe 88
                 }
 
                 Then("피드백은 낡았으므로 비우고 재생성한다") {

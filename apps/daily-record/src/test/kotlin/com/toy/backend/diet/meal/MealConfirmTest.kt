@@ -150,7 +150,7 @@ class MealConfirmTest :
                 Then("점수는 동기로 계산되고 피드백 상태는 PENDING이다") {
                     verify {
                         repository.save(
-                            match { it.score == 76 && it.status == AnalysisStatus.PENDING && it.feedback == null },
+                            match { it.score == 88 && it.status == AnalysisStatus.PENDING && it.feedback == null },
                         )
                     }
                 }
@@ -235,7 +235,7 @@ class MealConfirmTest :
                 Then("사진 없는 끼니가 저장되고 점수·스냅샷은 그대로 계산된다") {
                     verify {
                         repository.save(
-                            match { it.photos.isEmpty() && it.score == 76 && it.targetKcal == 2509 },
+                            match { it.photos.isEmpty() && it.score == 88 && it.targetKcal == 2509 },
                         )
                     }
                 }

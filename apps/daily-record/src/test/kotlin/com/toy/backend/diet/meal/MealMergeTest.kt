@@ -99,7 +99,7 @@ class MealMergeTest :
                     ).withId(701L),
                 ),
             )
-            meal.applyScore(18)
+            meal.applyScore(59)
             return meal
         }
 
@@ -170,8 +170,8 @@ class MealMergeTest :
                     meal.fiberG shouldBe 4.0
                 }
 
-                Then("점수를 합쳐진 매크로로 다시 계산한다 — 18에서 바뀐다") {
-                    meal.score shouldBe 64
+                Then("점수를 합쳐진 매크로로 다시 계산한다 — 59에서 바뀐다") {
+                    meal.score shouldBe 82
                 }
 
                 // 항목이 늘었는데 옛 피드백이 남으면 없는 구성을 설명하는 문장이 된다.
