@@ -37,6 +37,17 @@ data class FoodResponse(
     val saturatedFatPer100g: Double,
     val transFatPer100g: Double,
     val cholesterolMgPer100g: Double,
+    /**
+     * 추정으로 채운 필드(`["carbs","fat"]`). 비었으면 전부 원본 값이다.
+     *
+     * 프랜차이즈 영양성분표는 어린이 기호식품 의무표시 항목(열량·단백질·나트륨·당류·포화지방)만
+     * 싣는다. 그래서 롯데리아 버거의 열량 217.5는 공식값이고 탄수화물 18.42는 우리가 잔여
+     * 열량에서 계산한 값인데, **이 필드가 없으면 앱에서 둘이 똑같아 보인다.**
+     *
+     * 저장은 쉼표 문자열인데 **배열로 내보낸다** — 서버의 저장 형식이 계약에 새지 않게 하고,
+     * 앱이 `contains("carbs")`로 쓰게 한다.
+     */
+    val estimatedFields: List<String>,
 )
 
 fun Food.toResponse(): FoodResponse =
@@ -57,4 +68,5 @@ fun Food.toResponse(): FoodResponse =
         saturatedFatPer100g = saturatedFatPer100g,
         transFatPer100g = transFatPer100g,
         cholesterolMgPer100g = cholesterolMgPer100g,
+        estimatedFields = estimatedFields?.split(',')?.filter { it.isNotBlank() } ?: emptyList(),
     )

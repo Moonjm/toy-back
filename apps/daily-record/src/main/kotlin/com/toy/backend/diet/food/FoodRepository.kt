@@ -14,11 +14,29 @@ interface FoodRepository : JpaRepository<Food, Long> {
      */
     fun existsByDataset(dataset: FoodDataset): Boolean
 
-    /** 완전일치는 (dataset, normalized_name) 인덱스를 탄다. 가공식품 30만 행이어도 비용이 일정하다. */
-    fun findFirstByDatasetAndNormalizedName(
-        dataset: FoodDataset,
-        normalizedName: String,
-    ): Food?
+    /**
+     * 완전일치는 (dataset, normalized_name) 인덱스를 탄다. 가공식품 30만 행이어도 비용이 일정하다.
+     *
+     * **추정으로 채운 행을 뒤로 민다.** 같은 이름이 여러 건일 때(DISH 6,090행 중 1,084종
+     * 3,452행이 중복이다 — 상추겉절이 8건) 원본 값을 가진 행이 이겨야 한다. 정렬이 없으면
+     * 어느 행이 걸릴지 DB 순서에 달려 있어, 되살린 추정 행이 멀쩡한 원본 행을 밀어낸다.
+     *
+     * **`Food?`를 돌려주면 안 된다.** 파생 쿼리였을 때는 `findFirst` 접두사가 `LIMIT 1`을
+     * 붙여 줬지만 `@Query`를 달면 그 접두사가 무시되고, 위의 중복 때문에 곧바로
+     * `IncorrectResultSizeDataAccessException`이 난다. 호출자가 `firstOrNull()` 한다.
+     */
+    @Query(
+        """
+        select f from Food f
+        where f.dataset = :dataset and f.normalizedName = :normalized
+        order by case when f.estimatedFields is null then 0 else 1 end, f.id asc
+        """,
+    )
+    fun findBestByDatasetAndNormalizedName(
+        @Param("dataset") dataset: FoodDataset,
+        @Param("normalized") normalized: String,
+        pageable: Pageable,
+    ): List<Food>
 
     /**
      * 부분일치 후보를 **이름이 짧은 순**으로 준다. 인식 파이프라인은 `DISH`로만 부른다 —
@@ -34,7 +52,8 @@ interface FoodRepository : JpaRepository<Food, Long> {
         select f from Food f
         where f.dataset = :dataset
           and f.normalizedName like concat('%', :normalized, '%')
-        order by length(f.normalizedName) asc, f.id asc
+        order by case when f.estimatedFields is null then 0 else 1 end,
+                 length(f.normalizedName) asc, f.id asc
         """,
     )
     fun searchByDatasetAndNormalizedName(
@@ -56,7 +75,8 @@ interface FoodRepository : JpaRepository<Food, Long> {
         select f from Food f
         where f.normalizedName like concat('%', :normalized, '%')
            or f.normalizedMaker like concat('%', :normalized, '%')
-        order by length(f.normalizedName) asc, f.id asc
+        order by case when f.estimatedFields is null then 0 else 1 end,
+                 length(f.normalizedName) asc, f.id asc
         """,
     )
     fun searchByText(
@@ -71,7 +91,8 @@ interface FoodRepository : JpaRepository<Food, Long> {
         where f.dataset = :dataset
           and (f.normalizedName like concat('%', :normalized, '%')
                or f.normalizedMaker like concat('%', :normalized, '%'))
-        order by length(f.normalizedName) asc, f.id asc
+        order by case when f.estimatedFields is null then 0 else 1 end,
+                 length(f.normalizedName) asc, f.id asc
         """,
     )
     fun searchByDatasetAndText(

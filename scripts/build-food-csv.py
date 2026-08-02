@@ -24,14 +24,23 @@ import re
 import sys
 import unicodedata
 
+import nutrition_estimate as estimator
+
 # `name`은 반드시 마지막이다 — Kotlin 파서가 `split(',', limit = N)`으로 읽어 마지막 조각이
 # 줄의 나머지 전부다. 그래야 이름에 쉼표가 있어도 컬럼이 밀리지 않는다.
 OUT_HEADER = [
     "code", "servingSizeG", "kcalPer100g",
     "carbsPer100g", "proteinPer100g", "fatPer100g",
     "sugarPer100g", "sodiumMgPer100g", "fiberPer100g",
-    "saturatedFatPer100g", "transFatPer100g", "cholesterolMgPer100g", "maker", "name",
+    "saturatedFatPer100g", "transFatPer100g", "cholesterolMgPer100g",
+    # 추정으로 채운 필드. **쉼표 구분 파일이라 파이프로 쓴다**(`carbs|fat`) — Kotlin 파서가
+    # 쉼표로 바꿔 저장한다. 빈 칸이면 전부 원본 값이라는 뜻이다.
+    "estimatedFields",
+    "maker", "name",
 ]
+
+# `estimatedFields` 안에서 쓰는 구분자. 파일 구분자(`,`)와 겹치면 컬럼이 밀린다.
+ESTIMATED_SEPARATOR = "|"
 
 # 원본 헤더는 공백·괄호 표기가 판번마다 조금씩 달라 부분 문자열로 찾는다.
 COLUMN_HINTS = {
@@ -170,8 +179,10 @@ def main(src_path, dst_path, representative=False):
         if representative and not (columns["representative"] and columns["subcategory"]):
             sys.exit("--representative 는 `대표식품명`·`식품세분류명` 컬럼이 있어야 한다(원재료성식품 전용)")
 
-        rows = []
-        subcategories = []
+        # **두 번 훑는다.** 탄·지가 빠진 행을 채우려면 같은 분류의 온전한 행들에서 비중을
+        # 먼저 모아야 하는데, 그 비중은 파일을 다 읽어야 정해진다. 1차에서 숫자만 모으고
+        # 2차에서 채워 문자열로 만든다.
+        records = []
         dropped = 0
         malformed = 0
         serving_from_reference = 0
@@ -205,7 +216,10 @@ def main(src_path, dst_path, representative=False):
                 malformed += 1
                 continue
 
-            if not code or not name or not basis or basis <= 0 or None in (kcal, carbs, protein, fat):
+            # **탄수화물·지방이 비어도 버리지 않는다.** 음식DB 19,495행 중 13,405행이 그런데
+            # 전부 열량과 단백질을 갖고 있어, 잔여 열량에서 되짚어 채울 수 있다(2차 훑기).
+            # 열량이나 단백질이 없으면 되짚을 수가 없으므로 그때만 버린다.
+            if not code or not name or not basis or basis <= 0 or None in (kcal, protein):
                 dropped += 1
                 continue
 
@@ -226,29 +240,83 @@ def main(src_path, dst_path, representative=False):
                     serving = None
                     serving_missing += 1
 
-            # kcal/carbs/protein/fat/serving은 전부 f-string으로 다시 포맷한 숫자라
-            # 콤마가 섞일 수 없다(파이썬 float 포맷은 로캘과 무관하게 '.'을 쓴다) —
-            # 구조 손상은 code에서만 온다.
-            rows.append([
-                code,
-                f"{serving:.1f}" if serving else "",
-                f"{kcal * factor:.2f}",
-                f"{carbs * factor:.2f}",
-                f"{protein * factor:.2f}",
-                f"{fat * factor:.2f}",
-                f"{sugar * factor:.2f}" if sugar is not None else "",
-                f"{sodium * factor:.1f}" if sodium is not None else "",
-                f"{fiber * factor:.2f}" if fiber is not None else "",
-                # 이 셋도 기준량 환산(`factor`)을 똑같이 탄다 — 빼면 기준량 200g인 행만 2배가 된다.
-                f"{saturated_fat * factor:.2f}" if saturated_fat is not None else "",
-                f"{trans_fat * factor:.2f}" if trans_fat is not None else "",
-                f"{cholesterol * factor:.1f}" if cholesterol is not None else "",
-                maker,
+            def scaled(value):
+                # 이 환산(`factor`)은 모든 영양소가 똑같이 탄다 — 빼면 기준량 200g인 행만 2배가 된다.
+                return value * factor if value is not None else None
+
+            records.append({
+                "code": code,
+                "serving": serving,
+                "kcal": kcal * factor,
+                "carbs": scaled(carbs),
+                "protein": protein * factor,
+                "fat": scaled(fat),
+                "sugar": scaled(sugar),
+                "sodium": scaled(sodium),
+                "fiber": scaled(fiber),
+                "saturated": scaled(saturated_fat),
+                "trans": scaled(trans_fat),
+                "cholesterol": scaled(cholesterol),
+                "maker": maker,
                 # 원재료는 계층형 식품명 대신 대표명을 싣는다 — 인식 결과와 맞추기 위해서다.
-                clean_name(row.get(columns["representative"]) or "") if representative else name,
-            ])
-            if representative:
-                subcategories.append((row.get(columns["subcategory"]) or "").strip())
+                "name": clean_name(row.get(columns["representative"]) or "") if representative else name,
+                # 비중을 빌려 올 분류는 **원본 식품명**에서 뽑는다. 대표명(`복숭아`)에는
+                # `분류_` 접두사가 없어 대표명으로 뽑으면 원재료 전체가 분류 없음이 된다.
+                "prefix": estimator.prefix_of(name),
+                "subcategory": (row.get(columns["subcategory"]) or "").strip() if representative else "",
+            })
+
+    # ── 2차: 온전한 행에서 분류별 탄:지 비중을 모으고, 빠진 행을 채운다 ────────────────
+    shares = {}
+    for record in records:
+        estimator.add_sample(
+            shares, record["prefix"],
+            record["kcal"], record["carbs"], record["protein"], record["fat"],
+        )
+
+    rows, subcategories = [], []
+    estimated_rows = 0
+    unrecoverable = 0
+    conflicts = 0
+    for record in records:
+        filled = estimator.estimate(
+            record["kcal"], record["protein"], record["carbs"], record["fat"],
+            record["sugar"], record["saturated"],
+            estimator.share_for(record["prefix"], shares),
+        )
+        if filled is None:
+            # 탄·지를 둘 다 모르는데 기준 삼을 분류가 없다. 근거 없는 값을 넣느니 버린다.
+            unrecoverable += 1
+            continue
+        carbs, fat, estimated_fields, conflict = filled
+        if estimated_fields:
+            estimated_rows += 1
+        if conflict:
+            conflicts += 1
+
+        def fmt(value, digits=2):
+            return f"{value:.{digits}f}" if value is not None else ""
+
+        # code 말고는 전부 f-string으로 다시 포맷한 숫자라 콤마가 섞일 수 없다
+        # (파이썬 float 포맷은 로캘과 무관하게 '.'을 쓴다) — 구조 손상은 code에서만 온다.
+        rows.append([
+            record["code"],
+            f"{record['serving']:.1f}" if record["serving"] else "",
+            fmt(record["kcal"]),
+            fmt(carbs),
+            fmt(record["protein"]),
+            fmt(fat),
+            fmt(record["sugar"]),
+            fmt(record["sodium"], 1),
+            fmt(record["fiber"]),
+            fmt(record["saturated"]),
+            fmt(record["trans"]),
+            fmt(record["cholesterol"], 1),
+            ESTIMATED_SEPARATOR.join(estimated_fields),
+            record["maker"],
+            record["name"],
+        ])
+        subcategories.append(record["subcategory"])
 
     if representative:
         before = len(rows)
@@ -275,6 +343,11 @@ def main(src_path, dst_path, representative=False):
     print(
         f"적재 대상 {len(unique_rows)}건, 버린 행 {dropped}건, "
         f"구조 이상으로 버린 행 {malformed}건, 1인분량 결측 {serving_missing}건",
+    )
+    print(
+        f"  탄·지 추정으로 채운 행 {estimated_rows}건, "
+        f"기준 분류가 없어 버린 행 {unrecoverable}건, "
+        f"하한이 열량을 넘어 열량을 못 지킨 행 {conflicts}건",
     )
     print(
         f"  1인분량 출처 — 1인(회)분량 참고량 {serving_from_reference}건, "

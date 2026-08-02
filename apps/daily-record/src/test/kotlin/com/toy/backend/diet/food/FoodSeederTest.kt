@@ -92,9 +92,15 @@ class FoodSeederTest :
                 puringkle.saturatedFatPer100g shouldBe 3.3
             }
 
-            Then("롯데리아 85건도 브랜드를 달고 들어간다 — 식품명에 「롯데리아」가 없어 이 값이 없으면 못 찾는다") {
-                rows.count { it.maker == "롯데리아" } shouldBe 85
-                rows.single { it.name == "한우불고기버거" }.normalizedMaker shouldBe "롯데리아"
+            Then("롯데리아 56건도 브랜드를 달고 들어간다 — 식품명에 「롯데리아」가 없어 이 값이 없으면 못 찾는다") {
+                rows.count { it.maker == "롯데리아" } shouldBe 56
+                rows.single { it.name == "리아 두툼새우" }.normalizedMaker shouldBe "롯데리아"
+            }
+
+            Then("공공데이터에 이미 있는 메뉴는 넣지 않는다 — 같은 버거가 두 번 보이면 안 된다") {
+                // `버거_더블X2 버거`가 공공데이터에 있어 `더블엑스투버거`를 뺐다. 29건이 그렇다.
+                rows.none { it.name == "더블엑스투버거" } shouldBe true
+                rows.none { it.name == "데리버거" } shouldBe true
             }
 
             // ── 아래 셋은 **모든 행**에 건다. 탄수화물·지방이 추정값이라 손으로 넣거나 스크립트를

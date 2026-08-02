@@ -28,6 +28,16 @@ object FoodPolicy {
      * 사실상 없어서 여기를 경계로 잡았다.
      */
     const val MAX_TRUSTED_SERVING_SIZE_G = 500.0
+
+    /**
+     * `Food.estimatedFields`에 들어갈 수 있는 값. `scripts/nutrition_estimate.py`의
+     * `ESTIMABLE_FIELDS`와 같아야 한다.
+     *
+     * 점수 계산에 쓰이는 셋만 둔다. 표시 전용 영양소(당류·나트륨·식이섬유·포화·트랜스·
+     * 콜레스테롤)는 지금도 결측을 0으로 채우는 행이 30만 개라, 출처를 달면 화면이
+     * 배지투성이가 되면서 정작 점수에 영향 있는 값이 묻힌다.
+     */
+    val ESTIMABLE_FIELDS = setOf("carbs", "protein", "fat")
 }
 
 /**
@@ -134,6 +144,24 @@ class Food(
         columnDefinition = "double precision not null default 0",
     )
     var cholesterolMgPer100g: Double = 0.0,
+    /**
+     * 추정으로 채운 필드. null이면 전부 원본 값이다. `"carbs,fat"`처럼 쉼표로 잇는다.
+     *
+     * **왜 필요한가** — 프랜차이즈 영양성분표는 어린이 기호식품 의무표시 항목(열량·단백질·
+     * 나트륨·당류·포화지방)만 싣는다. 한 행 안에서 열량 217.5는 롯데리아 공식값이고
+     * 탄수화물 18.42는 우리가 잔여 열량에서 계산한 값인데, 이 컬럼이 없으면 둘을 구분할
+     * 방법이 없어 추정값이 공식값인 척한다.
+     *
+     * 값은 `FoodPolicy.ESTIMABLE_FIELDS` 셋뿐이다. 컬럼 하나로 두는 이유 —
+     * `carbsEstimated`/`fatEstimated` 불리언으로 두면 필드가 늘 때마다 컬럼이 붙는다.
+     * 조회는 `estimated_fields is not null`과 `like '%carbs%'`로 충분하고 둘 다 뜨거운
+     * 경로가 아니다.
+     *
+     * `MealItem`에는 두지 않는다 — 확정 시점 스냅샷이라 되짚을 일이 없고, `MealItem.source`가
+     * 이미 항목 단위 출처(`DB_MATCHED`/`LLM_ESTIMATED`)를 담고 있다.
+     */
+    @Column(name = "estimated_fields", length = 40)
+    var estimatedFields: String? = null,
 ) : BaseEntity()
 
 data class NutritionAmount(

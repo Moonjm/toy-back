@@ -25,13 +25,13 @@ class FoodMatcherTest :
         Given("음식명 매칭 — 데이터셋 우선순위") {
             When("음식DB에 완전일치가 있으면") {
                 val dish = dummyFood(name = "김치찌개", normalizedName = "김치찌개", dataset = FoodDataset.DISH)
-                every { repository.findFirstByDatasetAndNormalizedName(FoodDataset.DISH, "김치찌개") } returns dish
+                every { repository.findBestByDatasetAndNormalizedName(FoodDataset.DISH, "김치찌개", any<Pageable>()) } returns listOf(dish)
 
                 val matched = matcher.match("김치 찌개")
 
                 Then("거기서 끝낸다 — 가공식품도, 부분일치도 보지 않는다") {
                     matched shouldBe dish
-                    verify(exactly = 0) { repository.findFirstByDatasetAndNormalizedName(FoodDataset.PROCESSED, any()) }
+                    verify(exactly = 0) { repository.findBestByDatasetAndNormalizedName(FoodDataset.PROCESSED, any(), any()) }
                     verify(exactly = 0) { repository.searchByDatasetAndNormalizedName(any(), any(), any()) }
                 }
             }
@@ -40,8 +40,8 @@ class FoodMatcherTest :
             // 200g이 450kcal로 잡혔다. 생복숭아는 80kcal다. 원재료가 가공식품보다 앞서야 한다.
             When("음식DB엔 없고 원재료와 가공식품 양쪽에 완전일치가 있으면") {
                 val raw = dummyFood(code = "R001", name = "복숭아", normalizedName = "복숭아", dataset = FoodDataset.RAW, id = 7L)
-                every { repository.findFirstByDatasetAndNormalizedName(FoodDataset.DISH, "복숭아") } returns null
-                every { repository.findFirstByDatasetAndNormalizedName(FoodDataset.RAW, "복숭아") } returns raw
+                every { repository.findBestByDatasetAndNormalizedName(FoodDataset.DISH, "복숭아", any<Pageable>()) } returns emptyList()
+                every { repository.findBestByDatasetAndNormalizedName(FoodDataset.RAW, "복숭아", any<Pageable>()) } returns listOf(raw)
 
                 val matched = matcher.match("복숭아")
 
@@ -50,15 +50,15 @@ class FoodMatcherTest :
                 }
 
                 Then("가공식품은 조회조차 하지 않는다") {
-                    verify(exactly = 0) { repository.findFirstByDatasetAndNormalizedName(FoodDataset.PROCESSED, "복숭아") }
+                    verify(exactly = 0) { repository.findBestByDatasetAndNormalizedName(FoodDataset.PROCESSED, "복숭아", any()) }
                 }
             }
 
             When("음식DB엔 없고 가공식품에 완전일치가 있으면") {
                 val snack = dummyFood(code = "P001", name = "새우깡", normalizedName = "새우깡", dataset = FoodDataset.PROCESSED, id = 2L)
-                every { repository.findFirstByDatasetAndNormalizedName(FoodDataset.DISH, "새우깡") } returns null
-                every { repository.findFirstByDatasetAndNormalizedName(FoodDataset.RAW, "새우깡") } returns null
-                every { repository.findFirstByDatasetAndNormalizedName(FoodDataset.PROCESSED, "새우깡") } returns snack
+                every { repository.findBestByDatasetAndNormalizedName(FoodDataset.DISH, "새우깡", any<Pageable>()) } returns emptyList()
+                every { repository.findBestByDatasetAndNormalizedName(FoodDataset.RAW, "새우깡", any<Pageable>()) } returns emptyList()
+                every { repository.findBestByDatasetAndNormalizedName(FoodDataset.PROCESSED, "새우깡", any<Pageable>()) } returns listOf(snack)
 
                 val matched = matcher.match("새우깡")
 
@@ -73,7 +73,7 @@ class FoodMatcherTest :
 
             When("완전일치가 어느 쪽에도 없으면") {
                 val similar = dummyFood(name = "제육볶음", normalizedName = "제육볶음", dataset = FoodDataset.DISH, id = 3L)
-                every { repository.findFirstByDatasetAndNormalizedName(any(), "돼지고기제육볶음") } returns null
+                every { repository.findBestByDatasetAndNormalizedName(any(), "돼지고기제육볶음", any<Pageable>()) } returns emptyList()
                 every {
                     repository.searchByDatasetAndNormalizedName(FoodDataset.DISH, "돼지고기제육볶음", any<Pageable>())
                 } returns listOf(similar)
@@ -86,7 +86,7 @@ class FoodMatcherTest :
             }
 
             When("어디에도 없으면") {
-                every { repository.findFirstByDatasetAndNormalizedName(any(), "없는음식") } returns null
+                every { repository.findBestByDatasetAndNormalizedName(any(), "없는음식", any<Pageable>()) } returns emptyList()
                 every { repository.searchByDatasetAndNormalizedName(FoodDataset.DISH, "없는음식", any<Pageable>()) } returns emptyList()
 
                 Then("null — 호출자가 LLM 추정값으로 fallback 한다") {
@@ -97,7 +97,35 @@ class FoodMatcherTest :
             When("정규화하면 빈 문자열이 되는 이름이면") {
                 Then("조회하지 않고 null") {
                     matcher.match("!!!") shouldBe null
-                    verify(exactly = 0) { repository.findFirstByDatasetAndNormalizedName(any(), "") }
+                    verify(exactly = 0) { repository.findBestByDatasetAndNormalizedName(any(), "", any()) }
+                }
+            }
+
+            // 같은 정규화 이름이 여러 건인 것은 예외가 아니라 정상이다 — DISH 6,090행 중
+            // 1,084종 3,452행이 그렇다(상추겉절이 8건). 리포지토리가 단건을 돌려주게 만들면
+            // `IncorrectResultSizeDataAccessException`으로 끼니 확정이 통째로 죽는다.
+            When("같은 이름의 완전일치가 여러 건이면") {
+                val original = dummyFood(code = "D1", name = "닭튀김", normalizedName = "닭튀김", id = 11L)
+                val estimated =
+                    dummyFood(code = "D2", name = "닭튀김", normalizedName = "닭튀김", id = 12L)
+                        .also { it.estimatedFields = "carbs,fat" }
+                every {
+                    repository.findBestByDatasetAndNormalizedName(FoodDataset.DISH, "닭튀김", any<Pageable>())
+                } returns listOf(original, estimated)
+
+                Then("예외 없이 첫 건을 고른다 — 리포지토리가 추정 없는 행을 앞세운다") {
+                    matcher.match("닭튀김") shouldBe original
+                }
+
+                Then("한 건만 요청한다 — 중복이 많은 이름에서 목록을 통째로 끌어오면 안 된다") {
+                    matcher.match("닭튀김")
+                    verify {
+                        repository.findBestByDatasetAndNormalizedName(
+                            FoodDataset.DISH,
+                            "닭튀김",
+                            match<Pageable> { it.pageSize == 1 },
+                        )
+                    }
                 }
             }
         }

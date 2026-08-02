@@ -1,6 +1,7 @@
 package com.toy.backend.diet.food
 
 import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 
@@ -27,13 +28,25 @@ class FoodMatcher(
     fun match(foodName: String): Food? {
         val normalized = FoodNameNormalizer.normalize(foodName)
         if (normalized.isBlank()) return null
-        return repository.findFirstByDatasetAndNormalizedName(FoodDataset.DISH, normalized)
-            ?: repository.findFirstByDatasetAndNormalizedName(FoodDataset.RAW, normalized)
-            ?: repository.findFirstByDatasetAndNormalizedName(FoodDataset.PROCESSED, normalized)
-            ?: repository
-                .searchByDatasetAndNormalizedName(FoodDataset.DISH, normalized, PageRequest.of(0, 1))
-                .firstOrNull()
+        val one = PageRequest.of(0, 1)
+        return exact(FoodDataset.DISH, normalized, one)
+            ?: exact(FoodDataset.RAW, normalized, one)
+            ?: exact(FoodDataset.PROCESSED, normalized, one)
+            ?: repository.searchByDatasetAndNormalizedName(FoodDataset.DISH, normalized, one).firstOrNull()
     }
+
+    /**
+     * 완전일치 한 건. **`Pageable`로 잘라야 한다** — 같은 데이터셋에 같은 정규화 이름이
+     * 여러 건 있어서(DISH 6,090행 중 1,084종 3,452행), 단건을 돌려주는 쿼리로 만들면
+     * `IncorrectResultSizeDataAccessException`이 난다.
+     *
+     * 리포지토리 정렬이 **추정으로 채운 행을 뒤로 민다** — 원본 값을 가진 행이 이긴다.
+     */
+    private fun exact(
+        dataset: FoodDataset,
+        normalized: String,
+        pageable: Pageable,
+    ): Food? = repository.findBestByDatasetAndNormalizedName(dataset, normalized, pageable).firstOrNull()
 
     /**
      * iOS 항목 수정 화면용 — 자동 선택 없이 후보 목록을 그대로 준다.

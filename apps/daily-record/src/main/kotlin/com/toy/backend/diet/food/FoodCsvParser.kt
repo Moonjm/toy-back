@@ -8,7 +8,10 @@ package com.toy.backend.diet.food
  * **컬럼을 더할 때는 반드시 `name` 앞에 넣는다** — 뒤에 넣으면 이름에 쉼표가 있는 행이 밀린다.
  */
 object FoodCsvParser {
-    private const val COLUMN_COUNT = 14
+    private const val COLUMN_COUNT = 15
+
+    /** CSV 안에서 `estimatedFields`를 잇는 구분자. 파일 구분자(`,`)와 겹치면 컬럼이 밀린다. */
+    private const val ESTIMATED_SEPARATOR = '|'
 
     /**
      * 지연 평가로 돌려준다 — 가공식품 30만 행을 List로 만들면 라즈베리파이 힙이 감당하지 못한다.
@@ -31,9 +34,10 @@ object FoodCsvParser {
         if (columns.size < COLUMN_COUNT) return null
 
         val code = columns[0].trim().takeIf { it.isNotBlank() } ?: return null
-        val name = columns[13].trim().takeIf { it.isNotBlank() } ?: return null
+        val name = columns[14].trim().takeIf { it.isNotBlank() } ?: return null
         // 브랜드는 없는 행이 더 많다(음식 68%). 빈 칸은 null로 두어 검색 조건에서 자연히 빠진다.
-        val maker = columns[12].trim().takeIf { it.isNotBlank() }
+        val maker = columns[13].trim().takeIf { it.isNotBlank() }
+        val estimatedFields = parseEstimatedFields(columns[12])
         // 탄단지 값이 없는 행은 틀린 값을 넣느니 버리고 LLM 추정에 맡긴다.
         // **기준량은 기본값을 채우기 전에 판단해야 한다** — 먼저 채우면 결측이 「200g을 아는 것」이
         // 되어 `servingSizeKnown`이 참으로 잡힌다(원재료 523행이 통째로 그렇게 됐던 자리다).
@@ -74,6 +78,21 @@ object FoodCsvParser {
             saturatedFatPer100g = saturatedFat,
             transFatPer100g = transFat,
             cholesterolMgPer100g = cholesterol,
+            estimatedFields = estimatedFields,
         )
     }
+
+    /**
+     * `carbs|fat` → `"carbs,fat"`. 빈 칸이면 null이다.
+     *
+     * **모르는 이름은 무시하되 행은 살린다.** 오타 하나로 멀쩡한 영양소까지 통째로 잃는 것은
+     * 손해가 크다 — 이 값은 화면 배지 하나를 좌우할 뿐이다.
+     */
+    private fun parseEstimatedFields(raw: String): String? =
+        raw
+            .split(ESTIMATED_SEPARATOR)
+            .map { it.trim() }
+            .filter { it in FoodPolicy.ESTIMABLE_FIELDS }
+            .takeIf { it.isNotEmpty() }
+            ?.joinToString(",")
 }

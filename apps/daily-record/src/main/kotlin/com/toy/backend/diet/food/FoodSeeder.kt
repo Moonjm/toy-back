@@ -86,8 +86,9 @@ class FoodSeeder(
             ps.setDouble(16, food.cholesterolMgPer100g)
             ps.setString(17, food.maker)
             ps.setString(18, food.normalizedMaker)
-            ps.setObject(19, now)
+            ps.setString(19, food.estimatedFields)
             ps.setObject(20, now)
+            ps.setObject(21, now)
         }
     }
 
@@ -124,9 +125,9 @@ class FoodSeeder(
                               kcal_per_100g, carbs_per_100g, protein_per_100g, fat_per_100g,
                               sugar_per_100g, sodium_mg_per_100g, fiber_per_100g,
                               saturated_fat_per_100g, trans_fat_per_100g, cholesterol_mg_per_100g,
-                              maker, normalized_maker,
+                              maker, normalized_maker, estimated_fields,
                               created_at, updated_at)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             on conflict (code) do nothing
             """.trimIndent()
     }
