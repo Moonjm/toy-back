@@ -86,11 +86,29 @@ python3 scripts/build-food-csv.py /tmp/processed-raw.csv \
 ```
 code,servingSizeG,kcalPer100g,carbsPer100g,proteinPer100g,fatPer100g,
 sugarPer100g,sodiumMgPer100g,fiberPer100g,
-saturatedFatPer100g,transFatPer100g,cholesterolMgPer100g,name
+saturatedFatPer100g,transFatPer100g,cholesterolMgPer100g,maker,name
 ```
 
-영양소는 전부 100g당이고 원본의 `영양성분함량기준량`으로 환산된 값이다. 뒤 셋(포화지방산·
-트랜스지방산·콜레스테롤)은 **검색 화면 표시 전용**이라 끼니에 저장되지 않는다.
+영양소는 전부 100g당이고 원본의 `영양성분함량기준량`으로 환산된 값이다. 포화지방산·
+트랜스지방산·콜레스테롤은 **검색 화면 표시 전용**이라 끼니에 저장되지 않는다.
+
+### `maker` — 프랜차이즈 브랜드
+
+원본의 `업체명`(음식) / `제조사명`(가공식품)이다. **식품명에 브랜드가 안 들어 있어서**
+이 값이 없으면 도미노피자 318건이 적재돼 있어도 「도미노」로 한 건도 못 찾는다 —
+이름이 `피자_뉴욕 오리진 피자 오리지널 (L)`이기 때문이다.
+
+| 데이터셋 | 브랜드가 있는 행 | 원본 컬럼 |
+| --- | --- | --- |
+| 음식 | 1,946 / 6,090 (32%) | `업체명` |
+| 가공식품 | 275,231 / 306,293 (90%) | `제조사명` |
+| 원재료 | 0 (컬럼 자체가 없다) | — |
+
+`업체명`의 `해당없음`은 브랜드가 아니라 「없음」 표기라 빈 칸으로 내보낸다.
+
+**검색만 이 값을 본다**(`searchByText`/`searchByDatasetAndText`). 사진 인식 경로
+(`FoodMatcher.match`)는 이름만 본다 — 모델이 브랜드를 붙여 부르는지가 일정하지 않아
+섞으면 튜닝해 둔 이름 매칭이 흔들린다.
 
 ### 컬럼을 더할 때 빠지는 함정 둘
 
@@ -100,6 +118,11 @@ saturatedFatPer100g,transFatPer100g,cholesterolMgPer100g,name
 CSV의 컬럼 순서는 `WANTED` 순서다. 세 항목을 `지방(g)` **앞에** 넣으면 `"fat": ["지방"]`이
 포화지방산을 지방으로 읽는다 — 오류 없이 지방 값이 통째로 틀어진다.
 `WANTED`·`COLUMN_HINTS` 양쪽에서 `지방(g)` 뒤에 두고, `fat` 힌트는 `지방(g)`을 먼저 시도한다.
+
+**①-2 포함 관계인 헤더에 주의한다.** `xlsx-to-csv.py`의 `find_column`은 **완전일치를 먼저**
+찾고 없을 때만 부분 문자열로 떨어진다. 그 순서가 아니면 `업체명`이 가공식품DB의 `수입업체명`을
+잡는다. 그리고 **못 찾은 선택 컬럼은 아예 내보내지 않는다** — 빈 자리표시자를 쓰면
+`build-food-csv.py`가 「있는데 값이 전부 빈 컬럼」으로 보고 골라 브랜드가 통째로 비었던 자리다.
 
 **② `name`은 반드시 마지막이다.**
 Kotlin 파서가 `split(',', limit = COLUMN_COUNT)`로 읽어 마지막 조각이 줄의 나머지 전부다.

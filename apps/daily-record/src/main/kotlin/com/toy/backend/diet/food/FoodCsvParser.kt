@@ -8,7 +8,7 @@ package com.toy.backend.diet.food
  * **컬럼을 더할 때는 반드시 `name` 앞에 넣는다** — 뒤에 넣으면 이름에 쉼표가 있는 행이 밀린다.
  */
 object FoodCsvParser {
-    private const val COLUMN_COUNT = 13
+    private const val COLUMN_COUNT = 14
 
     /**
      * 지연 평가로 돌려준다 — 가공식품 30만 행을 List로 만들면 라즈베리파이 힙이 감당하지 못한다.
@@ -31,7 +31,9 @@ object FoodCsvParser {
         if (columns.size < COLUMN_COUNT) return null
 
         val code = columns[0].trim().takeIf { it.isNotBlank() } ?: return null
-        val name = columns[12].trim().takeIf { it.isNotBlank() } ?: return null
+        val name = columns[13].trim().takeIf { it.isNotBlank() } ?: return null
+        // 브랜드는 없는 행이 더 많다(음식 68%). 빈 칸은 null로 두어 검색 조건에서 자연히 빠진다.
+        val maker = columns[12].trim().takeIf { it.isNotBlank() }
         // 탄단지 값이 없는 행은 틀린 값을 넣느니 버리고 LLM 추정에 맡긴다.
         // **기준량은 기본값을 채우기 전에 판단해야 한다** — 먼저 채우면 결측이 「200g을 아는 것」이
         // 되어 `servingSizeKnown`이 참으로 잡힌다(원재료 523행이 통째로 그렇게 됐던 자리다).
@@ -53,6 +55,8 @@ object FoodCsvParser {
             code = code,
             name = name,
             normalizedName = FoodNameNormalizer.normalize(name),
+            maker = maker,
+            normalizedMaker = maker?.let { FoodNameNormalizer.normalize(it) }?.takeIf { it.isNotBlank() },
             dataset = dataset,
             // 0 이하는 결측이고, 상한을 넘는 값은 1회 제공량이 아니라 포장 총중량이다
             // (`MAX_TRUSTED_SERVING_SIZE_G` 주석 참고). 둘 다 기본값으로 되돌리되

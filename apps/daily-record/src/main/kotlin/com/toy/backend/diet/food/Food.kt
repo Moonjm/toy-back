@@ -56,6 +56,21 @@ class Food(
     var name: String,
     @Column(name = "normalized_name", nullable = false, length = 200)
     var normalizedName: String,
+    /**
+     * 프랜차이즈·제조사 이름. **원본에 있는데 안 가져오고 있던 값이다.**
+     *
+     * 음식DB의 `업체명`(가공식품DB는 `제조사명`)이고, 없는 행은 null이다. 이 값이 없으면
+     * **도미노피자 318건이 적재돼 있어도 「도미노」로 찾을 수 없다** — 식품명이
+     * `피자_뉴욕 오리진 피자 오리지널 (L)`이라 브랜드가 어디에도 안 들어 있기 때문이다.
+     * 음식 6,090행 중 1,946행(32%)이 브랜드를 갖는다.
+     *
+     * `normalizedMaker`는 검색 전용이다. **완전일치(인식 경로)에는 쓰지 않는다** — 모델이
+     * 브랜드를 붙여 부르는 경우가 일정하지 않아, 이름 매칭에 섞으면 지금 동작이 흔들린다.
+     */
+    @Column(name = "maker", length = 200)
+    var maker: String? = null,
+    @Column(name = "normalized_maker", length = 200)
+    var normalizedMaker: String? = null,
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, columnDefinition = "varchar(20)")
     var dataset: FoodDataset,

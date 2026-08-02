@@ -104,7 +104,7 @@ class FoodMatcherTest :
 
         Given("사용자 검색 — GET /diet/foods") {
             When("검색어만 넣으면") {
-                every { repository.searchByNormalizedName("새우깡", any<Pageable>()) } returns
+                every { repository.searchByText("새우깡", any<Pageable>()) } returns
                     listOf(dummyFood(code = "P001", name = "새우깡", dataset = FoodDataset.PROCESSED, id = 4L))
 
                 val found = matcher.search("새우깡", size = 20)
@@ -115,7 +115,27 @@ class FoodMatcherTest :
                 }
 
                 Then("데이터셋별 조회는 하지 않는다") {
+                    verify(exactly = 0) { repository.searchByDatasetAndText(any(), any(), any()) }
+                }
+
+                // 인식 경로와 검색 경로는 규칙이 다르다 — 검색만 브랜드를 함께 본다.
+                Then("인식용 부분일치 쿼리는 쓰지 않는다") {
                     verify(exactly = 0) { repository.searchByDatasetAndNormalizedName(any(), any(), any()) }
+                }
+            }
+
+            // 식품명에 브랜드가 없다(`피자_뉴욕 오리진 피자 오리지널 (L)`). 이름만 보면
+            // 도미노피자 318건 중 한 건도 안 나온다.
+            When("브랜드 이름으로 검색하면") {
+                val pizza =
+                    dummyFood(code = "D900", name = "피자_뉴욕 오리진 피자 (L)", maker = "도미노피자", id = 9L)
+                every { repository.searchByText("도미노", any<Pageable>()) } returns listOf(pizza)
+
+                val found = matcher.search("도미노", size = 20)
+
+                Then("이름이 아니라 브랜드로 걸린다") {
+                    found shouldBe listOf(pizza)
+                    found[0].maker shouldBe "도미노피자"
                 }
             }
 
@@ -124,21 +144,21 @@ class FoodMatcherTest :
             When("데이터셋 칩을 함께 넣으면") {
                 val dish = dummyFood(code = "D001", name = "새우볶음밥", dataset = FoodDataset.DISH, id = 5L)
                 every {
-                    repository.searchByDatasetAndNormalizedName(FoodDataset.DISH, "새우", any<Pageable>())
+                    repository.searchByDatasetAndText(FoodDataset.DISH, "새우", any<Pageable>())
                 } returns listOf(dish)
 
                 val found = matcher.search("새우", size = 20, dataset = FoodDataset.DISH)
 
                 Then("그 데이터셋만 뒤진다") {
                     found shouldBe listOf(dish)
-                    verify(exactly = 0) { repository.searchByNormalizedName(any(), any()) }
+                    verify(exactly = 0) { repository.searchByText(any(), any()) }
                 }
             }
 
             When("정규화하면 빈 문자열이 되는 검색어면") {
                 Then("데이터셋을 줬어도 조회하지 않는다") {
                     matcher.search("!!!", size = 20, dataset = FoodDataset.RAW) shouldBe emptyList()
-                    verify(exactly = 0) { repository.searchByDatasetAndNormalizedName(FoodDataset.RAW, any(), any()) }
+                    verify(exactly = 0) { repository.searchByDatasetAndText(FoodDataset.RAW, any(), any()) }
                 }
             }
         }

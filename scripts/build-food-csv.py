@@ -30,7 +30,7 @@ OUT_HEADER = [
     "code", "servingSizeG", "kcalPer100g",
     "carbsPer100g", "proteinPer100g", "fatPer100g",
     "sugarPer100g", "sodiumMgPer100g", "fiberPer100g",
-    "saturatedFatPer100g", "transFatPer100g", "cholesterolMgPer100g", "name",
+    "saturatedFatPer100g", "transFatPer100g", "cholesterolMgPer100g", "maker", "name",
 ]
 
 # 원본 헤더는 공백·괄호 표기가 판번마다 조금씩 달라 부분 문자열로 찾는다.
@@ -54,6 +54,10 @@ COLUMN_HINTS = {
     # 1인분 기준량 우선, 없으면 식품중량으로 폴백한다(아래 main 참고). 둘 다 선택 컬럼이다.
     "servingReference": ["1인(회)분량참고량", "1회분량", "분량참고량"],
     "servingWeight": ["식품중량"],
+    # 프랜차이즈 브랜드. **`제조사명`을 먼저 본다** — 가공식품DB에는 `제조사명`과 함께
+    # `수입업체명`·`유통업체명`이 있어 `업체명`으로 찾으면 그쪽이 잡힌다.
+    # 음식DB에는 `제조사명`이 없어 `업체명`으로 떨어진다.
+    "maker": ["제조사명", "업체명"],
     # 원재료성식품 전용 (`--representative`). 다른 데이터셋에는 없다.
     "representative": ["대표식품명"],
     "subcategory": ["식품세분류명"],
@@ -64,8 +68,11 @@ COLUMN_HINTS = {
 OPTIONAL_COLUMNS = {
     "servingReference", "servingWeight", "sugar", "sodium", "fiber",
     "saturatedFat", "transFat", "cholesterol",
-    "representative", "subcategory",
+    "maker", "representative", "subcategory",
 }
+
+# 업체명이 없는 행에 들어오는 값. 브랜드가 아니므로 빈 칸으로 내보낸다.
+NO_MAKER = "해당없음"
 
 # `--representative`에서 남길 세분류. 사진에 찍히는 원재료는 대개 생것이고, 같은 대표명 안에
 # 말린것·동결건조가 섞여 있으면 열량이 4~6배 뛴다(바나나 생것 77 / 말린것 314, 사과 52 / 동결건조 332).
@@ -178,6 +185,11 @@ def main(src_path, dst_path, representative=False):
             fat = to_float(row.get(columns["fat"]))
             code = (row.get(columns["code"]) or "").strip()
             name = clean_name((row.get(columns["name"]) or "").replace("\n", " "))
+            # 브랜드. `해당없음`은 브랜드가 아니라 「없음」 표기라 빈 칸으로 내보낸다.
+            # 이름과 같은 이유로 쉼표·개행을 막는다 — 출력이 단순 join이라 구분자가 섞이면 컬럼이 밀린다.
+            maker = clean_name((row.get(columns["maker"]) or "").replace("\n", " ")) if columns["maker"] else ""
+            if maker == NO_MAKER or "," in maker:
+                maker = ""
             # 주의 영양소는 결측이어도 행을 버리지 않는다 — Kotlin 파서가 빈 칸을 0으로 채운다.
             sugar = to_float(row.get(columns["sugar"])) if columns["sugar"] else None
             sodium = to_float(row.get(columns["sodium"])) if columns["sodium"] else None
@@ -231,6 +243,7 @@ def main(src_path, dst_path, representative=False):
                 f"{saturated_fat * factor:.2f}" if saturated_fat is not None else "",
                 f"{trans_fat * factor:.2f}" if trans_fat is not None else "",
                 f"{cholesterol * factor:.1f}" if cholesterol is not None else "",
+                maker,
                 # 원재료는 계층형 식품명 대신 대표명을 싣는다 — 인식 결과와 맞추기 위해서다.
                 clean_name(row.get(columns["representative"]) or "") if representative else name,
             ])

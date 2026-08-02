@@ -3,6 +3,13 @@ package com.toy.backend.diet.food
 data class FoodResponse(
     val code: String,
     val name: String,
+    /**
+     * 프랜차이즈·제조사 이름. 없으면 null이다(음식 6,090건 중 1,946건만 있다).
+     *
+     * 식품명에는 브랜드가 안 들어 있어서(`피자_뉴욕 오리진 피자 오리지널 (L)`) 이 값이 없으면
+     * 앱이 「도미노피자 것인지」를 표시할 수 없다. 검색 결과에 배지로 붙이는 용도다.
+     */
+    val maker: String?,
     /** 앱이 「가공식품」임을 표시할 수 있게 함께 내려준다. */
     val dataset: FoodDataset,
     val servingSizeG: Double,
@@ -36,6 +43,7 @@ fun Food.toResponse(): FoodResponse =
     FoodResponse(
         code = code,
         name = name,
+        maker = maker,
         dataset = dataset,
         servingSizeG = servingSizeG,
         servingSizeKnown = servingSizeKnown,

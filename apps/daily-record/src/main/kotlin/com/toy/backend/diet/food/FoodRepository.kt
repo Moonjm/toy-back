@@ -24,6 +24,10 @@ interface FoodRepository : JpaRepository<Food, Long> {
      * 부분일치 후보를 **이름이 짧은 순**으로 준다. 인식 파이프라인은 `DISH`로만 부른다 —
      * 브랜드명 위주인 `PROCESSED`를 여기에 넣으면 "라면" 한 마디가 수천 건을 긁어오고,
      * 그중 가장 짧은 것이 사용자가 먹은 것과 무관한 제품이 된다.
+     *
+     * **인식 전용이라 브랜드(`normalizedMaker`)를 보지 않는다.** 모델이 브랜드를 붙여 부르는지가
+     * 일정하지 않아, 여기에 섞으면 튜닝해 둔 이름 매칭이 흔들린다. 사람이 직접 고르는 검색은
+     * 아래 `searchByText`/`searchByDatasetAndText`가 따로 담당한다.
      */
     @Query(
         """
@@ -39,15 +43,39 @@ interface FoodRepository : JpaRepository<Food, Long> {
         pageable: Pageable,
     ): List<Food>
 
-    /** 사용자가 직접 고르는 화면(`GET /diet/foods`)용 — 두 데이터셋을 모두 뒤진다. */
+    /**
+     * 사용자가 직접 고르는 화면(`GET /diet/foods`)용 — 세 데이터셋을 모두 뒤지고
+     * **이름과 브랜드 양쪽**을 본다.
+     *
+     * 브랜드를 봐야 하는 이유 — 식품명에 브랜드가 안 들어 있다. 도미노피자 318건이 전부
+     * `피자_뉴욕 오리진 피자 오리지널 (L)` 같은 이름이라, 이름만 보면 「도미노」로 한 건도
+     * 못 찾는다. 검색어가 브랜드인지 음식인지 사용자에게 묻지 않고 둘 다 맞춰 본다.
+     */
     @Query(
         """
         select f from Food f
         where f.normalizedName like concat('%', :normalized, '%')
+           or f.normalizedMaker like concat('%', :normalized, '%')
         order by length(f.normalizedName) asc, f.id asc
         """,
     )
-    fun searchByNormalizedName(
+    fun searchByText(
+        @Param("normalized") normalized: String,
+        pageable: Pageable,
+    ): List<Food>
+
+    /** 위와 같되 데이터셋 칩으로 좁힌 것. */
+    @Query(
+        """
+        select f from Food f
+        where f.dataset = :dataset
+          and (f.normalizedName like concat('%', :normalized, '%')
+               or f.normalizedMaker like concat('%', :normalized, '%'))
+        order by length(f.normalizedName) asc, f.id asc
+        """,
+    )
+    fun searchByDatasetAndText(
+        @Param("dataset") dataset: FoodDataset,
         @Param("normalized") normalized: String,
         pageable: Pageable,
     ): List<Food>

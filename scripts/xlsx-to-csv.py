@@ -38,6 +38,12 @@ WANTED = [
     "콜레스테롤(mg)",
     "1인(회)분량참고량",
     "식품중량",
+    # **프랜차이즈 브랜드가 여기 있다.** 음식DB는 `업체명`, 가공식품DB는 `제조사명`이고
+    # 데이터셋마다 하나만 존재한다. 둘 다 넣어 두고 `build-food-csv.py`가 있는 쪽을 고른다.
+    # 이 컬럼이 없으면 도미노피자 318건이 적재돼 있어도 「도미노」로 찾을 수 없다 —
+    # 식품명이 `피자_뉴욕 오리진 피자 오리지널 (L)`이라 브랜드가 어디에도 없기 때문이다.
+    "업체명",
+    "제조사명",
     # 원재료성식품에만 있다. `식품명`이 `복숭아_천중도_생것`처럼 계층형이라 완전일치가 안 되므로
     # 대표명으로 묶고, 같은 대표명 안에서 `생것`만 남긴다(`build-food-csv.py --representative`).
     "대표식품명",
@@ -55,15 +61,30 @@ OPTIONAL = {
     "포화지방산(g)",
     "트랜스지방산(g)",
     "콜레스테롤(mg)",
+    "업체명",
+    "제조사명",
     "대표식품명",
     "식품세분류명",
 }
 
 
 def find_column(header, hint):
-    """`지방(g)`이 `포화지방산(g)`보다 먼저 잡히도록 원본 컬럼 순서대로 훑는다."""
+    """**완전일치를 먼저 찾고**, 없으면 원본 컬럼 순서대로 부분 문자열로 찾는다.
+
+    부분 문자열만 쓰면 포함 관계인 헤더에서 엉뚱한 컬럼이 잡힌다 — `업체명`은 가공식품DB의
+    `수입업체명`·`유통업체명`에도 들어 있고, `포화지방산(g)`은 `불포화지방산(g)`에도 들어 있다.
+    완전일치를 우선하면 그런 경우가 대부분 걸러지고, 판본에 따라 표기가 조금 다를 때만
+    부분일치로 떨어진다.
+
+    부분일치 순서는 여전히 **원본 컬럼 순서**다 — `지방(g)` 힌트가 뒤쪽 파생 컬럼보다
+    앞의 본 컬럼을 잡게 하기 위해서다.
+    """
+    squeezed = hint.replace(" ", "")
     for index, name in enumerate(header):
-        if hint.replace(" ", "") in name.replace(" ", ""):
+        if squeezed == name.replace(" ", ""):
+            return index
+    for index, name in enumerate(header):
+        if squeezed in name.replace(" ", ""):
             return index
     return None
 
@@ -95,27 +116,33 @@ def main(src_path, dst_path):
     header = []
     while not any(header):
         header = ["" if v is None else str(v).strip() for v in next(rows)]
-    columns = [(hint, find_column(header, hint)) for hint in WANTED]
-    missing = [hint for hint, index in columns if index is None and hint not in OPTIONAL]
+    found = [(hint, find_column(header, hint)) for hint in WANTED]
+    missing = [hint for hint, index in found if index is None and hint not in OPTIONAL]
     if missing:
         sys.exit(f"원본에서 컬럼을 찾지 못했습니다: {missing}\n헤더: {header[:20]} ...")
+
+    # **못 찾은 선택 컬럼은 아예 내보내지 않는다.** 빈 자리표시자를 쓰면 `build-food-csv.py`가
+    # 「있는데 값이 전부 빈 컬럼」으로 보고 골라 버린다 — 음식DB에 없는 `제조사명`이 자리표시자로
+    # 들어가 `업체명`보다 먼저 잡히면서 브랜드가 통째로 비었던 자리다.
+    columns = [(hint, index) for hint, index in found if index is not None]
+    skipped = [hint for hint, index in found if index is None]
 
     written = 0
     with open(dst_path, "w", encoding="utf-8", newline="") as dst:
         writer = csv.writer(dst)
-        writer.writerow([header[index] if index is not None else hint for hint, index in columns])
+        writer.writerow([header[index] for _, index in columns])
         for row in rows:
             # 식품코드가 없는 줄은 빈 줄이거나 꼬리말이다.
             code_index = columns[0][1]
             if row[code_index] is None or not str(row[code_index]).strip():
                 continue
             writer.writerow(
-                [
-                    "" if index is None or row[index] is None else str(row[index]).strip()
-                    for _, index in columns
-                ]
+                ["" if row[index] is None else str(row[index]).strip() for _, index in columns]
             )
             written += 1
+
+    if skipped:
+        print(f"이 원본에 없어 건너뛴 선택 컬럼: {skipped}")
 
     print(f"{written}행을 {dst_path}에 썼습니다 (원본 컬럼 {len(header)}개 중 {len(columns)}개 유지)")
 

@@ -43,6 +43,10 @@ class FoodMatcher(
      * 음식이 뒤에 있는데도 그렇다. 거르기는 페이징 전에, 즉 여기서 해야 한다.
      *
      * 위 `match`의 데이터셋 우선순위와는 무관하다 — 그쪽은 사진 인식이 하나를 고르는 경로다.
+     *
+     * **이름과 브랜드를 함께 본다.** 식품명에 브랜드가 없어서(`피자_뉴욕 오리진 피자 오리지널 (L)`)
+     * 이름만 보면 「도미노」로 318건 중 한 건도 못 찾는다. 인식 경로(`match`)는 이 규칙을
+     * 쓰지 않는다 — 모델이 브랜드를 붙여 부르는지가 일정하지 않다.
      */
     fun search(
         keyword: String,
@@ -53,9 +57,9 @@ class FoodMatcher(
         if (normalized.isBlank()) return emptyList()
         val pageable = PageRequest.of(0, size.coerceIn(1, MAX_SEARCH_SIZE))
         return if (dataset == null) {
-            repository.searchByNormalizedName(normalized, pageable)
+            repository.searchByText(normalized, pageable)
         } else {
-            repository.searchByDatasetAndNormalizedName(dataset, normalized, pageable)
+            repository.searchByDatasetAndText(dataset, normalized, pageable)
         }
     }
 
