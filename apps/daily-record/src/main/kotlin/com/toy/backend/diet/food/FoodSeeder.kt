@@ -38,6 +38,10 @@ class FoodSeeder(
                 seed(path, dataset)
             }
         }
+        // **수동 등록분은 데이터셋 검사를 타면 안 된다.** `DISH`로 넣는데 위에서 음식DB가 이미
+        // `DISH`를 채우므로, 같은 규칙을 적용하면 첫 기동 이후 새 행이 영영 안 들어간다.
+        // 매번 훑되 `on conflict (code) do nothing`이 중복을 막는다 — 몇 행짜리라 비용이 없다.
+        MANUAL_DATASETS.forEach { (path, dataset) -> seed(path, dataset) }
     }
 
     private fun seed(
@@ -93,6 +97,19 @@ class FoodSeeder(
                 "food/food-nutrition.csv" to FoodDataset.DISH,
                 "food/raw-food-nutrition.csv" to FoodDataset.RAW,
                 "food/processed-food-nutrition.csv" to FoodDataset.PROCESSED,
+            )
+
+        /**
+         * 공공데이터에 없어 손으로 넣은 식품. **다른 CSV와 달리 저장소에 커밋한다** — 원본에서
+         * 재생성할 수 없어 여기서 지우면 되살릴 방법이 없다(`.gitignore`에 예외를 뒀다).
+         *
+         * `DISH`로 넣는 이유 — 새 `FoodDataset` 값을 만들면 iOS `Food.dataset`이 옵셔널이 아니라
+         * **검색 결과 배열 전체가 디코딩에 실패한다**(`woori-haru` 2026-08-02 스펙의 함정 1).
+         * 그쪽에 미지값 흡수가 들어가기 전까지는 기존 값만 쓴다.
+         */
+        private val MANUAL_DATASETS =
+            listOf(
+                "food/manual-food-nutrition.csv" to FoodDataset.DISH,
             )
         private const val BATCH_SIZE = 1000
 

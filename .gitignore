@@ -73,3 +73,5 @@ scripts/ledger-import/venv
 
 # 식품DB 적재 데이터 — 원본에서 스크립트로 재생성한다 (resources/food/README.md 참조)
 apps/daily-record/src/main/resources/food/*.csv
+# 수동 등록분만 예외다 — 재생성할 원본이 없어 여기서 지우면 되살릴 수 없다.
+!apps/daily-record/src/main/resources/food/manual-food-nutrition.csv
