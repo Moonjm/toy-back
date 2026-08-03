@@ -47,27 +47,7 @@ class OpenRouterClient(
         base64Image: String,
         contentType: String,
     ): List<RecognizedFood>? {
-        val body =
-            mapOf(
-                "model" to properties.visionModel,
-                "messages" to
-                    listOf(
-                        mapOf(
-                            "role" to "user",
-                            "content" to
-                                listOf(
-                                    mapOf("type" to "text", "text" to VISION_PROMPT),
-                                    mapOf(
-                                        "type" to "image_url",
-                                        "image_url" to mapOf("url" to "data:$contentType;base64,$base64Image"),
-                                    ),
-                                ),
-                        ),
-                    ),
-                "response_format" to RESPONSE_FORMAT,
-            )
-
-        val content = post(body) ?: return null
+        val content = post(visionBody(base64Image, contentType)) ?: return null
         return try {
             parseItems(content)
         } catch (e: Exception) {
@@ -79,18 +59,47 @@ class OpenRouterClient(
     fun generateText(
         systemPrompt: String,
         userPrompt: String,
-    ): String? {
-        val body =
-            mapOf(
-                "model" to properties.textModel,
-                "messages" to
-                    listOf(
-                        mapOf("role" to "system", "content" to systemPrompt),
-                        mapOf("role" to "user", "content" to userPrompt),
+    ): String? = post(textBody(systemPrompt, userPrompt))?.trim()?.takeIf { it.isNotBlank() }
+
+    /** 본문 구성만 떼어 둔다 — `max_tokens`가 빠지면 402가 나는데, 그건 실기동에서만 드러난다. */
+    internal fun visionBody(
+        base64Image: String,
+        contentType: String,
+    ): Map<String, Any> =
+        mapOf(
+            "model" to properties.visionModel,
+            "messages" to
+                listOf(
+                    mapOf(
+                        "role" to "user",
+                        "content" to
+                            listOf(
+                                mapOf("type" to "text", "text" to VISION_PROMPT),
+                                mapOf(
+                                    "type" to "image_url",
+                                    "image_url" to mapOf("url" to "data:$contentType;base64,$base64Image"),
+                                ),
+                            ),
                     ),
-            )
-        return post(body)?.trim()?.takeIf { it.isNotBlank() }
-    }
+                ),
+            "response_format" to RESPONSE_FORMAT,
+            // 안 보내면 잔액이 남았는데도 402가 난다(`OpenRouterProperties.visionMaxTokens`).
+            "max_tokens" to properties.visionMaxTokens,
+        )
+
+    internal fun textBody(
+        systemPrompt: String,
+        userPrompt: String,
+    ): Map<String, Any> =
+        mapOf(
+            "model" to properties.textModel,
+            "messages" to
+                listOf(
+                    mapOf("role" to "system", "content" to systemPrompt),
+                    mapOf("role" to "user", "content" to userPrompt),
+                ),
+            "max_tokens" to properties.textMaxTokens,
+        )
 
     /** `choices[0].message.content` 문자열을 꺼낸다. 실패는 로그를 남기고 null. */
     private fun post(body: Map<String, Any>): String? =
@@ -103,9 +112,14 @@ class OpenRouterClient(
                     .retrieve()
                     .bodyToMono<JsonNode>()
                     .block()
-            response
-                ?.path("choices")
-                ?.path(0)
+            val choice = response?.path("choices")?.path(0)
+            // **한도에 걸린 것과 그냥 실패한 것을 구분해 남긴다.** Gemini 2.5 계열은 생각(reasoning)
+            // 토큰이 `max_tokens`에 함께 잡혀서, 한도를 다 쓰면 `content`가 빈 채로 온다.
+            // 이 로그가 없으면 「모델이 이상하다」로 오해하고 한도를 못 찾는다.
+            if (choice?.path("finish_reason")?.asString() == FINISH_REASON_LENGTH) {
+                log.error { "OpenRouter 응답이 max_tokens에 걸려 잘렸다 — 한도를 올려야 한다: $choice" }
+            }
+            choice
                 ?.path("message")
                 ?.path("content")
                 ?.asString()
@@ -146,6 +160,9 @@ class OpenRouterClient(
     }
 
     companion object {
+        /** OpenAI 호환 응답의 절단 신호. Gemini는 네이티브로 `MAX_TOKENS`를 주지만 이 값으로 정규화돼 온다. */
+        private const val FINISH_REASON_LENGTH = "length"
+
         private const val VISION_PROMPT =
             "사진 속 음식을 하나씩 식별해 주세요. 음식이 아닌 물건은 넣지 마세요.\n" +
                 "각 음식마다 아래를 알려 주세요.\n" +

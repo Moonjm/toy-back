@@ -50,6 +50,10 @@ openrouter:
   base-url: https://openrouter.ai/api/v1
   vision-model: ${OPENROUTER_VISION_MODEL:google/gemini-2.5-flash}
   text-model: ${OPENROUTER_TEXT_MODEL:google/gemini-2.5-flash-lite}
+  # 안 보내면 OpenRouter가 모델 최대 출력(65,535토큰)만큼 잔액을 선점해, 잔액이 남았는데도
+  # 402가 난다(vision 모델 기준 한 번에 $0.16). 자세한 근거는 OpenRouterProperties 주석.
+  vision-max-tokens: ${OPENROUTER_VISION_MAX_TOKENS:4000}
+  text-max-tokens: ${OPENROUTER_TEXT_MAX_TOKENS:2000}
   timeout-seconds: 60
 
 holiday:
