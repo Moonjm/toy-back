@@ -88,6 +88,9 @@ class DailyDietServiceTest :
                     ).withId(id * 100 + index)
                 },
             )
+            // `replaceItems`가 지금 시각으로 덮으므로 마지막에 되돌린다. 하루 캐시 무효화는
+            // `updatedAt`이 아니라 이 값을 본다(`Meal.contentUpdatedAt`).
+            meal.contentUpdatedAt = updatedAt
             return meal
         }
         // 항목에 id를 넣는 이유: 응답 변환(MealItemResponse)이 requiredId를 읽는다.
@@ -295,6 +298,50 @@ class DailyDietServiceTest :
                     response.feedback shouldBe "캐시된 피드백"
                     verify(exactly = 0) { feedbackGenerator.generateForDay(any(), any(), any()) }
                     verify(exactly = 0) { feedbackRepository.save(any()) }
+                }
+            }
+
+            // **끼니 피드백이 실린 것만으로는 하루 캐시가 안 낡는다.** 하루 프롬프트는 끼니의
+            // 피드백도 상태도 읽지 않기 때문이다(`DietFeedbackPrompts.day`).
+            //
+            // `updatedAt`을 보면 이 경우가 「수정됨」으로 잡혀서, 확정 한 번마다 이미 실린 문장을
+            // null로 되돌리고 유료 호출을 한 번 더 걸었다 — 화면에서는 문장이 떴다가 사라졌다
+            // 다시 뜬다. 끼니 피드백이 하루 조회보다 늦게 끝나는 정상 순서에서 매번 일어난다.
+            When("캐시를 만든 뒤 끼니 피드백만 실렸으면") {
+                val fed =
+                    meal(
+                        6L,
+                        2000.0,
+                        targetKcal = 2000,
+                        createdAt = LocalDateTime.of(2026, 7, 29, 8, 0),
+                        updatedAt = LocalDateTime.of(2026, 7, 29, 8, 0),
+                    )
+                // 하루 캐시가 만들어진 뒤 비동기 끼니 피드백이 도착해 `updatedAt`만 올랐다.
+                fed.markFeedback("끼니 피드백입니다.")
+                fed.withAudit(
+                    createdAt = LocalDateTime.of(2026, 7, 29, 8, 0),
+                    updatedAt = LocalDateTime.of(2026, 7, 29, 20, 0),
+                )
+                val cached =
+                    DailyDietFeedback(
+                        user = user,
+                        date = date,
+                        dayScore = 70,
+                        feedback = "이미 만들어 둔 하루 피드백",
+                        generatedAt = LocalDateTime.of(2026, 7, 29, 9, 0),
+                    ).withId(6L)
+                every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(fed)
+                every { feedbackRepository.findByUserAndDate(user, date) } returns cached
+
+                val response = service.getDay("testuser", date)
+
+                Then("캐시를 그대로 쓴다 — 내용이 안 바뀌었다") {
+                    response.feedback shouldBe "이미 만들어 둔 하루 피드백"
+                    cached.feedback shouldBe "이미 만들어 둔 하루 피드백"
+                }
+
+                Then("유료 호출을 다시 걸지 않는다") {
+                    verify(exactly = 0) { feedbackGenerator.generateForDay(any(), any(), any()) }
                 }
             }
 

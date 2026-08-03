@@ -115,7 +115,10 @@ class DailyDietService(
         dayScore: Int,
     ): String? {
         val cached = feedbackRepository.findByUserAndDate(user, date)
-        val latestMealUpdate = meals.maxOf { it.updatedAt }
+        // **`updatedAt`이 아니라 `contentUpdatedAt`이다.** 끼니 피드백이 실리면 `updatedAt`이
+        // 오르는데 하루 프롬프트는 그 값을 읽지도 않아서, 그대로 두면 확정 한 번마다 이미 실린
+        // 문장을 지우고 유료 호출을 한 번 더 걸었다(`Meal.contentUpdatedAt` 주석).
+        val latestMealUpdate = meals.maxOf { it.contentUpdatedAt }
         if (cached != null && !cached.generatedAt.isBefore(latestMealUpdate)) return cached.feedback
 
         // **캐시 적중 검사보다 뒤에 둔다.** 앞에 두면 키가 없는 동안 이미 만들어 둔 피드백까지

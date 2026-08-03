@@ -17,6 +17,7 @@ import jakarta.persistence.OneToMany
 import jakarta.persistence.OrderBy
 import jakarta.persistence.Table
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 enum class MealType {
     BREAKFAST,
@@ -98,6 +99,25 @@ class Meal(
     var fiberG: Double = 0.0,
     @Column(columnDefinition = "text")
     var feedback: String? = null,
+    /**
+     * **하루 피드백 캐시의 무효화 기준.** 항목·합계가 바뀔 때만 오른다.
+     *
+     * `updatedAt`(엔티티 전체 audit)을 쓰면 안 된다 — `markFeedback`이 `feedback`·`status`만
+     * 바꿔도 그 값이 올라서, **내용이 그대로인데 하루 캐시가 낡은 것으로 판정된다.** 하루
+     * 프롬프트는 끼니의 피드백도 상태도 읽지 않는다(`DietFeedbackPrompts.day`).
+     *
+     * 그러면 끼니 확정 한 번마다 이런 순서가 만들어진다 — 하루 조회가 마커를 찍고 생성을
+     * 시작한 뒤 끼니 피드백이 끝나 `updatedAt`이 오르고, 다음 하루 조회가 **이미 실려 있던
+     * 문장을 null로 되돌리고** 유료 호출을 한 번 더 건다. 화면에서는 문장이 떴다가 사라졌다
+     * 다시 뜬다.
+     *
+     * 사진 추가·삭제도 여기 반영하지 않는다 — 하루 프롬프트에 사진이 들어가지 않는다.
+     *
+     * 기존 행이 있는 채로 컬럼이 붙어도 깨지지 않도록 기본값을 둔다. 그 한 번은 모든 날의
+     * 하루 피드백이 새로 만들어지는데, 값이 바뀌는 게 아니라 다시 쓰이는 것뿐이다.
+     */
+    @Column(name = "content_updated_at", nullable = false, columnDefinition = "timestamp not null default now()")
+    var contentUpdatedAt: LocalDateTime = LocalDateTime.now(),
 ) : BaseEntity() {
     @OneToMany(mappedBy = "meal", cascade = [CascadeType.ALL], orphanRemoval = true)
     @OrderBy("sortOrder asc")
@@ -139,6 +159,9 @@ class Meal(
         sugarG = items.sumOf { it.sugarG }
         sodiumMg = items.sumOf { it.sodiumMg }
         fiberG = items.sumOf { it.fiberG }
+        // 하루 피드백 캐시가 보는 값이다. **여기 한 곳에서만 올린다** — 항목이 바뀌는 경로가
+        // 교체·얹기 둘뿐이고 둘 다 이 메서드를 지나므로, 한쪽만 갱신되는 일이 없다.
+        contentUpdatedAt = LocalDateTime.now()
     }
 
     fun addPhoto(photo: MealPhoto) {
