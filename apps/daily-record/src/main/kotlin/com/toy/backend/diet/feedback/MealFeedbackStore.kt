@@ -6,6 +6,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDateTime
 
 private val log = KotlinLogging.logger {}
 
@@ -25,26 +26,43 @@ class MealFeedbackStore(
 ) {
     /** 프롬프트 문자열만 뽑아 나온다 — 엔티티를 밖으로 들고 나가지 않는 것이 이 분리의 요점이다. */
     @Transactional(readOnly = true)
-    fun loadPrompt(mealId: Long): String? {
+    fun loadPrompt(mealId: Long): MealPrompt? {
         val meal = mealRepository.findByIdOrNull(mealId)
         if (meal == null) {
             log.warn { "피드백 대상 끼니가 없다: id=$mealId" }
             return null
         }
         val basis = DietScoreCalculator.scoreMeal(meal.carbsG, meal.proteinG, meal.fatG).basis
-        return DietFeedbackPrompts.meal(meal, basis)
+        return MealPrompt(DietFeedbackPrompts.meal(meal, basis), meal.updatedAt)
     }
 
     /**
      * 문장을 싣는다. **여기서 다시 조회하므로** 다른 컬럼은 현재 값이고, 전체 컬럼을 써도 덮어쓸
      * 낡은 값이 없다. `feedback`이 null이면 `markFeedback`이 상태를 FAILED로 남긴다.
+     *
+     * **[version]이 지금 값과 다르면 버린다.** 확정한 뒤 곧바로 항목을 고치면 비동기 작업이
+     * 둘 겹치는데(`MealService`가 확정·수정·재시도 세 곳에서 건다), 늦게 끝나는 쪽이 무조건
+     * 이기면 **먼저 끝난 새 문장을 낡은 문장이 덮어쓴다.** 그 상태는 다음 수정 전까지 안 풀린다.
+     *
+     * 판별은 `updatedAt`으로 한다 — 항목 수정도 `markFeedbackPending`도 이 값을 올리므로
+     * 「프롬프트를 읽은 뒤 끼니가 바뀌었는가」와 정확히 같은 뜻이 된다.
      */
     @Transactional
     fun publish(
         mealId: Long,
+        version: LocalDateTime,
         feedback: String?,
     ) {
         val meal = mealRepository.findByIdOrNull(mealId) ?: return log.warn { "피드백을 실을 끼니가 없다: id=$mealId" }
+        if (meal.updatedAt != version) {
+            return log.info { "그 사이 끼니가 바뀌어 낡은 피드백을 버린다: id=$mealId, 읽은 시각=$version, 지금=${meal.updatedAt}" }
+        }
         meal.markFeedback(feedback)
     }
 }
+
+/** 프롬프트와, 그것을 읽은 시점의 끼니 판(`Meal.updatedAt`). 늦게 끝난 작업을 가려내는 데 쓴다. */
+data class MealPrompt(
+    val prompt: String,
+    val version: LocalDateTime,
+)

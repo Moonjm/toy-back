@@ -130,7 +130,8 @@ class DailyDietService(
         } else {
             cached.update(dayScore, null, now)
         }
-        runAfterCommit { feedbackGenerator.generateForDay(user.requiredId, date) }
+        // 마커 시각을 함께 넘긴다 — 생성이 끝났을 때 그 사이 새 마커가 찍혔는지 대조한다.
+        runAfterCommit { feedbackGenerator.generateForDay(user.requiredId, date, now) }
         return null
     }
 

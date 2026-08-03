@@ -27,6 +27,8 @@ import org.springframework.data.repository.findByIdOrNull
 import java.time.LocalDate
 import java.time.LocalDateTime
 
+private val MARKER_AT: LocalDateTime = LocalDateTime.of(2026, 7, 29, 20, 0)
+
 class DietFeedbackGeneratorTest :
     BehaviorSpec({
         val mealRepository = mockk<MealRepository>()
@@ -157,6 +159,51 @@ class DietFeedbackGeneratorTest :
                     }
                 }
             }
+
+            // 확정하고 바로 항목을 고치면 비동기 작업이 둘 겹친다(`MealService`가 확정·수정·재시도
+            // 세 곳에서 건다). 늦게 끝나는 쪽이 무조건 이기면 **먼저 끝난 새 문장을 낡은 문장이
+            // 덮어쓰고**, 그 상태는 다음 수정 전까지 안 풀린다.
+            When("생성 중에 끼니가 바뀌어 새 작업이 먼저 끝났으면") {
+                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
+                val edited =
+                    meal(6L, MealType.DINNER, 800.0, 25.0, LocalDateTime.of(2026, 7, 29, 18, 0))
+                        .withAudit(createdAt = LocalDateTime.of(2026, 7, 29, 18, 0))
+                every { mealRepository.findByIdOrNull(6L) } returns edited
+                every { client.generateText(any(), any()) } answers {
+                    // LLM을 부르는 사이에 사용자가 항목을 고쳤고(`updatedAt`이 오른다),
+                    // 그때 걸린 새 작업이 먼저 끝나 제 문장을 실어 둔 상태다.
+                    edited.withAudit(
+                        createdAt = LocalDateTime.of(2026, 7, 29, 18, 0),
+                        updatedAt = LocalDateTime.of(2026, 7, 29, 18, 5),
+                    )
+                    edited.markFeedback("새 항목 기준으로 다시 쓴 문장입니다.")
+                    "고치기 전 항목을 기준으로 쓴 낡은 문장입니다."
+                }
+
+                generator.generateForMeal(6L)
+
+                Then("낡은 문장으로 덮어쓰지 않는다") {
+                    edited.feedback shouldContain "다시 쓴"
+                    edited.status shouldBe AnalysisStatus.COMPLETED
+                }
+            }
+
+            // 위 가드가 「항상 버린다」로 굳으면 피드백이 영영 안 실린다. 반대 방향도 함께 건다.
+            When("생성 중에 끼니가 그대로면") {
+                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
+                val steady =
+                    meal(7L, MealType.LUNCH, 550.0, 22.0, LocalDateTime.of(2026, 7, 29, 12, 0))
+                        .withAudit(createdAt = LocalDateTime.of(2026, 7, 29, 12, 0))
+                every { mealRepository.findByIdOrNull(7L) } returns steady
+                every { client.generateText(any(), any()) } returns "그대로면 실려야 합니다."
+
+                generator.generateForMeal(7L)
+
+                Then("정상적으로 싣는다") {
+                    steady.feedback shouldContain "실려야"
+                    steady.status shouldBe AnalysisStatus.COMPLETED
+                }
+            }
         }
 
         Given("하루 마감 피드백 생성") {
@@ -172,7 +219,7 @@ class DietFeedbackGeneratorTest :
                         date = date,
                         dayScore = 0,
                         feedback = null,
-                        generatedAt = LocalDateTime.of(2026, 7, 29, 20, 0),
+                        generatedAt = MARKER_AT,
                     ).withId(9L)
                 every { userRepository.findByIdOrNull(user.requiredId) } returns user
                 every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(breakfast, lunch)
@@ -182,7 +229,7 @@ class DietFeedbackGeneratorTest :
                 every { client.generateText(any(), capture(prompt)) } returns
                     "오늘 잘 드셨어요. 아침에 단백질이 부족했으니 간식으로 그릭요거트를 곁들이세요."
 
-                generator.generateForDay(user.requiredId, date)
+                generator.generateForDay(user.requiredId, date, MARKER_AT)
 
                 Then("호출자가 먼저 써 둔 마커 행에 결과를 채운다") {
                     marker.feedback shouldContain "그릭요거트"
@@ -191,7 +238,7 @@ class DietFeedbackGeneratorTest :
                 // 끝난 시각을 찍으면 생성 중에 있었던 수정보다 나중이 되어, 낡은 문장이 유효한
                 // 것으로 굳는다. 수정은 캐시 행을 지우지 않아 `cached == null` 검사로는 안 잡힌다.
                 Then("generatedAt은 마커 시각 그대로 둔다 — 생성 중 수정이 무효화 판정에 걸려야 한다") {
-                    marker.generatedAt shouldBe LocalDateTime.of(2026, 7, 29, 20, 0)
+                    marker.generatedAt shouldBe MARKER_AT
                 }
 
                 Then("그날 끼니 전체와 하루 점수가 프롬프트에 담긴다") {
@@ -210,7 +257,7 @@ class DietFeedbackGeneratorTest :
                 every { feedbackRepository.findByUserAndDate(user, date) } returns null
                 every { client.generateText(any(), any()) } returns "이제는 낡은 문장입니다."
 
-                generator.generateForDay(user.requiredId, date)
+                generator.generateForDay(user.requiredId, date, MARKER_AT)
 
                 Then("새 행으로 되살리지 않는다") {
                     verify(exactly = 0) { feedbackRepository.save(any()) }
@@ -225,14 +272,14 @@ class DietFeedbackGeneratorTest :
                         date = date,
                         dayScore = 0,
                         feedback = null,
-                        generatedAt = LocalDateTime.of(2026, 7, 29, 20, 0),
+                        generatedAt = MARKER_AT,
                     ).withId(11L)
                 every { userRepository.findByIdOrNull(user.requiredId) } returns user
                 every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(breakfast, lunch)
                 every { activityRepository.findByUserAndDate(user, date) } returns null
                 every { client.generateText(any(), any()) } returns null
 
-                generator.generateForDay(user.requiredId, date)
+                generator.generateForDay(user.requiredId, date, MARKER_AT)
 
                 Then("마커 행을 그대로 둔다 — 자동 재시도를 넣지 않는다는 설계와 맞물린다") {
                     marker.feedback.shouldBeNull()
@@ -244,10 +291,44 @@ class DietFeedbackGeneratorTest :
             When("API 키가 없어 클라이언트 빈이 없으면") {
                 val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, null)
 
-                generator.generateForDay(user.requiredId, date)
+                generator.generateForDay(user.requiredId, date, MARKER_AT)
 
                 Then("아무것도 조회하지 않고 즉시 끝난다") {
                     verify(exactly = 0) { userRepository.findByIdOrNull(any()) }
+                }
+            }
+
+            // 생성 중에 끼니가 수정되면 다음 하루 조회가 무효화 판정에 걸려 **새 마커를 찍고**
+            // 새 작업을 건다. `generatedAt`이 그 수정보다 뒤로 점프하므로, 이 낡은 작업이 문장을
+            // 실으면 **낡은 문장이 새 마커를 뒤집어쓰고 유효한 캐시로 굳는다** — `publish`가
+            // `generatedAt`을 안 건드리는 것만으로는 못 막는 경로다.
+            When("생성 중에 새 마커가 찍혔으면") {
+                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
+                val newerMarker =
+                    DailyDietFeedback(
+                        user = user,
+                        date = date,
+                        dayScore = 0,
+                        feedback = null,
+                        // 내가 찍은 MARKER_AT이 아니라, 그 뒤 조회가 새로 찍은 시각이다.
+                        generatedAt = MARKER_AT.plusMinutes(3),
+                    ).withId(12L)
+                every { userRepository.findByIdOrNull(user.requiredId) } returns user
+                every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(breakfast, lunch)
+                every { activityRepository.findByUserAndDate(user, date) } returns null
+                every { feedbackRepository.findByUserAndDate(user, date) } returns newerMarker
+                every { client.generateText(any(), any()) } returns "이미 낡은 구성 기준의 문장입니다."
+
+                generator.generateForDay(user.requiredId, date, MARKER_AT)
+
+                Then("싣지 않는다 — 새 마커 아래에서 유효한 것처럼 보이면 안 된다") {
+                    newerMarker.feedback.shouldBeNull()
+                }
+
+                Then("새 작업이 이미 실어 둔 문장도 덮어쓰지 않는다") {
+                    newerMarker.publish(80, "새 구성 기준으로 다시 쓴 문장입니다.")
+                    generator.generateForDay(user.requiredId, date, MARKER_AT)
+                    newerMarker.feedback shouldContain "다시 쓴"
                 }
             }
 
@@ -256,7 +337,7 @@ class DietFeedbackGeneratorTest :
                 every { userRepository.findByIdOrNull(user.requiredId) } returns user
                 every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns emptyList()
 
-                generator.generateForDay(user.requiredId, date)
+                generator.generateForDay(user.requiredId, date, MARKER_AT)
 
                 Then("LLM을 부르지 않는다 — 캐시 행은 끼니 삭제 경로에서 이미 지워졌다") {
                     verify(exactly = 0) { client.generateText(any(), any()) }

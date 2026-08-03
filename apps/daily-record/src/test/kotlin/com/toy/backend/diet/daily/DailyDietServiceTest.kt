@@ -19,6 +19,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -96,7 +97,7 @@ class DailyDietServiceTest :
             every { activityRepository.findByUserAndDate(user, date) } returns null
             every { fileService.getPresignedUrls(any()) } returns emptyMap()
             // 트랜잭션 없는 단위 테스트에서는 runAfterCommit이 즉시 실행한다 — MealServiceTest와 같은 전제.
-            justRun { feedbackGenerator.generateForDay(any(), any()) }
+            justRun { feedbackGenerator.generateForDay(any(), any(), any()) }
             every { feedbackGenerator.isAvailable } returns true
         }
 
@@ -110,7 +111,7 @@ class DailyDietServiceTest :
                     response.dayScore shouldBe null
                     response.scoreBasis shouldBe null
                     response.feedback shouldBe null
-                    verify(exactly = 0) { feedbackGenerator.generateForDay(any(), any()) }
+                    verify(exactly = 0) { feedbackGenerator.generateForDay(any(), any(), any()) }
                 }
 
                 Then("추정 건수는 null이 아니라 0이다 — 앱이 분기를 만들지 않도록") {
@@ -263,8 +264,13 @@ class DailyDietServiceTest :
                 }
 
                 Then("마커 행을 먼저 저장한 뒤 비동기 생성을 트리거한다 — 폴링이 호출을 중복시키지 않기 위한 표시다") {
-                    verify { feedbackRepository.save(match { it.dayScore == 70 && it.feedback == null }) }
-                    verify { feedbackGenerator.generateForDay(user.requiredId, date) }
+                    val saved = slot<DailyDietFeedback>()
+                    verify { feedbackRepository.save(capture(saved)) }
+                    saved.captured.dayScore shouldBe 70
+                    saved.captured.feedback shouldBe null
+                    // **방금 찍은 마커 시각을 그대로 넘겨야 한다.** 생성이 끝났을 때 그 사이 새 마커가
+                    // 찍혔는지 대조하는 값이라, 다른 값을 넘기면 낡은 문장이 늘 버려지거나 늘 실린다.
+                    verify { feedbackGenerator.generateForDay(user.requiredId, date, saved.captured.generatedAt) }
                 }
 
                 Then("주의 영양소 판정이 응답에 실린다") {
@@ -287,7 +293,7 @@ class DailyDietServiceTest :
 
                 Then("캐시된 문장을 그대로 쓰고 트리거는 걸지 않는다") {
                     response.feedback shouldBe "캐시된 피드백"
-                    verify(exactly = 0) { feedbackGenerator.generateForDay(any(), any()) }
+                    verify(exactly = 0) { feedbackGenerator.generateForDay(any(), any(), any()) }
                     verify(exactly = 0) { feedbackRepository.save(any()) }
                 }
             }
@@ -318,7 +324,7 @@ class DailyDietServiceTest :
                     response.feedback shouldBe null
                     cached.feedback shouldBe null
                     cached.dayScore shouldBe 70
-                    verify { feedbackGenerator.generateForDay(user.requiredId, date) }
+                    verify { feedbackGenerator.generateForDay(user.requiredId, date, cached.generatedAt) }
                 }
             }
 
@@ -335,7 +341,7 @@ class DailyDietServiceTest :
                 Then("마커를 남기지 않는다 — 남기면 키를 넣은 뒤에도 캐시가 유효해 보인다") {
                     response.feedback shouldBe null
                     verify(exactly = 0) { feedbackRepository.save(any()) }
-                    verify(exactly = 0) { feedbackGenerator.generateForDay(any(), any()) }
+                    verify(exactly = 0) { feedbackGenerator.generateForDay(any(), any(), any()) }
                 }
 
                 Then("점수는 그대로 나온다 — 룰 기반이라 LLM과 무관하다") {

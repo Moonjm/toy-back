@@ -12,6 +12,7 @@ import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 private val log = KotlinLogging.logger {}
 
@@ -46,16 +47,18 @@ class DietFeedbackGenerator(
      */
     @Async
     fun generateForMeal(mealId: Long) {
+        // **트랜잭션 밖에서 호출한다.** 안에서 부르면 Meal 엔티티가 호출 내내 영속성 컨텍스트에
+        // 남고, 그 사이 항목이 수정되면 커밋 때 dirty check가 합계 컬럼을 옛 값으로 되돌린다.
+        //
+        // 키가 없을 때도 먼저 읽는다 — `publish`가 「그 사이 안 바뀌었는가」를 판별할 판이 필요하고,
+        // 끼니가 이미 지워졌으면 FAILED로 남길 이유도 없다.
+        val loaded = store.loadPrompt(mealId) ?: return
         val openRouter = client
         if (openRouter == null) {
             log.warn { "OpenRouter 미설정 — 끼니 피드백을 건너뛴다: id=$mealId" }
-            return store.publish(mealId, null)
+            return store.publish(mealId, loaded.version, null)
         }
-
-        // **트랜잭션 밖에서 호출한다.** 안에서 부르면 Meal 엔티티가 호출 내내 영속성 컨텍스트에
-        // 남고, 그 사이 항목이 수정되면 커밋 때 dirty check가 합계 컬럼을 옛 값으로 되돌린다.
-        val prompt = store.loadPrompt(mealId) ?: return
-        store.publish(mealId, openRouter.generateText(DietFeedbackPrompts.SYSTEM_PROMPT, prompt))
+        store.publish(mealId, loaded.version, openRouter.generateText(DietFeedbackPrompts.SYSTEM_PROMPT, loaded.prompt))
     }
 
     /**
@@ -72,14 +75,15 @@ class DietFeedbackGenerator(
      * 캐시가 무효화됐다는 뜻이다 — 방금 만든 문장은 이미 낡은 구성을 기준으로 한 것이다.
      *
      * **그 검사는 캐시 행을 지우는 경로만 잡는다.** 항목 수정은 행을 지우지 않고 `Meal.updatedAt`만
-     * 올리므로 여기 걸리지 않는다. 그쪽은 `publish`가 `generatedAt`을 마커 시각으로 남겨 두는 것으로
-     * 처리한다 — 수정 시각이 그보다 뒤면 다음 조회의 무효화 판정에 걸려 다시 만들어진다.
+     * 올리므로 여기 걸리지 않는다. 그래서 [markerAt]을 함께 받아 **내가 찍은 마커가 아직 그대로인지**
+     * 확인한다(아래 publish 직전 주석).
      */
     @Async
     @Transactional
     fun generateForDay(
         userId: Long,
         date: LocalDate,
+        markerAt: LocalDateTime,
     ) {
         val openRouter = client ?: return
         val user = userRepository.findByIdOrNull(userId) ?: return log.warn { "피드백 대상 사용자가 없다: id=$userId" }
@@ -103,10 +107,21 @@ class DietFeedbackGenerator(
         // 이미 낡은 끼니 구성을 기준으로 한 것이라는 뜻이다. 되살리지 않고 버린다. 다음 조회가
         // 새 마커를 만들어 자연히 다시 시도한다.
         val cached = feedbackRepository.findByUserAndDate(user, date) ?: return
+
+        // **내가 찍은 마커가 아직 그대로일 때만 싣는다.**
+        //
+        // 생성 중에 끼니가 수정되면 다음 하루 조회가 무효화 판정에 걸려 **새 마커를 찍고**
+        // 새 작업을 건다(`DailyDietService.resolveFeedback`). 그때 `generatedAt`은 그 수정보다
+        // 뒤로 점프하는데, 이 낡은 작업이 그 행에 문장을 실으면 **낡은 문장이 새 마커를 뒤집어쓰고
+        // 유효한 캐시로 굳는다.** 아래 `publish`가 `generatedAt`을 안 건드리는 것만으로는 못 막는
+        // 경로다 — 시각을 새로 찍는 쪽이 내가 아니라 다음 조회이기 때문이다.
+        //
+        // 늦게 끝난 낡은 작업이 먼저 끝난 새 문장을 덮어쓰는 것도 같이 막힌다.
+        if (cached.generatedAt != markerAt) {
+            return log.info { "그 사이 새 마커가 찍혀 낡은 하루 피드백을 버린다: date=$date, 내 마커=$markerAt, 지금=${cached.generatedAt}" }
+        }
         // `generatedAt`을 갱신하지 않는다. 마커를 찍은 시각으로 남겨야, 생성 중에 끼니가 수정된
-        // 경우 무효화 판정에 걸려 다음 조회가 다시 만든다. 여기서 지금 시각을 찍으면 그 수정보다
-        // 나중이 되어 **낡은 문장이 유효한 것으로 굳는다** — 수정은 캐시 행을 지우지 않으므로
-        // 위의 `cached == null` 검사로는 잡히지 않는 경로다.
+        // 경우 무효화 판정에 걸려 다음 조회가 다시 만든다.
         cached.publish(dayScore, generated)
     }
 }
