@@ -1,34 +1,30 @@
 package com.toy.backend.ledger.inbound
 
-import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.stereotype.Component
-import org.springframework.web.reactive.function.client.WebClient
-import org.springframework.web.reactive.function.client.bodyToMono
-import tools.jackson.databind.JsonNode
 import java.math.BigDecimal
-import java.time.Duration
 import java.time.LocalDate
-import java.util.concurrent.ConcurrentHashMap
-
-private val log = KotlinLogging.logger {}
 
 /**
- * 결제 시점 환율 조회 — Frankfurter(ECB 고시환율, 무료·키 불필요).
- * 특정 통화를 하드코딩하지 않고 ECB가 고시하는 30여 통화(USD·JPY·EUR·CNY·GBP 등)를 그대로 커버한다.
+ * 결제 시점 환율 조회. **어느 출처를 쓸지만 정하고, 실제 호출은 두 소스가 한다.**
+ *
+ * - 오늘(또는 날짜 없음) → [NaverFxRateSource] (하나은행 매매기준율, 실시간).
+ *   실패하면 [FrankfurterFxRateSource]로 되돌아간다 — 문서화된 API가 아니라 언제든 막힐 수 있다.
+ * - 과거 날짜 → [FrankfurterFxRateSource]만. **네이버 계산기에는 날짜 인자가 없다.**
  *
  * 환율은 부가 정보일 뿐이므로 조회 실패는 null로 흡수한다 — 내역 저장을 막지 않는다.
- * 같은 통화는 하루 한 번만 조회하도록 (통화, 날짜) 단위로 캐시한다(ECB는 일 단위 고시).
+ *
+ * **캐시하지 않는다.** 조회는 내역이 들어올 때뿐이라 하루 몇 건이고, 매매기준율은 하루에도
+ * 여러 번 바뀐다. 아껴서 얻는 것보다 굳은 값을 쓰는 손해가 크다 — 출처를 바꾼 이유가
+ * 0.5~1.1% 차이였다.
  */
 @Component
 class FxRateClient(
-    webClientBuilder: WebClient.Builder,
+    private val naver: NaverFxRateSource,
+    private val frankfurter: FrankfurterFxRateSource,
 ) {
-    private val webClient = webClientBuilder.baseUrl(BASE_URL).build()
-    private val cache = ConcurrentHashMap<String, BigDecimal>()
-
     /**
      * 1 [currency] 당 원화(KRW) 환율. 미지원 통화·실패 시 null.
-     * [date]를 주면 해당 날짜 고시환율을 조회한다(null·오늘 이후는 최신 고시 — 아직 고시 전이므로).
+     * [date]를 주면 해당 날짜 고시환율을 조회한다(null·오늘 이후는 실시간 — 아직 고시 전이므로).
      */
     fun rateToKrw(
         currency: String,
@@ -37,39 +33,10 @@ class FxRateClient(
         val upper = currency.uppercase()
         if (upper == "KRW") return null
         val historicalDate = date?.takeIf { it.isBefore(LocalDate.now()) }
-        val key = "$upper:${historicalDate ?: LocalDate.now()}"
-        cache[key]?.let { return it }
-        val rate = fetch(upper, historicalDate) ?: return null
-        cache[key] = rate
-        return rate
-    }
-
-    private fun fetch(
-        currency: String,
-        date: LocalDate?,
-    ): BigDecimal? =
-        runCatching {
-            // v2 단일 통화쌍 응답: {"date":"2026-07-22","base":"JPY","quote":"KRW","rate":9.0854}
-            // 과거 고시는 ?date=YYYY-MM-DD (주말·휴일은 직전 영업일 고시로 응답)
-            webClient
-                .get()
-                .uri { builder ->
-                    builder
-                        .path("/v2/rate/{base}/KRW")
-                        .apply { if (date != null) queryParam("date", date.toString()) }
-                        .build(currency)
-                }.retrieve()
-                .bodyToMono<JsonNode>()
-                .block(TIMEOUT)
-                ?.path("rate")
-                ?.takeIf { it.isNumber }
-                ?.decimalValue()
-        }.onFailure {
-            log.warn { "환율 조회 실패(내역은 환율 없이 저장): currency=$currency, cause=${it.message}" }
-        }.getOrNull()
-
-    companion object {
-        private const val BASE_URL = "https://api.frankfurter.dev"
-        private val TIMEOUT = Duration.ofSeconds(3)
+        return if (historicalDate != null) {
+            frankfurter.rateToKrw(upper, historicalDate)
+        } else {
+            naver.rateToKrw(upper) ?: frankfurter.rateToKrw(upper, null)
+        }
     }
 }
