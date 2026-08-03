@@ -6,6 +6,7 @@ import com.toy.backend.diet.NutritionSource
 import com.toy.backend.diet.feedback.DailyDietFeedback
 import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
 import com.toy.backend.diet.feedback.DietFeedbackGenerator
+import com.toy.backend.diet.feedback.MARKER_PRECISION
 import com.toy.backend.diet.feedback.totals
 import com.toy.backend.diet.meal.Meal
 import com.toy.backend.diet.meal.MealRepository
@@ -125,7 +126,11 @@ class DailyDietService(
         // 가려진다 — 막으려는 건 「생성할 수 없으면서 생성했다는 표시를 남기는 것」뿐이다.
         if (!feedbackGenerator.isAvailable) return null
 
-        val now = LocalDateTime.now()
+        // **마이크로초로 깎아서 쓴다.** 이 값은 마커로 저장되는 동시에 비동기 작업에 그대로
+        // 넘어가, 작업이 끝났을 때 다시 읽은 값과 대조된다. 리눅스에서 `LocalDateTime.now()`는
+        // 나노초까지 주는데 `generated_at`은 `timestamp(6)`이라, 깎지 않으면 왕복 후 값이 달라져
+        // **생성된 피드백이 매번 버려진다**(`sameMarkerAs` 주석에 실측 기록이 있다).
+        val now = LocalDateTime.now().truncatedTo(MARKER_PRECISION)
         if (cached == null) {
             feedbackRepository.save(
                 DailyDietFeedback(user = user, date = date, dayScore = dayScore, feedback = null, generatedAt = now),

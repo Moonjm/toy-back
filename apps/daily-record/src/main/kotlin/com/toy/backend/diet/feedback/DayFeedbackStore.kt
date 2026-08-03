@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 
 private val log = KotlinLogging.logger {}
 
@@ -78,7 +79,7 @@ class DayFeedbackStore(
     ) {
         val user = userRepository.findByIdOrNull(userId) ?: return log.warn { "피드백 대상 사용자가 없다: id=$userId" }
         val cached = feedbackRepository.findByUserAndDate(user, date) ?: return
-        if (cached.generatedAt != markerAt) {
+        if (!cached.generatedAt.sameMarkerAs(markerAt)) {
             return log.info { "그 사이 새 마커가 찍혀 낡은 하루 피드백을 버린다: date=$date, 내 마커=$markerAt, 지금=${cached.generatedAt}" }
         }
         // `generatedAt`을 갱신하지 않는다. 마커를 찍은 시각으로 남겨야, 생성 중에 끼니가 수정된
@@ -92,3 +93,28 @@ data class DayPrompt(
     val prompt: String,
     val dayScore: Int,
 )
+
+/**
+ * 마커 시각이 DB에 저장할 수 있는 정밀도. Postgres `timestamp`의 기본이 6자리(마이크로초)이고
+ * Hibernate가 `LocalDateTime`을 그렇게 만든다.
+ */
+val MARKER_PRECISION: ChronoUnit = ChronoUnit.MICROS
+
+/**
+ * 같은 마커인가. **자릿수를 맞춰 비교한다.**
+ *
+ * 마커는 `LocalDateTime.now()`로 만들어 **DB에 저장되는 동시에 비동기 작업에 그대로 넘어가고**,
+ * 작업이 끝나면 다시 읽은 값과 대조된다. 그런데 **리눅스에서 `LocalDateTime.now()`는 나노초까지
+ * 준다**(`clock_gettime`) — `timestamp(6)`에 저장되면서 뒤 세 자리가 잘려, 같은 마커인데도
+ * 값이 달라진다.
+ *
+ * 그러면 **생성된 하루 피드백이 매번 버려지고**, 남은 null 마커가 유효한 캐시로 판정돼
+ * 다시 만들지도 않는다(하루 피드백에는 재시도 엔드포인트가 없다).
+ *
+ * **macOS는 마이크로초까지만 줘서 개발 기계에서는 드러나지 않는다.** 실제로 배포 이미지
+ * (`linux/arm64` + temurin 25)에서 20/20 전부 나노초 자릿수가 붙는 것을 확인했다.
+ *
+ * 저장하는 쪽(`DailyDietService`)도 [MARKER_PRECISION]으로 깎지만, 여기서 한 번 더 맞춘다 —
+ * 한쪽만 고치면 다른 쪽이 되돌아갔을 때 조용히 같은 증상으로 돌아간다.
+ */
+fun LocalDateTime.sameMarkerAs(other: LocalDateTime): Boolean = truncatedTo(MARKER_PRECISION) == other.truncatedTo(MARKER_PRECISION)

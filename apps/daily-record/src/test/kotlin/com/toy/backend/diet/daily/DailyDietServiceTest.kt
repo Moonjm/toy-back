@@ -7,6 +7,7 @@ import com.toy.backend.diet.dietUser
 import com.toy.backend.diet.feedback.DailyDietFeedback
 import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
 import com.toy.backend.diet.feedback.DietFeedbackGenerator
+import com.toy.backend.diet.feedback.MARKER_PRECISION
 import com.toy.backend.diet.meal.Meal
 import com.toy.backend.diet.meal.MealItem
 import com.toy.backend.diet.meal.MealRepository
@@ -274,6 +275,16 @@ class DailyDietServiceTest :
                     // **방금 찍은 마커 시각을 그대로 넘겨야 한다.** 생성이 끝났을 때 그 사이 새 마커가
                     // 찍혔는지 대조하는 값이라, 다른 값을 넘기면 낡은 문장이 늘 버려지거나 늘 실린다.
                     verify { feedbackGenerator.generateForDay(user.requiredId, date, saved.captured.generatedAt) }
+                }
+
+                // 리눅스에서는 `LocalDateTime.now()`가 나노초까지 준다. 그대로 저장하면
+                // `timestamp(6)`에 잘려, 왕복 후 값이 달라 생성된 피드백이 매번 버려진다.
+                // (macOS는 마이크로초까지만 줘서 이 검사가 개발 기계에서는 늘 통과한다 —
+                // 자릿수를 맞추는 쪽의 실검증은 `DietFeedbackGeneratorTest`에 있다.)
+                Then("마커는 DB에 저장할 수 있는 자릿수로 깎아 쓴다") {
+                    val saved = slot<DailyDietFeedback>()
+                    verify { feedbackRepository.save(capture(saved)) }
+                    saved.captured.generatedAt shouldBe saved.captured.generatedAt.truncatedTo(MARKER_PRECISION)
                 }
 
                 Then("주의 영양소 판정이 응답에 실린다") {

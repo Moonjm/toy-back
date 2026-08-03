@@ -375,6 +375,38 @@ class DietFeedbackGeneratorTest :
                 }
             }
 
+            // **리눅스에서 `LocalDateTime.now()`는 나노초까지 준다**(`clock_gettime`). 그 값이
+            // 마커로 저장되면서 `timestamp(6)`에 잘리고, 비동기 작업에는 안 잘린 값이 그대로
+            // 넘어간다. 자릿수를 안 맞추면 같은 마커인데도 달라 보여 **생성된 문장이 매번
+            // 버려지고**, 남은 null 마커가 유효한 캐시로 판정돼 다시 만들지도 않는다.
+            //
+            // macOS는 마이크로초까지만 줘서 실제 시계로는 재현되지 않는다 — 그래서 DB가 돌려줄
+            // 값(잘린 것)과 작업이 들고 있는 값(안 잘린 것)을 손으로 만들어 넣는다.
+            When("리눅스처럼 마커에 나노초 자릿수가 붙어 있으면") {
+                val generator = DietFeedbackGenerator(store, dayStore, client)
+                val fromJvm = MARKER_AT.plusNanos(123_456)
+                val fromDb = fromJvm.truncatedTo(java.time.temporal.ChronoUnit.MICROS)
+                val marker =
+                    DailyDietFeedback(
+                        user = user,
+                        date = date,
+                        dayScore = 0,
+                        feedback = null,
+                        generatedAt = fromDb,
+                    ).withId(13L)
+                every { userRepository.findByIdOrNull(user.requiredId) } returns user
+                every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(breakfast, lunch)
+                every { activityRepository.findByUserAndDate(user, date) } returns null
+                every { feedbackRepository.findByUserAndDate(user, date) } returns marker
+                every { client.generateText(any(), any()) } returns "제대로 실려야 하는 문장입니다."
+
+                generator.generateForDay(user.requiredId, date, fromJvm)
+
+                Then("같은 마커로 보고 싣는다 — 안 그러면 하루 피드백이 영영 안 나온다") {
+                    marker.feedback shouldContain "제대로 실려야"
+                }
+            }
+
             When("마커를 쓴 뒤 끼니가 모두 삭제됐으면") {
                 val generator = DietFeedbackGenerator(store, dayStore, client)
                 every { userRepository.findByIdOrNull(user.requiredId) } returns user
