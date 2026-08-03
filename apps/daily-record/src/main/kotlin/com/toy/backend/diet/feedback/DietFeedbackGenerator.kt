@@ -1,16 +1,10 @@
 package com.toy.backend.diet.feedback
 
-import com.toy.backend.diet.daily.DailyActivityRepository
 import com.toy.backend.diet.llm.OpenRouterClient
-import com.toy.backend.diet.meal.MealRepository
-import com.toy.backend.diet.score.DietScoreCalculator
-import com.toy.backend.user.UserRepository
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.data.repository.findByIdOrNull
 import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Component
-import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -22,11 +16,8 @@ private val log = KotlinLogging.logger {}
  */
 @Component
 class DietFeedbackGenerator(
-    private val mealRepository: MealRepository,
-    private val activityRepository: DailyActivityRepository,
-    private val feedbackRepository: DailyDietFeedbackRepository,
-    private val userRepository: UserRepository,
     private val store: MealFeedbackStore,
+    private val dayStore: DayFeedbackStore,
     @Autowired(required = false) private val client: OpenRouterClient?,
 ) {
     /**
@@ -70,58 +61,25 @@ class DietFeedbackGenerator(
      * `generatedAt`은 마커를 쓴 시각이라, 끼니가 바뀌기 전까지(캐시 무효화 전까지) 재호출되지 않는다
      * — 자동 재시도를 넣지 않는다는 설계와 맞물리는 지점이다.
      *
-     * **성공했는데도 마커가 없으면(`cached == null`) 새로 저장하지 않고 버린다.** 마커는 트리거
-     * 직전에 항상 저장되므로, 여기서 사라졌다는 것은 그 사이에 끼니 삭제·활동 에너지 갱신으로
-     * 캐시가 무효화됐다는 뜻이다 — 방금 만든 문장은 이미 낡은 구성을 기준으로 한 것이다.
+     * **성공했는데도 마커가 없으면 새로 저장하지 않고 버린다.** 마커는 트리거 직전에 항상
+     * 저장되므로, 여기서 사라졌다는 것은 그 사이에 끼니 삭제·활동 에너지 갱신으로 캐시가
+     * 무효화됐다는 뜻이다 — 방금 만든 문장은 이미 낡은 구성을 기준으로 한 것이다.
      *
      * **그 검사는 캐시 행을 지우는 경로만 잡는다.** 항목 수정은 행을 지우지 않고 `Meal.updatedAt`만
-     * 올리므로 여기 걸리지 않는다. 그래서 [markerAt]을 함께 받아 **내가 찍은 마커가 아직 그대로인지**
-     * 확인한다(아래 publish 직전 주석).
+     * 올리므로 여기 걸리지 않는다. 그래서 [markerAt]을 함께 넘겨, 생성 중에 다음 조회가 **새 마커를
+     * 찍었는지** 대조하게 한다 — 그러지 않으면 낡은 문장이 새 마커를 뒤집어쓰고 유효한 캐시로
+     * 굳는다. 판단은 [DayFeedbackStore.publish]에 있다.
      */
     @Async
-    @Transactional
     fun generateForDay(
         userId: Long,
         date: LocalDate,
         markerAt: LocalDateTime,
     ) {
         val openRouter = client ?: return
-        val user = userRepository.findByIdOrNull(userId) ?: return log.warn { "피드백 대상 사용자가 없다: id=$userId" }
-        val meals = mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date)
-        // 마커를 쓴 뒤 끼니가 모두 삭제된 좁은 창 — 캐시 행은 delete 경로에서 이미 지워졌다.
-        if (meals.isEmpty()) return
-
-        val totals = meals.totals()
-        val targets = meals.first().targets()
-        val dayScore = DietScoreCalculator.scoreDay(totals.kcal, totals.carbsG, totals.proteinG, totals.fatG, targets).score
-        val activeEnergyKcal = activityRepository.findByUserAndDate(user, date)?.activeEnergyKcal
-
-        val generated =
-            openRouter.generateText(
-                DietFeedbackPrompts.SYSTEM_PROMPT,
-                DietFeedbackPrompts.day(meals, totals, targets, dayScore, activeEnergyKcal),
-            ) ?: return
-
-        // 마커는 트리거 직전에 항상 저장돼 있다. 그런데도 여기서 못 찾았다면 그 사이에 누가
-        // 지운 것이다(끼니 삭제·활동 에너지 갱신 — 둘 다 캐시를 지운다) — 즉 지금 막 만든 문장은
-        // 이미 낡은 끼니 구성을 기준으로 한 것이라는 뜻이다. 되살리지 않고 버린다. 다음 조회가
-        // 새 마커를 만들어 자연히 다시 시도한다.
-        val cached = feedbackRepository.findByUserAndDate(user, date) ?: return
-
-        // **내가 찍은 마커가 아직 그대로일 때만 싣는다.**
-        //
-        // 생성 중에 끼니가 수정되면 다음 하루 조회가 무효화 판정에 걸려 **새 마커를 찍고**
-        // 새 작업을 건다(`DailyDietService.resolveFeedback`). 그때 `generatedAt`은 그 수정보다
-        // 뒤로 점프하는데, 이 낡은 작업이 그 행에 문장을 실으면 **낡은 문장이 새 마커를 뒤집어쓰고
-        // 유효한 캐시로 굳는다.** 아래 `publish`가 `generatedAt`을 안 건드리는 것만으로는 못 막는
-        // 경로다 — 시각을 새로 찍는 쪽이 내가 아니라 다음 조회이기 때문이다.
-        //
-        // 늦게 끝난 낡은 작업이 먼저 끝난 새 문장을 덮어쓰는 것도 같이 막힌다.
-        if (cached.generatedAt != markerAt) {
-            return log.info { "그 사이 새 마커가 찍혀 낡은 하루 피드백을 버린다: date=$date, 내 마커=$markerAt, 지금=${cached.generatedAt}" }
-        }
-        // `generatedAt`을 갱신하지 않는다. 마커를 찍은 시각으로 남겨야, 생성 중에 끼니가 수정된
-        // 경우 무효화 판정에 걸려 다음 조회가 다시 만든다.
-        cached.publish(dayScore, generated)
+        // **트랜잭션 밖에서 호출한다** — 끼니 쪽과 같은 이유다(`DayFeedbackStore` 주석).
+        val loaded = dayStore.loadPrompt(userId, date) ?: return
+        val generated = openRouter.generateText(DietFeedbackPrompts.SYSTEM_PROMPT, loaded.prompt) ?: return
+        dayStore.publish(userId, date, markerAt, loaded.dayScore, generated)
     }
 }

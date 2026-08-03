@@ -24,6 +24,7 @@ import io.mockk.slot
 import io.mockk.verify
 import io.mockk.verifyOrder
 import org.springframework.data.repository.findByIdOrNull
+import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -38,6 +39,8 @@ class DietFeedbackGeneratorTest :
         val client = mockk<OpenRouterClient>()
         // 얇은 트랜잭션 경계 래퍼라 실물을 쓴다 — 목으로 바꾸면 이 테스트들이 아무것도 확인하지 않게 된다.
         val store = MealFeedbackStore(mealRepository)
+        // 진짜 스토어를 쓴다 — 트랜잭션 경계만 다른 얇은 위임이라 목으로 바꾸면 확인할 게 없어진다.
+        val dayStore = DayFeedbackStore(userRepository, mealRepository, activityRepository, feedbackRepository)
 
         val user = dietUser()
         val date = LocalDate.of(2026, 7, 29)
@@ -85,7 +88,7 @@ class DietFeedbackGeneratorTest :
             val lunch = meal(2L, MealType.LUNCH, 600.0, 18.0, LocalDateTime.of(2026, 7, 29, 12, 30))
 
             When("호출이 성공하면") {
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
+                val generator = DietFeedbackGenerator(store, dayStore, client)
                 every { mealRepository.findByIdOrNull(2L) } returns lunch
                 val prompt = slot<String>()
                 every { client.generateText(any(), capture(prompt)) } returns "잘 드셨어요. 단백질이 부족합니다. 저녁에 닭가슴살을 곁들여 보세요."
@@ -112,7 +115,7 @@ class DietFeedbackGeneratorTest :
             }
 
             When("호출이 실패하면") {
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
+                val generator = DietFeedbackGenerator(store, dayStore, client)
                 val dinner = meal(3L, MealType.DINNER, 700.0, 30.0, LocalDateTime.of(2026, 7, 29, 19, 0))
                 every { mealRepository.findByIdOrNull(3L) } returns dinner
                 every { client.generateText(any(), any()) } returns null
@@ -127,7 +130,7 @@ class DietFeedbackGeneratorTest :
             }
 
             When("API 키가 없어 클라이언트 빈이 없으면") {
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, null)
+                val generator = DietFeedbackGenerator(store, dayStore, null)
                 val snack = meal(4L, MealType.SNACK, 200.0, 5.0, LocalDateTime.of(2026, 7, 29, 15, 0))
                 every { mealRepository.findByIdOrNull(4L) } returns snack
 
@@ -144,7 +147,7 @@ class DietFeedbackGeneratorTest :
             // Hibernate가 없어 그 되돌림 자체는 재현되지 않으므로, **그것을 불가능하게 만드는
             // 구조**를 확인한다 — 호출 뒤에 다시 조회하는지.
             When("피드백을 실을 때") {
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
+                val generator = DietFeedbackGenerator(store, dayStore, client)
                 val brunch = meal(5L, MealType.BREAKFAST, 500.0, 20.0, LocalDateTime.of(2026, 7, 29, 10, 0))
                 every { mealRepository.findByIdOrNull(5L) } returns brunch
                 every { client.generateText(any(), any()) } returns "좋은 한 끼였어요. 채소를 곁들여 보세요."
@@ -164,7 +167,7 @@ class DietFeedbackGeneratorTest :
             // 세 곳에서 건다). 늦게 끝나는 쪽이 무조건 이기면 **먼저 끝난 새 문장을 낡은 문장이
             // 덮어쓰고**, 그 상태는 다음 수정 전까지 안 풀린다.
             When("생성 중에 끼니가 바뀌어 새 작업이 먼저 끝났으면") {
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
+                val generator = DietFeedbackGenerator(store, dayStore, client)
                 val edited =
                     meal(6L, MealType.DINNER, 800.0, 25.0, LocalDateTime.of(2026, 7, 29, 18, 0))
                         .withAudit(createdAt = LocalDateTime.of(2026, 7, 29, 18, 0))
@@ -190,7 +193,7 @@ class DietFeedbackGeneratorTest :
 
             // 위 가드가 「항상 버린다」로 굳으면 피드백이 영영 안 실린다. 반대 방향도 함께 건다.
             When("생성 중에 끼니가 그대로면") {
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
+                val generator = DietFeedbackGenerator(store, dayStore, client)
                 val steady =
                     meal(7L, MealType.LUNCH, 550.0, 22.0, LocalDateTime.of(2026, 7, 29, 12, 0))
                         .withAudit(createdAt = LocalDateTime.of(2026, 7, 29, 12, 0))
@@ -211,7 +214,7 @@ class DietFeedbackGeneratorTest :
             val lunch = meal(2L, MealType.LUNCH, 600.0, 18.0, LocalDateTime.of(2026, 7, 29, 12, 30))
 
             When("호출이 성공하면") {
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
+                val generator = DietFeedbackGenerator(store, dayStore, client)
                 // `DailyDietService`가 생성을 시작하기 전에 먼저 써 둔 마커 행 — feedback은 아직 null이다.
                 val marker =
                     DailyDietFeedback(
@@ -245,12 +248,52 @@ class DietFeedbackGeneratorTest :
                     prompt.captured shouldContain "제육볶음"
                     prompt.captured shouldContain "하루 점수"
                 }
+
+                // 예전에는 `generateForDay` 전체가 하나의 `@Transactional`이라 LLM 호출 내내 DB
+                // 커넥션을 붙들었다. 단위 테스트에 트랜잭션이 없어 그 자체는 재현되지 않으므로,
+                // **그것을 불가능하게 만드는 구조**를 확인한다 — 읽기와 쓰기가 호출을 사이에 두고
+                // 갈라져 있는지. 끼니 쪽에 이미 같은 테스트가 있다.
+                Then("읽기와 쓰기가 LLM 호출을 사이에 두고 갈라진다 — 호출 내내 커넥션을 붙들지 않는다") {
+                    verifyOrder {
+                        mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date)
+                        client.generateText(any(), any())
+                        feedbackRepository.findByUserAndDate(user, date)
+                    }
+                }
+            }
+
+            // 위 순서 검사는 **트랜잭션 경계를 못 본다** — `@Transactional`을 다시 붙여도 호출 순서는
+            // 그대로라 통과한다. 스프링을 띄우지 않는 단위 테스트로는 경계를 관찰할 방법이 없으므로,
+            // 애노테이션 자체를 고정한다. 동작 검증이 아니라 「되돌아가는 것」을 막는 장치다.
+            When("트랜잭션 경계는") {
+                Then("generateForDay에 @Transactional이 없다 — 있으면 LLM 호출이 다시 트랜잭션 안으로 들어온다") {
+                    DietFeedbackGenerator::class.java
+                        .getMethod("generateForDay", Long::class.java, LocalDate::class.java, LocalDateTime::class.java)
+                        .isAnnotationPresent(Transactional::class.java) shouldBe false
+                }
+
+                Then("읽기는 readOnly, 쓰기는 아니다") {
+                    DayFeedbackStore::class.java
+                        .getMethod("loadPrompt", Long::class.java, LocalDate::class.java)
+                        .getAnnotation(Transactional::class.java)
+                        .readOnly shouldBe true
+                    DayFeedbackStore::class.java
+                        .getMethod(
+                            "publish",
+                            Long::class.java,
+                            LocalDate::class.java,
+                            LocalDateTime::class.java,
+                            Int::class.java,
+                            String::class.java,
+                        ).getAnnotation(Transactional::class.java)
+                        .readOnly shouldBe false
+                }
             }
 
             When("호출이 성공했는데 그 사이 마커가 지워졌으면") {
                 // 마커는 트리거 직전에 항상 저장된다 — 여기서 없다는 것은 끼니 삭제·활동 에너지 갱신으로
                 // 캐시가 이미 무효화됐다는 뜻이다. 방금 만든 문장은 낡은 구성 기준이라 되살리면 안 된다.
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
+                val generator = DietFeedbackGenerator(store, dayStore, client)
                 every { userRepository.findByIdOrNull(user.requiredId) } returns user
                 every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns listOf(breakfast, lunch)
                 every { activityRepository.findByUserAndDate(user, date) } returns null
@@ -265,7 +308,7 @@ class DietFeedbackGeneratorTest :
             }
 
             When("호출이 실패하면") {
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
+                val generator = DietFeedbackGenerator(store, dayStore, client)
                 val marker =
                     DailyDietFeedback(
                         user = user,
@@ -289,7 +332,7 @@ class DietFeedbackGeneratorTest :
             }
 
             When("API 키가 없어 클라이언트 빈이 없으면") {
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, null)
+                val generator = DietFeedbackGenerator(store, dayStore, null)
 
                 generator.generateForDay(user.requiredId, date, MARKER_AT)
 
@@ -303,7 +346,7 @@ class DietFeedbackGeneratorTest :
             // 실으면 **낡은 문장이 새 마커를 뒤집어쓰고 유효한 캐시로 굳는다** — `publish`가
             // `generatedAt`을 안 건드리는 것만으로는 못 막는 경로다.
             When("생성 중에 새 마커가 찍혔으면") {
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
+                val generator = DietFeedbackGenerator(store, dayStore, client)
                 val newerMarker =
                     DailyDietFeedback(
                         user = user,
@@ -333,7 +376,7 @@ class DietFeedbackGeneratorTest :
             }
 
             When("마커를 쓴 뒤 끼니가 모두 삭제됐으면") {
-                val generator = DietFeedbackGenerator(mealRepository, activityRepository, feedbackRepository, userRepository, store, client)
+                val generator = DietFeedbackGenerator(store, dayStore, client)
                 every { userRepository.findByIdOrNull(user.requiredId) } returns user
                 every { mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc(user, date) } returns emptyList()
 
