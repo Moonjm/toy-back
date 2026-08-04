@@ -18,6 +18,8 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.comparables.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeSameInstanceAs
+import io.kotest.matchers.types.shouldNotBeSameInstanceAs
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.justRun
@@ -197,6 +199,116 @@ class MealTypeChangeTest :
                     repository.findFirstByUserAndDateAndMealTypeOrderByCreatedAtAscIdAsc(any(), any(), any())
                 }
                 verify(exactly = 0) { repository.delete(any()) }
+            }
+        }
+
+        // 대상 끼니는 이미 사진 2장을 갖고 있다. `Meal.photos`가 @OrderBy("sortOrder asc")라
+        // 0부터 다시 매기면 0,1,0,1이 되어 앱의 사진 순서가 뒤섞인다.
+        Given("그날 대상 종류의 끼니가 이미 있으면") {
+            val target = savedMeal(80L, MealType.DINNER)
+            repeat(2) { index ->
+                target.addPhoto(MealPhoto(meal = target, fileId = 20L + index, sortOrder = index).withId(800L + index))
+            }
+            val source = savedMeal(81L, MealType.SNACK)
+            source.replaceItems(
+                listOf(
+                    MealItem(
+                        meal = source,
+                        foodName = "제육볶음",
+                        foodCode = "D1",
+                        quantityG = 168.75,
+                        kcal = 700.0,
+                        carbsG = 168.75,
+                        proteinG = 18.0,
+                        fatG = 17.0,
+                        sugarG = 5.0,
+                        sodiumMg = 620.0,
+                        fiberG = 3.0,
+                        source = NutritionSource.DB_MATCHED,
+                    ).withId(810L),
+                ),
+            )
+            repeat(2) { index ->
+                source.addPhoto(MealPhoto(meal = source, fileId = 31L + index, sortOrder = index).withId(811L + index))
+            }
+            target.contentUpdatedAt = past
+
+            every { repository.findByIdOrNull(81L) } returns source
+            every {
+                repository.findFirstByUserAndDateAndMealTypeOrderByCreatedAtAscIdAsc(user, date, MealType.DINNER)
+            } returns target
+            justRun { repository.delete(source) }
+
+            val id = service.changeType("testuser", 81L, MealTypeRequest(MealType.DINNER))
+
+            // 앱은 이 id로 폴링 대상을 바꾼다. 이 갈래의 핵심 계약이다.
+            Then("살아남은 대상의 id를 돌려준다 — 요청한 id가 아니다") {
+                id shouldBe 80L
+            }
+
+            Then("항목이 대상으로 간다 — 기존 항목 위에 얹힌다") {
+                target.items.size shouldBe 2
+                target.items[0].foodName shouldBe "밥"
+                target.items[1].foodName shouldBe "제육볶음"
+            }
+
+            Then("합계가 두 벌의 합이다") {
+                target.totalKcal shouldBe 1000.0
+                target.carbsG shouldBe 238.75
+                target.proteinG shouldBe 23.0
+                target.fatG shouldBe 18.0
+            }
+
+            // 이 도메인에서 조용히 0이 됐던 전력이 있는 세 필드다.
+            Then("주의 영양소도 합으로 맞는다") {
+                target.sugarG shouldBe 7.0
+                target.sodiumMg shouldBe 920.0
+                target.fiberG shouldBe 4.0
+            }
+
+            // source가 떨어지면 하루 응답의 estimatedItemCount가, foodCode가 떨어지면
+            // 음식 빈도 집계가 조용히 샌다.
+            Then("옮긴 항목의 필드가 보존된다") {
+                target.items[1].foodCode shouldBe "D1"
+                target.items[1].source shouldBe NutritionSource.DB_MATCHED
+                target.items[1].quantityG shouldBe 168.75
+            }
+
+            Then("새 인스턴스로 베껴 붙인다 — 원본 컬렉션은 그대로다") {
+                source.items.size shouldBe 1
+                target.items[1] shouldNotBeSameInstanceAs source.items[0]
+                target.items[1].meal shouldBeSameInstanceAs target
+            }
+
+            Then("사진도 가고 sortOrder가 대상의 최대값 다음부터 이어진다") {
+                target.photos.map { it.sortOrder } shouldBe listOf(0, 1, 2, 3)
+                target.photos.map { it.fileId } shouldBe listOf(20L, 21L, 31L, 32L)
+            }
+
+            // detach 하면 파일이 TEMP로 돌아가 04:00 배치에 수거되고, attachFile이 재연결을
+            // 거부해 되돌릴 수도 없다. 화면에는 그날 멀쩡히 보이다가 며칠 뒤 깨진다.
+            Then("파일을 detach 하지 않는다 — 소유가 옮겨 간 것이지 안 쓰이게 된 게 아니다") {
+                verify(exactly = 0) { fileService.detachFiles(any()) }
+            }
+
+            Then("원본을 지운다") {
+                verify(exactly = 1) { repository.delete(source) }
+            }
+
+            Then("점수를 합쳐진 매크로로 다시 계산한다 — 59에서 바뀐다") {
+                target.score shouldBe 82
+            }
+
+            Then("대상의 내용 판이 올라가고 피드백을 다시 만든다") {
+                target.contentUpdatedAt shouldBeGreaterThan past
+                target.status shouldBe AnalysisStatus.PENDING
+                target.feedback shouldBe null
+                verify { feedbackGenerator.generateForMeal(80L) }
+            }
+
+            // ②③ 모두 contentUpdatedAt이 올라 무효화 조건에 그대로 걸린다.
+            Then("하루 피드백 캐시는 직접 지우지 않는다") {
+                verify(exactly = 0) { dailyFeedbackRepository.deleteByUserAndDate(any(), any()) }
             }
         }
 

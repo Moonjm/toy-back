@@ -202,10 +202,47 @@ class MealService(
         val meal = requireOwned(user, id)
         if (meal.mealType == request.mealType) return id
 
+        val target = mergeTargetOf(user, meal.date, request.mealType)
+        if (target != null) return mergeInto(target, meal)
+
         meal.changeMealType(request.mealType)
         meal.markFeedbackPending()
         runAfterCommit { feedbackGenerator.generateForMeal(id) }
         return id
+    }
+
+    /**
+     * 원본을 대상에 합치고 원본을 지운다. **옮기는 게 아니라 베껴 붙이고 통째로 지우는 것이다**
+     * (`MealItem.copyTo` 주석). 어차피 지울 것이라 「옮기기」로 볼 이유가 없다.
+     *
+     * **`detachFiles`를 부르지 않는다.** `delete`를 재사용하면 방금 대상에 붙인 사진의 `fileId`가
+     * 함께 `TEMP`로 돌아가 04:00 정리 배치가 S3 객체를 수거한다. 화면에는 그날 멀쩡히 보이다가
+     * 며칠 뒤 깨지고, `FileService.attachFile`이 detach된 파일의 재연결을 거부해 되돌릴 수도 없다.
+     * 파일의 소유가 원본에서 대상으로 넘어간 것이지 안 쓰이게 된 것이 아니다.
+     *
+     * `meal_photo`에 `file_id` 유니크 제약이 없어(인덱스는 `meal_id`뿐) 같은 `fileId`를 가리키는
+     * 행이 한 트랜잭션 안에 잠깐 둘이어도 문제없다.
+     *
+     * 하루 피드백 캐시는 직접 지우지 않는다 — 대상의 항목이 늘어 `contentUpdatedAt`이 오르므로
+     * 무효화 조건에 그대로 걸린다. `delete`가 그것을 명시적으로 부르는 것은 **남는 끼니가
+     * 아무것도 안 바뀌는** 경우라서다.
+     */
+    private fun mergeInto(
+        target: Meal,
+        source: Meal,
+    ): Long {
+        // 합계·내용 판은 여기서 함께 오른다(`Meal.recalculateTotals`).
+        target.addItems(source.items.map { it.copyTo(target) })
+        // 0부터 다시 매기면 @OrderBy("sortOrder asc") 때문에 0,1,0,1이 되어 앱의 사진 순서가 뒤섞인다.
+        val startOrder = (target.photos.maxOfOrNull { it.sortOrder } ?: -1) + 1
+        source.photos.forEachIndexed { index, photo ->
+            target.addPhoto(MealPhoto(meal = target, fileId = photo.fileId, sortOrder = startOrder + index))
+        }
+        target.applyScore(DietScoreCalculator.scoreMeal(target.carbsG, target.proteinG, target.fatG).score)
+        target.markFeedbackPending()
+        repository.delete(source)
+        runAfterCommit { feedbackGenerator.generateForMeal(target.requiredId) }
+        return target.requiredId
     }
 
     /**

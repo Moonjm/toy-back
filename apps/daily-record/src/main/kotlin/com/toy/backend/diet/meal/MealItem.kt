@@ -53,3 +53,29 @@ class MealItem(
     @Column(nullable = false, columnDefinition = "varchar(20)")
     var source: NutritionSource,
 ) : BaseEntity()
+
+/**
+ * 다른 끼니로 **베껴 붙일** 사본. 옮기지 않는 이유는 `Meal.addItems` 주석과 같다 — `items`가
+ * `orphanRemoval = true`라 원본 컬렉션에서 빼는 순간 그 행이 삭제 대상이 되고, 같은 인스턴스를
+ * 다른 끼니에 붙이면 Hibernate가 「삭제된 엔티티를 다시 저장」으로 보고 던진다.
+ *
+ * **`meal`만 바꾸고 나머지는 전부 그대로 옮긴다.** 「이름·수량·탄단지」만 챙기면 조용히 새는
+ * 것이 있다 — `source`가 떨어지면 하루 응답의 `estimatedItemCount`가 「추정이 섞였다」 표시를
+ * 잃고, `foodCode`가 떨어지면 음식 빈도 집계에서 빠지며, 당·나트륨·식이섬유는 이 도메인에서
+ * 조용히 0이 됐던 전력이 있는 자리다.
+ */
+fun MealItem.copyTo(meal: Meal): MealItem =
+    MealItem(
+        meal = meal,
+        foodName = foodName,
+        foodCode = foodCode,
+        quantityG = quantityG,
+        kcal = kcal,
+        carbsG = carbsG,
+        proteinG = proteinG,
+        fatG = fatG,
+        sugarG = sugarG,
+        sodiumMg = sodiumMg,
+        fiberG = fiberG,
+        source = source,
+    )
