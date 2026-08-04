@@ -100,7 +100,8 @@ class Meal(
     @Column(columnDefinition = "text")
     var feedback: String? = null,
     /**
-     * **하루 피드백 캐시의 무효화 기준.** 항목·합계가 바뀔 때만 오른다.
+     * **하루 피드백 캐시의 무효화 기준.** 하루 프롬프트가 읽는 값이 바뀔 때만 오른다 —
+     * 항목·합계(`recalculateTotals`)와 끼니 종류(`changeMealType`)다.
      *
      * `updatedAt`(엔티티 전체 audit)을 쓰면 안 된다 — `markFeedback`이 `feedback`·`status`만
      * 바꿔도 그 값이 올라서, **내용이 그대로인데 하루 캐시가 낡은 것으로 판정된다.** 하루
@@ -126,6 +127,19 @@ class Meal(
     @OneToMany(mappedBy = "meal", cascade = [CascadeType.ALL], orphanRemoval = true)
     @OrderBy("id asc")
     var items: MutableList<MealItem> = mutableListOf()
+
+    /**
+     * 끼니 종류를 바꾼다. **실제로 바뀔 때만 [contentUpdatedAt]을 올린다.**
+     *
+     * 종류는 항목이 아닌데도 하루 프롬프트가 읽는다(`DietFeedbackPrompts.day`) — 안 올리면
+     * 하루 피드백이 「간식: 치킨」이라고 쓴 채로 남는다. 같은 값이면 아무것도 하지 않는 것도
+     * 같은 이유의 뒷면이다. 읽는 값이 안 바뀌었는데 판을 올리면 유료 호출만 한 번 더 나간다.
+     */
+    fun changeMealType(newType: MealType) {
+        if (mealType == newType) return
+        mealType = newType
+        contentUpdatedAt = LocalDateTime.now()
+    }
 
     /** 항목 **수정**은 전체 교체다 — 화면에서 목록째 넘어오므로 남은 것을 추려낼 필요가 없다. */
     fun replaceItems(newItems: List<MealItem>) {
@@ -159,8 +173,9 @@ class Meal(
         sugarG = items.sumOf { it.sugarG }
         sodiumMg = items.sumOf { it.sodiumMg }
         fiberG = items.sumOf { it.fiberG }
-        // 하루 피드백 캐시가 보는 값이다. **여기 한 곳에서만 올린다** — 항목이 바뀌는 경로가
-        // 교체·얹기 둘뿐이고 둘 다 이 메서드를 지나므로, 한쪽만 갱신되는 일이 없다.
+        // 하루 피드백 캐시가 보는 값이다. **항목이 바뀌는 경로는 교체·얹기 둘뿐이고 둘 다 이
+        // 메서드를 지나므로** 한쪽만 갱신되는 일이 없다. 항목 밖에서 올리는 자리는 하나뿐이다 —
+        // `changeMealType`. 늘리기 전에 「하루 프롬프트가 그 값을 읽는가」를 먼저 본다.
         contentUpdatedAt = LocalDateTime.now()
     }
 
