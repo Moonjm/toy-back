@@ -285,6 +285,13 @@ class MealTypeChangeTest :
                 target.photos.map { it.fileId } shouldBe listOf(20L, 21L, 31L, 32L)
             }
 
+            Then("사진도 새 인스턴스로 베껴 붙인다 — 원본 컬렉션은 그대로다") {
+                source.photos.size shouldBe 2
+                target.photos[2] shouldNotBeSameInstanceAs source.photos[0]
+                target.photos[3] shouldNotBeSameInstanceAs source.photos[1]
+                target.photos[2].meal shouldBeSameInstanceAs target
+            }
+
             // detach 하면 파일이 TEMP로 돌아가 04:00 배치에 수거되고, attachFile이 재연결을
             // 거부해 되돌릴 수도 없다. 화면에는 그날 멀쩡히 보이다가 며칠 뒤 깨진다.
             Then("파일을 detach 하지 않는다 — 소유가 옮겨 간 것이지 안 쓰이게 된 게 아니다") {
@@ -309,6 +316,27 @@ class MealTypeChangeTest :
             // ②③ 모두 contentUpdatedAt이 올라 무효화 조건에 그대로 걸린다.
             Then("하루 피드백 캐시는 직접 지우지 않는다") {
                 verify(exactly = 0) { dailyFeedbackRepository.deleteByUserAndDate(any(), any()) }
+            }
+        }
+
+        // auto-flush 함정(KDoc)의 재현이다 — 조회 순서를 실수로 바꾸면 대상 조회가 방금 바꾼
+        // 자기 자신을 돌려줄 수 있다. 지금 코드에서는 도달하지 않지만(①이 같은 종류를 먼저
+        // 걸러내 대상은 항상 다른 행이다), `changeType`의 `takeIf` 가드가 없으면 자기 항목을
+        // 자기에게 복사해 두 배로 만들고 방금 고친 자신을 지운다 — 이 테스트는 그 가드를 고정한다.
+        Given("합칠 대상 조회가 자기 자신을 돌려주면") {
+            val meal = savedMeal(90L, MealType.SNACK)
+            every { repository.findByIdOrNull(90L) } returns meal
+            every {
+                repository.findFirstByUserAndDateAndMealTypeOrderByCreatedAtAscIdAsc(user, date, MealType.DINNER)
+            } returns meal
+
+            val id = service.changeType("testuser", 90L, MealTypeRequest(MealType.DINNER))
+
+            Then("자기 자신과 합치지 않는다 — 종류만 바뀌고 항목은 그대로다") {
+                id shouldBe 90L
+                meal.mealType shouldBe MealType.DINNER
+                meal.items.size shouldBe 1
+                verify(exactly = 0) { repository.delete(any()) }
             }
         }
 

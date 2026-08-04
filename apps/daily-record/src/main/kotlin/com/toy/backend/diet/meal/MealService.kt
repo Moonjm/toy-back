@@ -187,8 +187,9 @@ class MealService(
      * 병합 대상 조회가 **방금 바꾼 자기 자신**을 돌려줄 수 있다 — 자기 항목을 자기에게 붙이고
      * 자기를 지우게 된다.
      *
-     * 점수는 다시 계산하지 않는다 — `DietScoreCalculator`는 종류를 쓰지 않는다. 피드백은 다시
-     * 만든다 — `DietFeedbackPrompts.meal`이 `[이번 끼니] ${meal.mealType}`을 읽는다.
+     * ②는 점수를 다시 계산하지 않는다 — `DietScoreCalculator`는 종류를 쓰지 않는다. **③은
+     * 다시 계산한다**(`mergeInto`) — 원본의 항목이 얹혀 매크로 합계가 바뀌기 때문이다. 피드백은
+     * 두 갈래 다 다시 만든다 — `DietFeedbackPrompts.meal`이 `[이번 끼니] ${meal.mealType}`을 읽는다.
      *
      * 돌려주는 것은 **살아남은 끼니의 id**다. 합쳤으면 대상, 아니면 요청한 id 그대로다.
      */
@@ -202,7 +203,12 @@ class MealService(
         val meal = requireOwned(user, id)
         if (meal.mealType == request.mealType) return id
 
-        val target = mergeTargetOf(user, meal.date, request.mealType)
+        // `takeIf`는 지금 도달할 수 없다 — 위에서 같은 종류를 이미 걸러내 대상은 항상 다른
+        // 행이다. 주석으로만 지키던 「자기 자신을 합치지 않는다」는 불변식을 코드로도 강제해
+        // 둔다 — 나중에 이 순서를 리팩터링하다 auto-flush로 자기 자신이 조회돼도(KDoc 참고)
+        // 자기 항목을 자기에게 붙이고 자기를 지우는 사고로 번지지 않는다. 경합 방어가 아니다
+        // — 이 앱은 단일 사용자가 순차로만 조작한다.
+        val target = mergeTargetOf(user, meal.date, request.mealType)?.takeIf { it.requiredId != meal.requiredId }
         if (target != null) return mergeInto(target, meal)
 
         meal.changeMealType(request.mealType)
