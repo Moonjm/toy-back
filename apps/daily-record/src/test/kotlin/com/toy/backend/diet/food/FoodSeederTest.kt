@@ -32,7 +32,7 @@ class FoodSeederTest :
 
         Given("이미 적재된 데이터셋이 있는 상태로 기동하면") {
             val seeded = slot<Collection<Food>>()
-            every { repository.existsByDatasetAndCodeNotStartingWith(any(), any()) } returns true
+            every { repository.existsByDatasetAndCodeNotLike(any(), any()) } returns true
             every {
                 jdbcTemplate.batchUpdate(any<String>(), capture(seeded), any(), any<ParameterizedPreparedStatementSetter<Food>>())
             } returns arrayOf(intArrayOf())
@@ -41,10 +41,10 @@ class FoodSeederTest :
 
             Then("데이터셋마다 따로 확인한다 — 전체 행 수로 보면 음식만 적재된 상태에서 가공식품이 영영 안 들어간다") {
                 verify(exactly = 1) {
-                    repository.existsByDatasetAndCodeNotStartingWith(FoodDataset.DISH, FoodSeeder.MANUAL_CODE_PREFIX)
+                    repository.existsByDatasetAndCodeNotLike(FoodDataset.DISH, "${FoodSeeder.MANUAL_CODE_PREFIX}%")
                 }
                 verify(exactly = 1) {
-                    repository.existsByDatasetAndCodeNotStartingWith(FoodDataset.PROCESSED, FoodSeeder.MANUAL_CODE_PREFIX)
+                    repository.existsByDatasetAndCodeNotLike(FoodDataset.PROCESSED, "${FoodSeeder.MANUAL_CODE_PREFIX}%")
                 }
             }
 
@@ -71,10 +71,10 @@ class FoodSeederTest :
         // 그 뒤 CSV를 채우고 다시 뜨면 음식DB가 적재돼야 한다.
         Given("수동 등록분만 DISH에 들어 있는 상태로 기동하면") {
             every {
-                repository.existsByDatasetAndCodeNotStartingWith(FoodDataset.DISH, FoodSeeder.MANUAL_CODE_PREFIX)
+                repository.existsByDatasetAndCodeNotLike(FoodDataset.DISH, "${FoodSeeder.MANUAL_CODE_PREFIX}%")
             } returns false
             every {
-                repository.existsByDatasetAndCodeNotStartingWith(neq(FoodDataset.DISH), FoodSeeder.MANUAL_CODE_PREFIX)
+                repository.existsByDatasetAndCodeNotLike(neq(FoodDataset.DISH), "${FoodSeeder.MANUAL_CODE_PREFIX}%")
             } returns true
             every {
                 jdbcTemplate.batchUpdate(any<String>(), any<Collection<Food>>(), any(), any<ParameterizedPreparedStatementSetter<Food>>())
@@ -84,7 +84,7 @@ class FoodSeederTest :
 
             Then("적재 여부를 수동 행을 뺀 기준으로 묻는다 — 수동 57행이 음식DB 18,000행을 영영 막으면 안 된다") {
                 verify(exactly = 1) {
-                    repository.existsByDatasetAndCodeNotStartingWith(FoodDataset.DISH, FoodSeeder.MANUAL_CODE_PREFIX)
+                    repository.existsByDatasetAndCodeNotLike(FoodDataset.DISH, "${FoodSeeder.MANUAL_CODE_PREFIX}%")
                 }
             }
         }

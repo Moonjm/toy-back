@@ -34,7 +34,7 @@ class FoodSeeder(
             // 중간에 죽어 일부만 들어간 데이터셋은 「있음」으로 본다 — 이어붙이려면 지우고 다시 돌린다.
             // **수동 등록분은 세지 않는다**(`MANUAL_CODE_PREFIX`) — 아래에서 `DISH`로 넣는 그 행들이
             // 「음식DB가 이미 적재됐다」로 읽히면, CSV 없이 한 번 뜬 것만으로 음식DB가 영영 막힌다.
-            if (repository.existsByDatasetAndCodeNotStartingWith(dataset, MANUAL_CODE_PREFIX)) {
+            if (repository.existsByDatasetAndCodeNotLike(dataset, "$MANUAL_CODE_PREFIX%")) {
                 log.info { "이미 적재돼 있어 건너뛴다: dataset=$dataset" }
             } else {
                 seed(path, dataset)

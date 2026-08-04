@@ -18,10 +18,15 @@ interface FoodRepository : JpaRepository<Food, Long> {
      *
      * `dataset`이 `(dataset, normalized_name)` 인덱스의 선두 컬럼이고 존재 확인은 한 행만
      * 필요하므로 30만 행이어도 비용이 일정하다.
+     *
+     * **접두 대신 LIKE 패턴을 받는다.** `NotStartingWith`는 파생 쿼리 키워드가 아니라 파서가
+     * `code` 다음의 `Not`을 속성으로 읽고 「No property 'not' found for type 'String'」로 죽는다 —
+     * 컴파일에 안 걸리고 **기동할 때 앱이 통째로 안 뜬다.** 실제로 그렇게 터졌다.
+     * `NotLike`는 지원 키워드다. 호출부가 `%`를 붙여 넘긴다.
      */
-    fun existsByDatasetAndCodeNotStartingWith(
+    fun existsByDatasetAndCodeNotLike(
         dataset: FoodDataset,
-        codePrefix: String,
+        codePattern: String,
     ): Boolean
 
     /**
