@@ -32,7 +32,9 @@ class FoodSeeder(
     override fun run(args: ApplicationArguments) {
         DATASETS.forEach { (path, dataset) ->
             // 중간에 죽어 일부만 들어간 데이터셋은 「있음」으로 본다 — 이어붙이려면 지우고 다시 돌린다.
-            if (repository.existsByDataset(dataset)) {
+            // **수동 등록분은 세지 않는다**(`MANUAL_CODE_PREFIX`) — 아래에서 `DISH`로 넣는 그 행들이
+            // 「음식DB가 이미 적재됐다」로 읽히면, CSV 없이 한 번 뜬 것만으로 음식DB가 영영 막힌다.
+            if (repository.existsByDatasetAndCodeNotStartingWith(dataset, MANUAL_CODE_PREFIX)) {
                 log.info { "이미 적재돼 있어 건너뛴다: dataset=$dataset" }
             } else {
                 seed(path, dataset)
@@ -112,6 +114,16 @@ class FoodSeeder(
             listOf(
                 "food/manual-food-nutrition.csv" to FoodDataset.DISH,
             )
+
+        /**
+         * 수동 등록분의 코드 접두. **적재 여부 검사가 이 규칙으로 수동 행을 걸러낸다**
+         * (`FoodRepository.existsByDatasetAndCodeNotStartingWith`). 수동분은 `DISH`로 들어가는데
+         * 검사 없이 매 기동 적재되므로, 걸러내지 않으면 그 행들이 음식DB의 적재 완료 신호로 읽힌다.
+         *
+         * CSV의 모든 행이 이 접두를 지키는지는 `FoodSeederTest`가 실제 파일에 대고 확인한다 —
+         * 규칙이 깨지면 검사가 조용히 다시 오염된다.
+         */
+        const val MANUAL_CODE_PREFIX = "MANUAL-"
         private const val BATCH_SIZE = 1000
 
         /**
