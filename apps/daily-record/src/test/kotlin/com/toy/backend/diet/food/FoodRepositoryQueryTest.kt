@@ -1,10 +1,13 @@
 package com.toy.backend.diet.food
 
+import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.parser.PartTree
 
 /**
  * `@Query` 문자열을 직접 본다.
@@ -62,6 +65,28 @@ class FoodRepositoryQueryTest :
                         String::class.java,
                         org.springframework.data.domain.Pageable::class.java,
                     ).returnType shouldBe List::class.java
+            }
+        }
+
+        // **파생 쿼리는 이름이 곧 쿼리라 오타가 컴파일에 안 걸린다.** 파싱은 기동할 때 일어나고,
+        // 실패하면 리포지토리 빈이 안 만들어져 **앱이 통째로 안 뜬다.** 목으로 대체하는 단위
+        // 테스트는 이름을 읽지도 않으므로 아무것도 못 잡는다.
+        //
+        // 실제로 그렇게 터진 적이 있다 — `existsByDatasetAndCodeNotStartingWith`를 넣었더니
+        // 파서가 `code` 다음의 `Not`을 속성으로 읽고 「No property 'not' found for type 'String'」로
+        // 죽었다(`NotStartingWith`는 지원 키워드가 아니다). 그래서 파서를 여기서 직접 돌린다.
+        Given("파생 쿼리 이름들은") {
+            val derived =
+                FoodRepository::class.java.declaredMethods
+                    .filterNot { it.isAnnotationPresent(Query::class.java) }
+
+            Then("하나도 빠짐없이 파서를 통과한다 — 못 통과하면 기동 시점에 앱이 안 뜬다") {
+                derived shouldNotBe emptyList<java.lang.reflect.Method>()
+                derived.forEach {
+                    withClue("${it.name} 가 파싱되지 않는다") {
+                        shouldNotThrowAny { PartTree(it.name, Food::class.java) }
+                    }
+                }
             }
         }
     })
