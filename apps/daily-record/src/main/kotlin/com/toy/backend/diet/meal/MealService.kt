@@ -63,7 +63,7 @@ class MealService(
         // 분석은 끼니를 만들기 전에 검증한다 — 확정할 수 없는 분석이면 아무것도 만들지 않고 끝낸다.
         val analysis = request.analysisId?.let { confirmableAnalysis(user, it) }
 
-        val existing = mergeTargetOf(user, request)
+        val existing = mergeTargetOf(user, request.date, request.mealType)
         val meal =
             existing
                 ?: Meal(
@@ -104,10 +104,11 @@ class MealService(
     /** 합칠 기존 끼니. 간식은 본래 여러 번이라 묶지 않는다(`MealType.mergesWithinDay`). */
     private fun mergeTargetOf(
         user: User,
-        request: MealConfirmRequest,
+        date: LocalDate,
+        mealType: MealType,
     ): Meal? =
-        if (request.mealType.mergesWithinDay) {
-            repository.findFirstByUserAndDateAndMealTypeOrderByCreatedAtAscIdAsc(user, request.date, request.mealType)
+        if (mealType.mergesWithinDay) {
+            repository.findFirstByUserAndDateAndMealTypeOrderByCreatedAtAscIdAsc(user, date, mealType)
         } else {
             null
         }
@@ -173,6 +174,38 @@ class MealService(
         applyItems(meal, request.items)
         meal.markFeedbackPending()
         runAfterCommit { feedbackGenerator.generateForMeal(id) }
+    }
+
+    /**
+     * 저장된 끼니의 **종류만** 고친다. 저녁을 간식으로 저장하면 되돌릴 길이 없던 것을 연다 —
+     * 앱에 사진 바이트가 없어 「지우고 다시 만들기」로는 찍어 둔 사진이 사라진다.
+     *
+     * 세 갈래다. ① 같은 종류면 아무것도 하지 않는다 — 앱이 실수로 같은 값을 보내도 유료 호출이
+     * 나가면 안 된다. ② 대상 종류의 끼니가 그날 없으면 종류만 바꾼다. ③ 있으면 그쪽으로 합친다.
+     *
+     * **대상을 찾기 전에 종류를 바꾸면 안 된다.** Hibernate가 쿼리 전에 auto-flush 하므로
+     * 병합 대상 조회가 **방금 바꾼 자기 자신**을 돌려줄 수 있다 — 자기 항목을 자기에게 붙이고
+     * 자기를 지우게 된다.
+     *
+     * 점수는 다시 계산하지 않는다 — `DietScoreCalculator`는 종류를 쓰지 않는다. 피드백은 다시
+     * 만든다 — `DietFeedbackPrompts.meal`이 `[이번 끼니] ${meal.mealType}`을 읽는다.
+     *
+     * 돌려주는 것은 **살아남은 끼니의 id**다. 합쳤으면 대상, 아니면 요청한 id 그대로다.
+     */
+    @Transactional
+    fun changeType(
+        username: String,
+        id: Long,
+        request: MealTypeRequest,
+    ): Long {
+        val user = findUser(username)
+        val meal = requireOwned(user, id)
+        if (meal.mealType == request.mealType) return id
+
+        meal.changeMealType(request.mealType)
+        meal.markFeedbackPending()
+        runAfterCommit { feedbackGenerator.generateForMeal(id) }
+        return id
     }
 
     /**

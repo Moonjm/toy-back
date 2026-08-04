@@ -31,6 +31,17 @@ data class MealItemsRequest(
     val items: List<MealItemRequest>,
 )
 
+/**
+ * 끼니 종류만 고친다. **날짜 변경은 범위 밖이다** — 하루 집계·점수·피드백이 이틀에 걸쳐 다시
+ * 계산돼야 해서 훨씬 크다.
+ *
+ * `mealType`이 널이 될 수 없는 타입이라 누락·모르는 값은 Jackson이 던지고
+ * `CustomExceptionHandler`가 400으로 옮긴다 — 따로 검증 애너테이션을 붙이지 않는다.
+ */
+data class MealTypeRequest(
+    val mealType: MealType,
+)
+
 /** 서버는 인식 결과와 대조하지 않고 그대로 신뢰한다 — 확인 단계의 존재 이유가 사용자 판단을 최종으로 삼는 것이다. */
 data class MealItemRequest(
     @field:NotBlank @field:Size(max = 200)
