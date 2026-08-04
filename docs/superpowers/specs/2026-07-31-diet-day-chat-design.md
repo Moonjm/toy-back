@@ -1,6 +1,6 @@
 # 하루 평가에 대해 되묻는 채팅 (백엔드) 설계
 
-작성일: 2026-07-31 (2026-08-02 화면 형태 반영)
+작성일: 2026-07-31 (2026-08-02 화면 형태 반영, 2026-08-04 직전 7일 컨텍스트 반영)
 짝 저장소: `woori-haru` (iOS) — **채팅 화면이 필요하다.** 아래 「iOS가 할 일」 참조.
 
 ## 배경
@@ -9,6 +9,10 @@
 「그럼 뭘 줄여야 하지?」·「어제보단 나은 거야?」는 물어볼 데가 없다.
 
 평가에 대해 되물을 수 있게 한다.
+
+**「어제보단 나은 거야?」에 답하려면 하루치로는 부족하다.** 그래서 대화 기준 날짜의 상세와 함께
+**직전 7일 요약을 컨텍스트에 싣는다**(아래 「3. 직전 7일 블록」). 하루만 싣고 다른 날짜 질문을 전부
+거절하면, 이 기능을 만든 동기 중 하나를 스스로 막는 셈이 된다.
 
 **끼니에는 붙이지 않는다.** 하루 데이터에 이미 전체 끼니 목록·목표·주의 영양소가 다 들어 있어
 「점심에 뭐 먹었지?」까지 커버되고, 만드는 자리도 하나로 끝난다. 끼니마다 붙이면 엔드포인트·
@@ -40,12 +44,15 @@ LLM에서 오는 것은 총평 한 덩어리(`feedback`)와 사용자가 물었�
 
 | | 범위 |
 | --- | --- |
-| **한다** | `(user, date)` 하나당 대화 하나 · 저장 + TTL 정리 · 동기 요청/응답 · 턴 상한 |
-| **안 한다** | 끼니 단위 채팅 · 요약 말풍선용 API(앱이 `DayResponse`로 조립) · 스트리밍(SSE) · 대화 삭제 엔드포인트 · 대화 검색 · 여러 날 비교 |
+| **한다** | `(user, date)` 하나당 대화 하나 · 저장 + TTL 정리 · 동기 요청/응답 · 턴 상한 · **직전 7일 요약을 컨텍스트에 포함** |
+| **안 한다** | 끼니 단위 채팅 · 요약 말풍선용 API(앱이 `DayResponse`로 조립) · 스트리밍(SSE) · 대화 삭제 엔드포인트 · 대화 검색 · **직전 7일보다 먼 날짜** · 기간 평균·자주 먹은 음식 같은 통계(`DietStatsService`의 몫) |
+
+**대화는 어느 날짜로도 열린다.** 경로에 날짜가 들어가고 스레드 단위가 `(user, date)`라, 지난 날
+화면에서 버튼을 눌러도 그날 대화가 열린다. 오늘 전용이 아니다.
 
 ---
 
-## ⚠️ 먼저 읽을 함정 넷
+## ⚠️ 먼저 읽을 함정 다섯
 
 ### 함정 1 — LLM 호출을 트랜잭션 안에서 하면 안 된다
 
@@ -96,7 +103,7 @@ LLM에서 오는 것은 총평 한 덩어리(`feedback`)와 사용자가 물었�
 `DietFeedbackPrompts.day()`는 끼니를 **이름과 열량만** 담는다:
 
 ```
-- LUNCH: 제육볶음, 두부, 잡곡밥 (555kcal)
+- 점심: 제육볶음, 두부, 잡곡밥 (555kcal)
 ```
 
 끼니별 점수도, 매크로도, 균형 근거도 없다. 그런데 채팅 화면이 「점심 47점」을 보여주므로
@@ -107,15 +114,20 @@ LLM에서 오는 것은 총평 한 덩어리(`feedback`)와 사용자가 물었�
 그 질문에 정확히 답할 재료가 된다. 새로 쓰지 않고 붙이기만 한다.
 
 ```kotlin
-fun context(meals: List<Meal>, totals: NutritionTotals, targets: NutritionTargets,
-            dayScore: Int, activeEnergyKcal: Int?): String =
+fun context(date: LocalDate, meals: List<Meal>, totals: NutritionTotals, targets: NutritionTargets,
+            dayScore: Int, activeEnergyKcal: Int?, recentDays: List<RecentDaySummary>): String =
     buildString {
-        append(DietFeedbackPrompts.day(meals, totals, targets, dayScore, activeEnergyKcal))
+        append(DietFeedbackPrompts.day(date, meals, totals, targets, dayScore, activeEnergyKcal))
         appendLine()
         appendLine("[끼니별 상세]")
         meals.forEach { append(DietFeedbackPrompts.meal(it, DietScoreCalculator.scoreMeal(it.carbsG, it.proteinG, it.fatG).basis)) }
+        appendLine()
+        append(recentDaysBlock(recentDays))   // 아래 「3. 직전 7일 블록」
     }
 ```
+
+**기준일이 먼저, 직전 7일이 뒤다.** 대화의 주제는 기준일이고 7일은 배경이며, 시스템 프롬프트가
+「앞서 드린」으로 가리키는 순서와도 맞는다.
 
 `basis`는 저장하지 않고 `MealDtos.toResponse`와 같은 식으로 그때 다시 계산한다 — 감점 기울기를
 바꿨을 때 응답과 프롬프트가 어긋나지 않는다.
@@ -140,6 +152,28 @@ fun context(meals: List<Meal>, totals: NutritionTotals, targets: NutritionTarget
 `MealService.retryFeedback`, `DailyDietService.resolveFeedback`). 매번 짝 중 한쪽을 빠뜨렸다가
 리뷰에서 잡혔다. **커밋 전에 `grep -rln isAvailable --include='*.kt'` 목록에 새 파일이 있는지
 확인한다**(`AGENTS.md`).
+
+### 함정 5 — **프롬프트에 날짜가 없으면 모델은 늘 「오늘」이라고 말한다**
+
+`DietFeedbackPrompts.day()`의 헤더가 `"[오늘 먹은 끼니]"` **고정 문자열**이다. 대화는 어느
+날짜로도 열리는데 컨텍스트에는 그 날짜가 어디에도 없다. 8월 1일 대화에서 「오늘 저녁은…」이
+나오고, 더 나쁘게는 **자기가 보고 있는 게 바로 8월 1일인데도** 「오늘 기록만 볼 수 있습니다」로
+거절할 수 있다. 판단할 근거가 없기 때문이다.
+
+이건 채팅만의 문제가 아니다. **하루 피드백도 지난 날짜를 조회하면 그때 생성되므로 지금도
+「오늘」이 틀린 경우가 있다.**
+
+**→ `day()`가 `date`를 받아 헤더에 박는다.** `[2026-08-01 (금) 먹은 끼니]`. 하루 피드백과 채팅이
+한 번에 정확해진다. 호출부는 `DayFeedbackStore.loadPrompt` 하나뿐이고 이미 `date`를 갖고 있다.
+
+**끼니 종류도 함께 한글로 렌더링한다.** 사용자가 한국어로 묻고 모델이 한국어로 답하는데
+컨텍스트만 `LUNCH`면 모델이 점심↔LUNCH를 한 홉 건너뛴 뒤 근거를 찾는다. 모델은 근거를 인용할
+때 컨텍스트 표기를 그대로 쓰는 경향이 있어 「LUNCH에 드신 짜장면이」 같은 문장도 나온다. 지금
+프롬프트에서 영어는 이 한 자리뿐이라 섞인 언어가 그 자체로 불리하다. `day()`·`meal()` 둘 다
+바꾼다.
+
+**API는 건드리지 않는다.** `MealResponse.mealType`은 `"LUNCH"` 그대로다 — iOS 계약이라 바꾸면
+앱이 깨진다. 바뀌는 것은 **프롬프트 렌더링뿐**이다.
 
 ---
 
@@ -207,7 +241,63 @@ fun generateText(systemPrompt: String, userPrompt: String): String? =
 `ChatRole` → API 값 변환(`name.lowercase()`)은 **채팅 쪽에서 한다.** `diet.llm`이 `diet.chat`을
 알면 의존이 뒤집힌다.
 
-### 3. `DietChatPrompts`
+### 3. 직전 7일 블록
+
+기준 날짜 **직전 7일**을 하루 한 줄로 싣고, 그 아래 끼니별 **음식 이름까지만** 붙인다.
+
+```
+[직전 7일]
+- 07-25 (금) 72점 1,980kcal 나트륨 초과
+    아침: 토스트, 계란
+    점심: 김치찌개, 밥
+- 07-26 (토) 기록 없음
+- 07-27 (일) 69점 2,250kcal
+    점심: 비빔밥
+    저녁: 된장찌개, 밥
+```
+
+**왜 7일인가** — 「이번 주」 감각과 맞고 주말 과식 같은 요일 효과가 보인다. 하루 한 줄이라
+토큰 부담이 작다. 3일은 「어제보단」에만 답하고 주 단위 질문에 못 답하며, 14일은 줄이 두 배로
+늘면서 먼 날짜일수록 모델이 언급할 이유가 줄어든다.
+
+**왜 음식 이름까지 넣는가** — 함정 2-1과 같은 이유다. 점수가 보이면 이유를 묻는다. 「금요일엔
+뭘 먹었길래 58점이야?」는 반드시 오고, 이름이 없으면 모델이 지어낸다.
+
+**왜 수량·매크로는 넣지 않는가** — 7일치에 항목별 g·kcal·균형 근거까지 실으면 기준일 상세와
+크기가 비슷해진다. 「금요일 점심 탄수화물 몇 g이야」에는 **그 날짜를 열어 물어봐 달라고
+안내한다** — 그러라고 날짜별로 대화가 열려 있다.
+
+**기록 없는 날도 줄을 남긴다.** 빼 버리면 모델이 날짜가 연속인 줄 알고 「사흘 연속 좋았다」처럼
+없는 추세를 만든다.
+
+**쿼리는 늘리지 않는다.** 기준일과 직전 7일을 따로 읽지 않고
+`findByUserAndDateBetweenOrderByDateAscCreatedAtAscIdAsc(user, date.minusDays(7), date)`
+**한 번**으로 8일치를 받아 날짜로 쪼갠다. 그 메서드의 KDoc이 「통계가 날짜별로 묶은 뒤 그날 첫
+끼니의 스냅샷을 목표로 쓴다」고 적어 둔, 정확히 이 용도의 정렬이다.
+
+날짜별 점수·주의 영양소는 새로 계산하지 않고 `totals()` · `DietScoreCalculator.scoreDay` ·
+`NutrientLimitEvaluator.evaluate`를 그대로 쓴다. **계산은 `DietChatStore`, 렌더링은
+`DietChatPrompts`** — `day()`가 이미 계산된 값을 받는 것과 같은 분업이다.
+
+```kotlin
+/** 직전 7일 한 줄치. 렌더링에 필요한 것만 담는다 — 매크로는 일부러 없다. */
+data class RecentDaySummary(
+    val date: LocalDate,
+    /** 그날 기록이 없으면 null. 「기록 없음」으로 렌더링한다. */
+    val dayScore: Int?,
+    val totalKcal: Double,
+    /** 기준을 벗어난 주의 영양소 이름들 — 「나트륨 초과」·「식이섬유 부족」 */
+    val exceeded: List<String>,
+    /** 끼니 종류 → 음식 이름들. 확정 순서 그대로다. */
+    val meals: List<Pair<MealType, List<String>>>,
+)
+```
+
+**토큰과 조회량이 늘어난다.** 하루 3~4끼면 7일 합쳐 35줄 안팎으로 기준일 상세보다 작지만,
+`items`가 LAZY라 **읽는 끼니가 하루치의 8배**가 된다. 사용자 둘 규모에서 걸릴 값은 아니라
+지금은 상한을 걸지 않고 지켜본다 — 함정 2-1의 토큰 상한과 같은 태도다.
+
+### 4. `DietChatPrompts`
 
 지금 `DietFeedbackPrompts.SYSTEM_PROMPT`는 「① 잘한 점 ② 부족한 점 ③ 개선 행동, 2~3문장」을
 강제해서 채팅에 맞지 않는다. 별도로 둔다.
@@ -224,16 +314,24 @@ object DietChatPrompts {
             "3문장 이내로 짧게. 목록 기호는 쓰지 마세요.\n" +
             "금지: 의학적 진단·처방, 특정 질환 언급, 영양제 권유.\n" +
             "식단·영양과 무관한 질문에는 답하지 말고, 식단에 대한 질문을 받겠다고 안내하세요.\n" +
-            "다른 날짜에 대한 질문에는 오늘 기록만 볼 수 있다고 답하세요."
+            "[직전 7일]에는 그날의 점수·열량과 먹은 음식 이름만 있습니다. 그보다 자세한 것을 " +
+            "물으면 그 날짜를 열어서 물어봐 달라고 안내하세요.\n" +
+            "[직전 7일]보다 먼 날짜는 볼 수 없습니다. 그때도 그 날짜를 열어서 물어봐 달라고 하세요."
     // 여기에 `context(...)` (함정 2-1)
 }
 ```
 
 **범위 제한이 피드백보다 중요하다** — 피드백은 우리가 주제를 정하지만 채팅은 사용자가 정한다.
-「이 약 먹어도 돼?」·「살 빼는 법」이 실제로 온다. **플로팅 버튼이 전역이라 「어제는 어땠어?」도
-자주 온다** — 그래서 다른 날짜를 명시적으로 막는 줄을 넣는다(여러 날 비교는 범위 밖이다).
+「이 약 먹어도 돼?」·「살 빼는 법」이 실제로 온다.
 
-### 4. `DietChatStore` — 짧은 트랜잭션 두 개
+**「어제는 어땠어?」는 이제 답한다**(직전 7일). 막는 것은 두 가지뿐이다 — 7일보다 먼 날짜와,
+7일 안이지만 요약보다 자세한 것. 둘 다 「그 날짜를 열어서 물어보라」로 보낸다. **거절이 아니라
+길 안내다** — 대화가 날짜별로 열려 있어서 실제로 그렇게 하면 답을 얻는다.
+
+「이번 주 평균은?」류의 기간 통계는 `DietStatsService`의 몫이고 채팅에 싣지 않는다. 직전 7일은
+**날짜별 원자료**이지 집계가 아니다 — 모델에게 평균을 계산시키면 숫자를 지어낼 자리가 생긴다.
+
+### 5. `DietChatStore` — 짧은 트랜잭션 두 개
 
 ```kotlin
 data class ChatContext(
@@ -248,22 +346,29 @@ data class ChatContext(
 
 `loadContext(username, date)`:
 1. 사용자 조회
-2. `mealRepository.findByUserAndDateOrderByCreatedAtAscIdAsc` — **비어 있으면
-   `INVALID_REQUEST`**("그날 기록된 끼니가 없습니다"). 아래 「빈 날」 참조
-3. `totals()`·`targets()`·`scoreDay`·`activeEnergyKcal`로 `DietChatPrompts.context(...)` 생성
-   — `DailyDietService.getDay`와 같은 재료다
-4. `feedbackRepository.findByUserAndDate`에서 피드백 문장
-5. 히스토리 로드, `USER` 개수가 상한 이상이면 **`CHAT_TURN_LIMIT_EXCEEDED`**
+2. `mealRepository.findByUserAndDateBetweenOrderByDateAscCreatedAtAscIdAsc(user, date.minusDays(7), date)`
+   **한 번**으로 8일치를 받아 날짜로 쪼갠다 — 기준일과 직전 7일을 따로 조회하지 않는다
+3. **기준일 몫이 비어 있으면 `INVALID_REQUEST`**("그날 기록된 끼니가 없습니다"). 아래 「빈 날」 참조
+4. 기준일: `totals()`·`targets()`·`scoreDay`·`activeEnergyKcal` — `DailyDietService.getDay`와 같은 재료
+5. 직전 7일: 날짜마다 `totals()`·`scoreDay`·`NutrientLimitEvaluator.evaluate`로 `RecentDaySummary`.
+   기록 없는 날도 자리를 만든다
+6. 4·5로 `DietChatPrompts.context(...)` 생성
+7. `feedbackRepository.findByUserAndDate`에서 피드백 문장
+8. 히스토리 로드, `USER` 개수가 상한 이상이면 **`CHAT_TURN_LIMIT_EXCEEDED`**
 
-**빈 날 — 서버는 거절하지만 앱이 먼저 막는다.** 플로팅 버튼이 늘 떠 있어서 기록 전에 누르는
-일이 흔하다. 그때마다 400을 받아 오류 화면을 띄우면 곤란하다. **앱이 `DayResponse.meals`가
-비었으면 입력창을 잠그고 정적 문구를 띄운다**(「아직 오늘 기록이 없어요. 먼저 한 끼
-기록해 볼까요?」) — LLM 호출 없이 즉시 뜨고 비용이 0이다. 서버의 거절은 안전망으로 남긴다.
+**빈 날 — 기준일이 비면 직전 7일이 있어도 거절한다.** 「기준일은 비었지만 요즘 얘기는 할 수
+있지 않나」가 되지만, 화면이 기준일 요약 말풍선으로 시작하는 구조라 보여줄 것이 없고, 기록이
+있는 날을 열면 되는 일이다. **판정은 기준일 하나로 단순하게 둔다.**
+
+**서버는 거절하지만 앱이 먼저 막는다.** 플로팅 버튼이 늘 떠 있어서 기록 전에 누르는 일이
+흔하다. 그때마다 400을 받아 오류 화면을 띄우면 곤란하다. **앱이 `DayResponse.meals`가 비었으면
+입력창을 잠그고 정적 문구를 띄운다**(「아직 오늘 기록이 없어요. 먼저 한 끼 기록해 볼까요?」) —
+LLM 호출 없이 즉시 뜨고 비용이 0이다. 서버의 거절은 안전망으로 남긴다.
 
 `append(username, date, question, answer)`: 두 행을 순서대로 저장하고 `DietChatAnswerResponse`를
 돌려준다 — 저장 직후의 id·`createdAt`·남은 턴 수가 다 이 트랜잭션 안에 있다.
 
-### 5. `DietChatService`
+### 6. `DietChatService`
 
 ```kotlin
 fun ask(username: String, date: LocalDate, message: String): DietChatAnswerResponse {
@@ -278,7 +383,7 @@ fun ask(username: String, date: LocalDate, message: String): DietChatAnswerRespo
 
 `val isAvailable: Boolean get() = client != null`을 두고 **`ask` 맨 앞에서 확인한다**(함정 4).
 
-### 6. 컨트롤러 — **응답 규칙에서 의도적으로 벗어난다**
+### 7. 컨트롤러 — **응답 규칙에서 의도적으로 벗어난다**
 
 ```kotlin
 @RestController
@@ -310,14 +415,14 @@ data class DietChatResponse(val messages: List<DietChatMessageResponse>, val rem
 
 날짜는 `DailyDietController`와 같이 `@DateTimeFormat(iso = ISO.DATE)`를 붙인다.
 
-### 7. `DietErrorCode` 두 개 추가
+### 8. `DietErrorCode` 두 개 추가
 
 ```kotlin
 CHAT_TURN_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "하루에 물어볼 수 있는 횟수(%s번)를 넘었습니다."),
 CHAT_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "답변 생성에 실패했습니다. 잠시 후 다시 물어봐 주세요."),
 ```
 
-### 8. 정리 배치
+### 9. 정리 배치
 
 `DietChatCleanupScheduler` — **매일 04:20**, `createdAt` 기준 **TTL 7일**.
 기존 04:00(임시 파일)·04:10(분석) 뒤에 붙인다. `MealAnalysisCleanupScheduler`와 같은 모양
@@ -326,14 +431,33 @@ CHAT_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "답변 생성에 실패했습니다
 분석 TTL이 24시간인데 채팅을 7일로 두는 이유 — 분석은 확정하면 지워지는 **중간 산물**이지만
 대화는 사용자가 직접 쓴 것이고, 다음 날 다시 열어 볼 만하다.
 
-### 9. 상수
+### 10. 상수
 
 ```kotlin
 /** 하루당 물어볼 수 있는 횟수. 공개 근거 없는 자체 설정값이다. */
 const val MAX_TURNS_PER_DAY = 20
+
+/** 컨텍스트에 싣는 과거 창. 「이번 주」 감각과 맞춘 값이다. */
+const val RECENT_DAYS = 7
 ```
 
 히스토리는 **전량 싣는다.** 상한이 20턴이라 자연히 유계이고, 손잡이를 하나만 둔다.
+
+### 11. 기존 프롬프트 함수 변경 (함정 5)
+
+- `MealType`에 프롬프트 표시명 `label`을 단다(아침·점심·저녁·간식). **enum 이름과 API 응답은
+  그대로다** — `MealResponse.mealType`은 `"LUNCH"`다.
+- `DietFeedbackPrompts.day(date, ...)` — 헤더를 `[2026-08-01 (금) 먹은 끼니]`로, 끼니 종류를
+  `label`로. 호출부는 `DayFeedbackStore.loadPrompt` 하나뿐이고 이미 `date`를 갖고 있다.
+- `DietFeedbackPrompts.meal(...)` — `[이번 끼니]` 뒤를 `label`로.
+
+**파급은 문장 쪽이다.** 하루·끼니 피드백 프롬프트가 바뀌므로 앞으로 생성되는 문장이 미세하게
+달라질 수 있다. 이미 저장된 문장은 그대로 남고, `contentUpdatedAt` 기반 무효화는 프롬프트 변경을
+모르므로 재생성이 몰리지도 않는다.
+
+**기존 테스트는 깨지지 않는다.** 프롬프트 문자열을 검사하는 테스트가 지금 하나도 없다
+(`DietFeedbackPrompts`를 언급하는 네 자리가 전부 주석이다). 뒤집어 말하면 **이 프롬프트들이
+지금 무검증**이라는 뜻이고, 아래 테스트가 그 첫 그물이 된다.
 
 ---
 
@@ -352,8 +476,21 @@ const val MAX_TURNS_PER_DAY = 20
 - **LLM이 null을 돌려주면 아무것도 저장하지 않는다** — `CHAT_FAILED`, 저장 호출 0회. 함정 3
 - **턴 상한 초과** — `CHAT_TURN_LIMIT_EXCEEDED`, **LLM을 부르지 않는다**
 - **키가 없으면** — `LLM_UNAVAILABLE`, 컨텍스트 로드조차 하지 않는다
-- **그날 끼니가 없으면** — `INVALID_REQUEST`
+- **그날 끼니가 없으면** — `INVALID_REQUEST`. **직전 7일에 기록이 있어도 마찬가지다**
 - **`GET`은 키가 없어도 동작한다** — 저장된 대화를 그대로 준다
+
+직전 7일과 날짜 라벨(함정 5):
+
+- **직전 7일이 컨텍스트에 들어간다** — `turns[0]`에 `[직전 7일]`과 그 안의 음식 이름
+- **기준 날짜가 헤더에 박힌다** — 과거 날짜로 요청하면 그 날짜가 헤더에 나온다(「오늘」이 아니다)
+- **기록 없는 날이 자리를 지킨다** — 7일 중 빈 날이 「기록 없음」으로 남고 생략되지 않는다.
+  생략하면 모델이 없는 연속성을 만든다
+- **직전 7일에는 매크로가 없다** — 음식 이름까지만 들어간다
+- **창은 기준 날짜 기준이다** — 과거 날짜로 요청하면 그 날짜 직전 7일이지 오늘 직전 7일이 아니다
+- **프롬프트에 `LUNCH`가 없다** — 끼니 종류가 한글로 렌더링된다
+- **API는 그대로다** — `MealResponse.mealType`이 `"LUNCH"`다. 이 검사가 없으면 프롬프트를
+  한글로 바꾸면서 응답까지 바꿔 앱을 깨뜨릴 수 있다
+- **조회는 한 번이다** — 기준일과 직전 7일을 따로 읽지 않는다
 
 **고의 파손 확인**을 붙인다(이 저장소가 「구현이 망가져도 통과하는 테스트」로 여러 번 데였다):
 
@@ -364,6 +501,10 @@ const val MAX_TURNS_PER_DAY = 20
 | `context()`를 `day()`만 쓰도록 되돌림 | 끼니별 상세 |
 | LLM 실패 시 질문만 저장 | LLM null |
 | `isAvailable` 가드 제거 | 키 없음 |
+| 직전 7일 블록 제거 | 직전 7일 |
+| `day()` 헤더를 「오늘 먹은 끼니」로 되돌림 | 기준 날짜 |
+| 기록 없는 날을 목록에서 생략 | 기록 없는 날 |
+| 창을 `LocalDate.now()` 기준으로 계산 | 창은 기준 날짜 기준 |
 
 ---
 
@@ -386,6 +527,10 @@ const val MAX_TURNS_PER_DAY = 20
 
 ## iOS가 할 일 (이 API가 들어온 뒤)
 
+**직전 7일 반영으로 앱에 추가되는 일은 없다.** 응답 스키마가 하나도 바뀌지 않는다 —
+`DayResponse`도 `MealResponse.mealType`(`"LUNCH"`)도 그대로다. 직전 7일은 서버가 프롬프트를
+만들 때만 쓰고 앱은 이 변경을 모른다. 아래는 원래 설계 그대로다.
+
 - **오른쪽 아래 플로팅 버튼** → 채팅 화면. 보고 있던 날짜를 그대로 넘긴다
 - **코치 오프닝 말풍선 3종을 앱이 조립한다** — 하루 요약·끼니별 점수 요약은 `DayResponse`에서,
   총평은 `DayResponse.feedback`에서. **LLM을 부르지 않는다**
@@ -399,5 +544,7 @@ const val MAX_TURNS_PER_DAY = 20
 
 ## 범위 밖
 
-끼니 단위 채팅 · 여러 날을 걸친 질문(「이번 주 어땠어?」) · 대화 검색 · 대화 내보내기 ·
-음식 추천을 식품DB에서 실제로 조회해 주는 것(지금은 모델의 지식으로만 답한다).
+끼니 단위 채팅 · **직전 7일보다 먼 날짜** · **기간 집계**(「이번 주 평균 몇 점이야?」 —
+`DietStatsService`의 몫이고, 모델에게 평균을 계산시키면 숫자를 지어낼 자리가 생긴다) ·
+직전 7일의 수량·매크로 · 대화 검색 · 대화 내보내기 · 음식 추천을 식품DB에서 실제로 조회해
+주는 것(지금은 모델의 지식으로만 답한다).
