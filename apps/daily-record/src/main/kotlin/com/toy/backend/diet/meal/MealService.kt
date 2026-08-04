@@ -63,7 +63,7 @@ class MealService(
         // 분석은 끼니를 만들기 전에 검증한다 — 확정할 수 없는 분석이면 아무것도 만들지 않고 끝낸다.
         val analysis = request.analysisId?.let { confirmableAnalysis(user, it) }
 
-        val existing = mergeTargetOf(user, request)
+        val existing = mergeTargetOf(user, request.date, request.mealType)
         val meal =
             existing
                 ?: Meal(
@@ -104,10 +104,11 @@ class MealService(
     /** 합칠 기존 끼니. 간식은 본래 여러 번이라 묶지 않는다(`MealType.mergesWithinDay`). */
     private fun mergeTargetOf(
         user: User,
-        request: MealConfirmRequest,
+        date: LocalDate,
+        mealType: MealType,
     ): Meal? =
-        if (request.mealType.mergesWithinDay) {
-            repository.findFirstByUserAndDateAndMealTypeOrderByCreatedAtAscIdAsc(user, request.date, request.mealType)
+        if (mealType.mergesWithinDay) {
+            repository.findFirstByUserAndDateAndMealTypeOrderByCreatedAtAscIdAsc(user, date, mealType)
         } else {
             null
         }
@@ -173,6 +174,81 @@ class MealService(
         applyItems(meal, request.items)
         meal.markFeedbackPending()
         runAfterCommit { feedbackGenerator.generateForMeal(id) }
+    }
+
+    /**
+     * 저장된 끼니의 **종류만** 고친다. 저녁을 간식으로 저장하면 되돌릴 길이 없던 것을 연다 —
+     * 앱에 사진 바이트가 없어 「지우고 다시 만들기」로는 찍어 둔 사진이 사라진다.
+     *
+     * 세 갈래다. ① 같은 종류면 아무것도 하지 않는다 — 앱이 실수로 같은 값을 보내도 유료 호출이
+     * 나가면 안 된다. ② 대상 종류의 끼니가 그날 없으면 종류만 바꾼다. ③ 있으면 그쪽으로 합친다.
+     *
+     * **대상을 찾기 전에 종류를 바꾸면 안 된다.** Hibernate가 쿼리 전에 auto-flush 하므로
+     * 병합 대상 조회가 **방금 바꾼 자기 자신**을 돌려줄 수 있다 — 자기 항목을 자기에게 붙이고
+     * 자기를 지우게 된다.
+     *
+     * ②는 점수를 다시 계산하지 않는다 — `DietScoreCalculator`는 종류를 쓰지 않는다. **③은
+     * 다시 계산한다**(`mergeInto`) — 원본의 항목이 얹혀 매크로 합계가 바뀌기 때문이다. 피드백은
+     * 두 갈래 다 다시 만든다 — `DietFeedbackPrompts.meal`이 `[이번 끼니] ${meal.mealType}`을 읽는다.
+     *
+     * 돌려주는 것은 **살아남은 끼니의 id**다. 합쳤으면 대상, 아니면 요청한 id 그대로다.
+     */
+    @Transactional
+    fun changeType(
+        username: String,
+        id: Long,
+        request: MealTypeRequest,
+    ): Long {
+        val user = findUser(username)
+        val meal = requireOwned(user, id)
+        if (meal.mealType == request.mealType) return id
+
+        // `takeIf`는 지금 도달할 수 없다 — 위에서 같은 종류를 이미 걸러내 대상은 항상 다른
+        // 행이다. 주석으로만 지키던 「자기 자신을 합치지 않는다」는 불변식을 코드로도 강제해
+        // 둔다 — 나중에 이 순서를 리팩터링하다 auto-flush로 자기 자신이 조회돼도(KDoc 참고)
+        // 자기 항목을 자기에게 붙이고 자기를 지우는 사고로 번지지 않는다. 경합 방어가 아니다
+        // — 이 앱은 단일 사용자가 순차로만 조작한다.
+        val target = mergeTargetOf(user, meal.date, request.mealType)?.takeIf { it.requiredId != meal.requiredId }
+        if (target != null) return mergeInto(target, meal)
+
+        meal.changeMealType(request.mealType)
+        meal.markFeedbackPending()
+        runAfterCommit { feedbackGenerator.generateForMeal(id) }
+        return id
+    }
+
+    /**
+     * 원본을 대상에 합치고 원본을 지운다. **옮기는 게 아니라 베껴 붙이고 통째로 지우는 것이다**
+     * (`MealItem.copyTo` 주석). 어차피 지울 것이라 「옮기기」로 볼 이유가 없다.
+     *
+     * **`detachFiles`를 부르지 않는다.** `delete`를 재사용하면 방금 대상에 붙인 사진의 `fileId`가
+     * 함께 `TEMP`로 돌아가 04:00 정리 배치가 S3 객체를 수거한다. 화면에는 그날 멀쩡히 보이다가
+     * 며칠 뒤 깨지고, `FileService.attachFile`이 detach된 파일의 재연결을 거부해 되돌릴 수도 없다.
+     * 파일의 소유가 원본에서 대상으로 넘어간 것이지 안 쓰이게 된 것이 아니다.
+     *
+     * `meal_photo`에 `file_id` 유니크 제약이 없어(인덱스는 `meal_id`뿐) 같은 `fileId`를 가리키는
+     * 행이 한 트랜잭션 안에 잠깐 둘이어도 문제없다.
+     *
+     * 하루 피드백 캐시는 직접 지우지 않는다 — 대상의 항목이 늘어 `contentUpdatedAt`이 오르므로
+     * 무효화 조건에 그대로 걸린다. `delete`가 그것을 명시적으로 부르는 것은 **남는 끼니가
+     * 아무것도 안 바뀌는** 경우라서다.
+     */
+    private fun mergeInto(
+        target: Meal,
+        source: Meal,
+    ): Long {
+        // 합계·내용 판은 여기서 함께 오른다(`Meal.recalculateTotals`).
+        target.addItems(source.items.map { it.copyTo(target) })
+        // 0부터 다시 매기면 @OrderBy("sortOrder asc") 때문에 0,1,0,1이 되어 앱의 사진 순서가 뒤섞인다.
+        val startOrder = (target.photos.maxOfOrNull { it.sortOrder } ?: -1) + 1
+        source.photos.forEachIndexed { index, photo ->
+            target.addPhoto(MealPhoto(meal = target, fileId = photo.fileId, sortOrder = startOrder + index))
+        }
+        target.applyScore(DietScoreCalculator.scoreMeal(target.carbsG, target.proteinG, target.fatG).score)
+        target.markFeedbackPending()
+        repository.delete(source)
+        runAfterCommit { feedbackGenerator.generateForMeal(target.requiredId) }
+        return target.requiredId
     }
 
     /**

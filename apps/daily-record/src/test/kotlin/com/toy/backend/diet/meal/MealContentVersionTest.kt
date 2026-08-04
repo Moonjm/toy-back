@@ -106,4 +106,26 @@ class MealContentVersionTest :
                 meal.contentUpdatedAt shouldBe past
             }
         }
+
+        // 끼니 종류는 항목이 아니지만 하루 프롬프트가 읽는다(`DietFeedbackPrompts.day`).
+        // 판단 기준이 「항목이 바뀌었나」가 아니라 「하루 프롬프트가 읽는 값이 바뀌었나」라는 것을
+        // 이 둘이 함께 못 박는다.
+        Given("끼니 종류를 바꾸면") {
+            val meal = meal()
+            meal.changeMealType(MealType.DINNER)
+
+            Then("내용 판이 올라간다 — 안 오르면 하루 피드백이 「간식: 치킨」인 채로 남는다") {
+                meal.mealType shouldBe MealType.DINNER
+                meal.contentUpdatedAt shouldBeGreaterThan past
+            }
+        }
+
+        Given("같은 종류로 다시 바꾸면") {
+            val meal = meal()
+            meal.changeMealType(MealType.LUNCH)
+
+            Then("내용 판은 그대로다 — 값이 안 바뀌었으면 하루 피드백을 다시 만들 이유가 없다") {
+                meal.contentUpdatedAt shouldBe past
+            }
+        }
     })

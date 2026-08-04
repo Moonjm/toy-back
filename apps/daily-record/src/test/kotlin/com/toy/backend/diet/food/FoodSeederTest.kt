@@ -32,7 +32,7 @@ class FoodSeederTest :
 
         Given("이미 적재된 데이터셋이 있는 상태로 기동하면") {
             val seeded = slot<Collection<Food>>()
-            every { repository.existsByDataset(any()) } returns true
+            every { repository.existsByDatasetAndCodeNotStartingWith(any(), any()) } returns true
             every {
                 jdbcTemplate.batchUpdate(any<String>(), capture(seeded), any(), any<ParameterizedPreparedStatementSetter<Food>>())
             } returns arrayOf(intArrayOf())
@@ -40,8 +40,12 @@ class FoodSeederTest :
             seeder.run(DefaultApplicationArguments())
 
             Then("데이터셋마다 따로 확인한다 — 전체 행 수로 보면 음식만 적재된 상태에서 가공식품이 영영 안 들어간다") {
-                verify(exactly = 1) { repository.existsByDataset(FoodDataset.DISH) }
-                verify(exactly = 1) { repository.existsByDataset(FoodDataset.PROCESSED) }
+                verify(exactly = 1) {
+                    repository.existsByDatasetAndCodeNotStartingWith(FoodDataset.DISH, FoodSeeder.MANUAL_CODE_PREFIX)
+                }
+                verify(exactly = 1) {
+                    repository.existsByDatasetAndCodeNotStartingWith(FoodDataset.PROCESSED, FoodSeeder.MANUAL_CODE_PREFIX)
+                }
             }
 
             Then("공공데이터 세 벌은 다시 넣지 않는다 — 기동마다 30만 행을 다시 쓰면 안 된다") {
@@ -62,6 +66,29 @@ class FoodSeederTest :
             }
         }
 
+        // 첫 기동에 `food/food-nutrition.csv`가 없으면 수동 등록분만 `DISH`로 들어간다. `.gitignore`가
+        // 공공데이터 CSV를 막고 수동분만 예외로 두므로 **새로 클론한 상태가 바로 그 상태다.**
+        // 그 뒤 CSV를 채우고 다시 뜨면 음식DB가 적재돼야 한다.
+        Given("수동 등록분만 DISH에 들어 있는 상태로 기동하면") {
+            every {
+                repository.existsByDatasetAndCodeNotStartingWith(FoodDataset.DISH, FoodSeeder.MANUAL_CODE_PREFIX)
+            } returns false
+            every {
+                repository.existsByDatasetAndCodeNotStartingWith(neq(FoodDataset.DISH), FoodSeeder.MANUAL_CODE_PREFIX)
+            } returns true
+            every {
+                jdbcTemplate.batchUpdate(any<String>(), any<Collection<Food>>(), any(), any<ParameterizedPreparedStatementSetter<Food>>())
+            } returns arrayOf(intArrayOf())
+
+            seeder.run(DefaultApplicationArguments())
+
+            Then("적재 여부를 수동 행을 뺀 기준으로 묻는다 — 수동 57행이 음식DB 18,000행을 영영 막으면 안 된다") {
+                verify(exactly = 1) {
+                    repository.existsByDatasetAndCodeNotStartingWith(FoodDataset.DISH, FoodSeeder.MANUAL_CODE_PREFIX)
+                }
+            }
+        }
+
         Given("수동 등록 CSV는") {
             val rows =
                 ClassPathResource("food/manual-food-nutrition.csv").inputStream.bufferedReader().use {
@@ -70,6 +97,12 @@ class FoodSeederTest :
 
             Then("저장소에 커밋돼 있다 — `.gitignore`가 `*.csv`를 막고 있어 예외가 없으면 배포본에서 사라진다") {
                 rows.size shouldNotBe 0
+            }
+
+            // 적재 여부 검사가 이 접두로 수동 행을 걸러낸다. 코드 규칙이 깨지면 검사가 수동 행을
+            // 못 알아보고, 수동분만 들어간 상태가 「음식DB 적재 완료」로 굳는다.
+            Then("코드가 모두 `MANUAL-` 접두다 — 적재 여부 검사가 이 규칙으로 수동 행을 걸러낸다") {
+                rows.filterNot { it.code.startsWith(FoodSeeder.MANUAL_CODE_PREFIX) } shouldBe emptyList()
             }
 
             Then("브랜드로 찾을 수 있다 — 식품명에 「bhc」가 없어 이 값이 없으면 브랜드 검색에 안 걸린다") {
