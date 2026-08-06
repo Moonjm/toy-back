@@ -4,7 +4,7 @@
 
 **Goal:** `POST /diet/days/{date}/chat`으로 그날 식단 평가에 대해 되물을 수 있게 하고, 답변 근거로 기준 날짜 상세와 **직전 7일 요약**을 함께 싣는다.
 
-**Architecture:** LLM 호출을 트랜잭션 밖으로 빼는 기존 모양(`MealFeedbackStore`·`DayFeedbackStore`)을 그대로 따른다 — `DietChatStore`에 짧은 트랜잭션 두 개를 두고 그 사이에서 호출한다. 프롬프트 재료는 새로 만들지 않고 `DietFeedbackPrompts.day()`·`meal()`·`DietScoreCalculator`·`NutrientLimitEvaluator`를 재사용한다. 아래에서 위로 쌓는다: 기존 프롬프트 함수 정리 → LLM 클라이언트 → 엔티티 → 프롬프트 → 스토어 → 서비스·컨트롤러 → 정리 배치.
+**Architecture:** LLM 호출을 트랜잭션 밖으로 빼는 기존 모양(`MealFeedbackStore`·`DayFeedbackStore`)을 그대로 따른다 — `DietChatStore`에 짧은 트랜잭션 두 개를 두고 그 사이에서 호출한다. 프롬프트 재료는 새로 만들지 않고 `DietFeedbackPrompts.day()`·`meal()`·`DietScoreCalculator`·`NutrientLimitEvaluator`를 재사용한다. 아래에서 위로 쌓는다: 기존 프롬프트 함수 정리 → LLM 클라이언트 → 엔티티 → 프롬프트 → 스토어 → 서비스·컨트롤러.
 
 **Tech Stack:** Kotlin / Spring Boot / JPA(Hibernate) / Kotest `BehaviorSpec` + MockK / Gradle(Spotless+ktlint)
 
@@ -419,7 +419,6 @@ diet.llm이 diet.chat을 알게 되어 의존이 뒤집힌다."
   - `enum class ChatRole { USER, ASSISTANT }`
   - `class DietChatMessage(user: User, date: LocalDate, role: ChatRole, content: String) : BaseEntity()`
   - `DietChatMessageRepository.findByUserAndDateOrderByIdAsc(user: User, date: LocalDate): List<DietChatMessage>`
-  - `DietChatMessageRepository.deleteByCreatedAtBefore(cutoff: LocalDateTime): Long`
 
 - [ ] **Step 1: 실패하는 테스트를 쓴다**
 
@@ -541,8 +540,6 @@ interface DietChatMessageRepository : JpaRepository<DietChatMessage, Long> {
         date: LocalDate,
     ): List<DietChatMessage>
 
-    /** 정리 배치용. `MealAnalysisRepository`와 같은 모양이다. */
-    fun deleteByCreatedAtBefore(cutoff: LocalDateTime): Long
 }
 ```
 
@@ -1578,137 +1575,6 @@ LLM_UNAVAILABLE 가드는 POST에만 넣는다. GET은 막지 않는다 — 저�
 
 턴 순서는 데이터·총평·히스토리·이번 질문이다. 총평이 아직 없으면 그 줄을
 뺀다 — 넣으면 빈 assistant 턴이 되어 히스토리가 어긋난다."
-```
-
----
-
-### Task 7: 정리 배치
-
-**Files:**
-- Create: `apps/daily-record/src/main/kotlin/com/toy/backend/diet/chat/DietChatCleanupService.kt`
-- Create: `apps/daily-record/src/main/kotlin/com/toy/backend/diet/chat/DietChatCleanupScheduler.kt`
-- Test: `apps/daily-record/src/test/kotlin/com/toy/backend/diet/chat/DietChatCleanupServiceTest.kt` (신규)
-
-**Interfaces:**
-- Consumes: `DietChatMessageRepository.deleteByCreatedAtBefore` (Task 3)
-- Produces: `DietChatCleanupService.purgeExpired(cutoff: LocalDateTime): Long`
-
-- [ ] **Step 1: 실패하는 테스트를 쓴다**
-
-```kotlin
-package com.toy.backend.diet.chat
-
-import io.kotest.core.spec.style.BehaviorSpec
-import io.kotest.matchers.shouldBe
-import io.mockk.every
-import io.mockk.mockk
-import java.time.LocalDateTime
-
-class DietChatCleanupServiceTest :
-    BehaviorSpec({
-        val repository = mockk<DietChatMessageRepository>()
-        val service = DietChatCleanupService(repository)
-        val cutoff = LocalDateTime.of(2026, 7, 28, 4, 20)
-
-        Given("만료된 대화가 있으면") {
-            every { repository.deleteByCreatedAtBefore(cutoff) } returns 12L
-
-            Then("지운 건수를 돌려준다") {
-                service.purgeExpired(cutoff) shouldBe 12L
-            }
-        }
-    })
-```
-
-- [ ] **Step 2: 실패를 확인한다**
-
-Run: `./gradlew :daily-record:test --tests "com.toy.backend.diet.chat.DietChatCleanupServiceTest"`
-Expected: **컴파일 실패** — `Unresolved reference: DietChatCleanupService`
-
-- [ ] **Step 3: 서비스와 스케줄러를 만든다**
-
-```kotlin
-package com.toy.backend.diet.chat
-
-import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
-import java.time.LocalDateTime
-
-@Service
-class DietChatCleanupService(
-    private val repository: DietChatMessageRepository,
-) {
-    @Transactional
-    fun purgeExpired(cutoff: LocalDateTime): Long = repository.deleteByCreatedAtBefore(cutoff)
-}
-```
-
-```kotlin
-package com.toy.backend.diet.chat
-
-import io.github.oshai.kotlinlogging.KotlinLogging
-import org.springframework.scheduling.annotation.Scheduled
-import org.springframework.stereotype.Component
-import java.time.Duration
-import java.time.LocalDateTime
-
-private val logger = KotlinLogging.logger {}
-
-/**
- * 오래된 대화를 지운다. 04:00(임시 파일)·04:10(분석) 뒤에 붙인다.
- *
- * **분석 TTL이 24시간인데 대화를 7일로 두는 이유** — 분석은 확정하면 지워지는 중간 산물이지만
- * 대화는 사용자가 직접 쓴 것이고, 다음 날 다시 열어 볼 만하다.
- */
-@Component
-class DietChatCleanupScheduler(
-    private val service: DietChatCleanupService,
-) {
-    // cutoff 는 createdAt(감사 필드)과 같은 시계를 써야 하므로 zone 인자 없는 now() 를 쓴다.
-    @Scheduled(cron = "0 20 4 * * *")
-    fun purgeExpiredChats() {
-        val cutoff = LocalDateTime.now().minus(CHAT_TTL)
-        try {
-            val purged = service.purgeExpired(cutoff)
-            if (purged > 0) logger.info { "만료 하루 채팅 정리 완료: ${purged}건 (cutoff=$cutoff)" }
-        } catch (e: Exception) {
-            logger.error(e) { "만료 하루 채팅 정리 실패 (cutoff=$cutoff)" }
-        }
-    }
-
-    companion object {
-        private val CHAT_TTL: Duration = Duration.ofDays(7)
-    }
-}
-```
-
-- [ ] **Step 4: 통과를 확인한다**
-
-Run: `./gradlew :daily-record:test`
-Expected: PASS (전체)
-
-- [ ] **Step 5: 기동으로 확인한다**
-
-**파생 쿼리 파싱과 스케줄러 등록은 기동해야 드러난다.** `FoodRepository`에서 이름이 안 파싱돼 앱이 통째로 안 뜬 적이 있다 — Task 3의 `PartTree` 검사가 그물이지만, 실제 기동이 최종 확인이다.
-
-```bash
-./gradlew :daily-record:bootRun
-```
-
-`Started DailyRecordApplicationKt`가 뜨고 빈 생성 예외가 없으면 된다. 로컬 Postgres가 필요하다.
-
-- [ ] **Step 6: 커밋**
-
-```bash
-./gradlew spotlessApply
-git add apps/daily-record/src/main/kotlin/com/toy/backend/diet/chat/ \
-        apps/daily-record/src/test/kotlin/com/toy/backend/diet/chat/
-git commit -m "feat: 오래된 하루 채팅을 정리한다
-
-매일 04:20, TTL 7일. 04:00(임시 파일)·04:10(분석) 뒤에 붙인다.
-
-분석 TTL이 24시간인데 대화를 7일로 두는 이유 — 분석은 확정하면 지워지는 중간
-산물이지만 대화는 사용자가 직접 쓴 것이고 다음 날 다시 열어 볼 만하다."
 ```
 
 ---

@@ -3,7 +3,6 @@ package com.toy.backend.diet.chat
 import com.toy.backend.user.User
 import org.springframework.data.jpa.repository.JpaRepository
 import java.time.LocalDate
-import java.time.LocalDateTime
 
 interface DietChatMessageRepository : JpaRepository<DietChatMessage, Long> {
     /**
@@ -14,7 +13,4 @@ interface DietChatMessageRepository : JpaRepository<DietChatMessage, Long> {
         user: User,
         date: LocalDate,
     ): List<DietChatMessage>
-
-    /** 정리 배치용. `MealAnalysisRepository`와 같은 모양이다. */
-    fun deleteByCreatedAtBefore(cutoff: LocalDateTime): Long
 }
