@@ -29,7 +29,6 @@ class DietChatServiceTest :
             dataBlock = "[2026-08-01 (토) 먹은 끼니]\n- 점심: 제육볶음 (555kcal)\n[직전 7일]\n- 07-30 (목) 58점 2930kcal",
             dayFeedback = feedback,
             history = history,
-            remainingTurns = 19,
         )
 
         val answer =

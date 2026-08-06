@@ -3,7 +3,6 @@ package com.toy.backend.diet.chat
 import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.entity.withId
 import com.toy.backend.common.exception.CustomException
-import com.toy.backend.diet.DietErrorCode
 import com.toy.backend.diet.daily.DailyActivityRepository
 import com.toy.backend.diet.dietUser
 import com.toy.backend.diet.dummyMeal
@@ -16,12 +15,16 @@ import com.toy.backend.diet.meal.MealType
 import com.toy.backend.user.UserRepository
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
+import io.kotest.matchers.date.shouldBeAfter
+import io.kotest.matchers.date.shouldBeBefore
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 class DietChatStoreTest :
     BehaviorSpec({
@@ -53,6 +56,9 @@ class DietChatStoreTest :
             every { activityRepository.findByUserAndDate(user, date) } returns null
             every { feedbackRepository.findByUserAndDate(user, date) } returns null
             every { messageRepository.findByUserAndDateOrderByIdAsc(user, date) } returns emptyList()
+            every {
+                messageRepository.findByUserAndCreatedAtAfterOrderByIdDesc(any(), any(), any())
+            } returns emptyList()
         }
 
         Given("기준일과 직전 7일에 기록이 있으면") {
@@ -91,10 +97,6 @@ class DietChatStoreTest :
                         )
                 }
             }
-
-            Then("남은 턴은 상한 그대로다") {
-                context.remainingTurns shouldBe MAX_TURNS_PER_DAY
-            }
         }
 
         Given("기준일에 기록이 없으면") {
@@ -109,49 +111,68 @@ class DietChatStoreTest :
             }
         }
 
-        Given("턴 상한에 닿았으면") {
-            every {
-                mealRepository.findByUserAndDateBetweenOrderByDateAscCreatedAtAscIdAsc(user, date.minusDays(7), date)
-            } returns listOf(mealOn(date, MealType.LUNCH, "제육볶음", 4L))
-            every { messageRepository.findByUserAndDateOrderByIdAsc(user, date) } returns
-                (1..MAX_TURNS_PER_DAY).flatMap {
-                    listOf(
-                        DietChatMessage(user, date, ChatRole.USER, "질문$it").withId(it.toLong() * 2),
-                        DietChatMessage(user, date, ChatRole.ASSISTANT, "답$it").withId(it.toLong() * 2 + 1),
-                    )
-                }
-
-            Then("CHAT_TURN_LIMIT_EXCEEDED") {
-                val e = shouldThrow<CustomException> { store.loadContext("testuser", date) }
-                e.errorCode shouldBe DietErrorCode.CHAT_TURN_LIMIT_EXCEEDED
-            }
-        }
-
-        Given("히스토리가 있으면") {
+        // 히스토리는 큐다 — 7일 이내에 물은 것 중 최근 20턴만 싣고 오래된 것은 밀려난다.
+        Given("히스토리가 7일 이내에 있으면") {
             every {
                 mealRepository.findByUserAndDateBetweenOrderByDateAscCreatedAtAscIdAsc(user, date.minusDays(7), date)
             } returns listOf(mealOn(date, MealType.LUNCH, "제육볶음", 5L))
-            every { messageRepository.findByUserAndDateOrderByIdAsc(user, date) } returns
-                listOf(
-                    DietChatMessage(user, date, ChatRole.USER, "왜 낮아?").withId(1L),
-                    DietChatMessage(user, date, ChatRole.ASSISTANT, "나트륨 때문입니다").withId(2L),
-                )
             every { feedbackRepository.findByUserAndDate(user, date) } returns
-                DailyDietFeedback(user = user, date = date, dayScore = 61, feedback = "총평", generatedAt = java.time.LocalDateTime.now())
+                DailyDietFeedback(
+                    user = user,
+                    date = date,
+                    dayScore = 61,
+                    feedback = "총평",
+                    generatedAt = LocalDateTime.now(),
+                )
+            // 8/6에 물었지만 8/1에 대한 질문 — 접두는 date(08-01)이지 createdAt(08-06)이 아니다.
+            every {
+                messageRepository.findByUserAndCreatedAtAfterOrderByIdDesc(eq(user), any(), any())
+            } returns
+                listOf(
+                    DietChatMessage(user, date, ChatRole.ASSISTANT, "나트륨 때문입니다").withId(2L),
+                    DietChatMessage(user, date, ChatRole.USER, "왜 낮아?").withId(1L),
+                )
 
             val context = store.loadContext("testuser", date)
 
-            Then("API 역할 값으로 교대해 나온다") {
+            Then("오래된 것부터 시간순으로 뒤집혀 실린다") {
                 context.history.map { it.role } shouldBe listOf("user", "assistant")
-                context.history.map { it.content } shouldBe listOf("왜 낮아?", "나트륨 때문입니다")
+            }
+
+            // 히스토리가 날짜를 넘나들어서, 안 붙이면 모델이 예전 질문을 오늘 것으로 읽는다.
+            Then("사용자 턴 앞에 그 질문의 날짜가 붙는다") {
+                context.history[0].content shouldBe "[08-01] 왜 낮아?"
+            }
+
+            Then("답변 턴에는 안 붙는다 — 바로 뒤에 와서 짝이 명확하다") {
+                context.history[1].content shouldBe "나트륨 때문입니다"
             }
 
             Then("하루 피드백을 함께 들고 나온다 — 대화의 출발점이다") {
                 context.dayFeedback shouldBe "총평"
             }
+        }
 
-            Then("남은 턴이 준다") {
-                context.remainingTurns shouldBe MAX_TURNS_PER_DAY - 1
+        // 「어느 날 밥 얘기인가」가 아니라 「어느 대화를 기억하는가」라 축이 다르다.
+        Given("히스토리 창은") {
+            val cutoff = slot<LocalDateTime>()
+            val pageable = slot<org.springframework.data.domain.Pageable>()
+            every {
+                mealRepository.findByUserAndDateBetweenOrderByDateAscCreatedAtAscIdAsc(user, date.minusDays(7), date)
+            } returns listOf(mealOn(date, MealType.LUNCH, "제육볶음", 6L))
+            every {
+                messageRepository.findByUserAndCreatedAtAfterOrderByIdDesc(eq(user), capture(cutoff), capture(pageable))
+            } returns emptyList()
+
+            store.loadContext("testuser", date)
+
+            Then("createdAt 기준 7일이다 — date 기준이 아니다") {
+                cutoff.captured shouldBeAfter LocalDateTime.now().minusDays(8)
+                cutoff.captured shouldBeBefore LocalDateTime.now().minusDays(6)
+            }
+
+            Then("20턴, 즉 40행을 받는다") {
+                pageable.captured.pageSize shouldBe 40
             }
         }
 

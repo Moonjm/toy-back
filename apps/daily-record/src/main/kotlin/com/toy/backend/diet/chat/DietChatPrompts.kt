@@ -2,6 +2,7 @@ package com.toy.backend.diet.chat
 
 import com.toy.backend.diet.feedback.DietFeedbackPrompts
 import com.toy.backend.diet.feedback.NutritionTotals
+import com.toy.backend.diet.llm.ChatTurn
 import com.toy.backend.diet.meal.Meal
 import com.toy.backend.diet.profile.NutritionTargets
 import com.toy.backend.diet.score.DietScoreCalculator
@@ -13,6 +14,12 @@ import kotlin.math.roundToInt
 object DietChatPrompts {
     /** 컨텍스트에 싣는 과거 창. 「이번 주」 감각과 맞춘 값이다. */
     const val RECENT_DAYS = 7
+
+    /** 프롬프트에 싣는 대화 창. 넘으면 오래된 턴부터 밀려난다 — 막지 않는다. */
+    const val HISTORY_TURNS = 20
+
+    /** 히스토리로 거슬러 올라가는 기간. **`createdAt` 기준**이라 `RECENT_DAYS`와 축이 다르다. */
+    const val HISTORY_DAYS = 7L
 
     /**
      * **범위 제한이 피드백보다 중요하다** — 피드백은 우리가 주제를 정하지만 채팅은 사용자가
@@ -93,6 +100,27 @@ object DietChatPrompts {
             }
         }
 
+    /**
+     * 히스토리를 API 턴으로 바꾼다. **사용자 턴 앞에 그 질문의 날짜를 붙인다**(함정 5-1) —
+     * 히스토리가 날짜를 넘나들어서, 안 붙이면 8월 3일에 물은 「점심 왜 낮아?」를 모델이
+     * 오늘 점심 얘기로 읽는다.
+     *
+     * 붙이는 값은 `date`(어느 날에 대한 질문인가)이지 `createdAt`(언제 물었나)이 아니다 —
+     * 8월 6일에 8월 1일을 물었다면 `[08-01]`이다.
+     *
+     * **답변에는 안 붙인다.** 바로 뒤에 와서 짝이 명확하고, 양쪽에 붙이면 노이즈만 는다.
+     */
+    fun historyTurns(messages: List<DietChatMessage>): List<ChatTurn> =
+        messages.map {
+            when (it.role) {
+                ChatRole.USER -> ChatTurn("user", "[${it.date.format(HISTORY_DATE)}] ${it.content}")
+                ChatRole.ASSISTANT -> ChatTurn("assistant", it.content)
+            }
+        }
+
     /** `07-30 (목)`. 기준일 헤더와 달리 연도를 빼 줄을 짧게 유지한다 — 같은 해 안의 최근 7일이다. */
     private val RECENT_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd (E)", Locale.KOREAN)
+
+    /** 히스토리 접두. 연도를 빼 줄을 짧게 유지한다 — 7일 창 안이라 해가 갈릴 일이 드물다. */
+    private val HISTORY_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd")
 }

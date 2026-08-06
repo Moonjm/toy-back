@@ -2,7 +2,6 @@ package com.toy.backend.diet.chat
 
 import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.exception.CustomException
-import com.toy.backend.diet.DietErrorCode
 import com.toy.backend.diet.daily.DailyActivityRepository
 import com.toy.backend.diet.daily.NutrientLimitEvaluator
 import com.toy.backend.diet.daily.NutrientStatus
@@ -14,9 +13,11 @@ import com.toy.backend.diet.meal.MealRepository
 import com.toy.backend.diet.score.DietScoreCalculator
 import com.toy.backend.user.User
 import com.toy.backend.user.UserRepository
+import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
+import java.time.LocalDateTime
 import kotlin.math.roundToInt
 
 /** 하루당 물어볼 수 있는 횟수. 공개 근거 없는 자체 설정값이다. */
@@ -31,7 +32,6 @@ data class ChatContext(
     /** 저장된 하루 피드백. 아직 생성 전이면 null이고, 그때는 오프닝 턴을 뺀다. */
     val dayFeedback: String?,
     val history: List<ChatTurn>,
-    val remainingTurns: Int,
 )
 
 /**
@@ -73,9 +73,19 @@ class DietChatStore(
         val dayScore = DietScoreCalculator.scoreDay(totals.kcal, totals.carbsG, totals.proteinG, totals.fatG, targets).score
         val recent = (window downTo 1).map { back -> summarize(date.minusDays(back), byDate) }
 
-        val history = messageRepository.findByUserAndDateOrderByIdAsc(user, date)
-        val used = history.count { it.role == ChatRole.USER }
-        if (used >= MAX_TURNS_PER_DAY) throw CustomException(DietErrorCode.CHAT_TURN_LIMIT_EXCEEDED, MAX_TURNS_PER_DAY)
+        // **히스토리는 큐다.** 7일 이내에 물은 것 중 최근 20턴만 싣고 오래된 것은 밀려난다 —
+        // 막지 않는다. 그래서 대화가 100번 쌓여도 요청 크기가 유계다.
+        //
+        // `id DESC`로 받아 뒤집는다. `asc`로 받으면 **가장 오래된** 20턴이 되어 정반대가 된다.
+        // `append`가 질문·답을 한 트랜잭션에 함께 쓰므로 행은 늘 교대하고, 짝수 개를 가져오니
+        // 뒤집은 목록의 맨 앞은 항상 질문이다.
+        val history =
+            messageRepository
+                .findByUserAndCreatedAtAfterOrderByIdDesc(
+                    user,
+                    LocalDateTime.now().minusDays(DietChatPrompts.HISTORY_DAYS),
+                    PageRequest.of(0, DietChatPrompts.HISTORY_TURNS * 2),
+                ).reversed()
 
         return ChatContext(
             dataBlock =
@@ -89,8 +99,7 @@ class DietChatStore(
                     recent,
                 ),
             dayFeedback = feedbackRepository.findByUserAndDate(user, date)?.feedback,
-            history = history.map { ChatTurn(it.role.name.lowercase(), it.content) },
-            remainingTurns = MAX_TURNS_PER_DAY - used,
+            history = DietChatPrompts.historyTurns(history),
         )
     }
 
