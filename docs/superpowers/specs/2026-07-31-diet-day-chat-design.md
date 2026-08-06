@@ -1,7 +1,8 @@
 # 하루 평가에 대해 되묻는 채팅 (백엔드) 설계
 
 작성일: 2026-07-31 (2026-08-02 화면 형태 반영, 2026-08-04 직전 7일 컨텍스트 반영,
-2026-08-06 정리 배치 제거 — 대화를 영구 보관한다)
+2026-08-06 정리 배치 제거 — 대화를 영구 보관한다,
+2026-08-06 이어지는 대화로 전환 — 커서 페이징 · 히스토리 20턴 큐 · 질문 횟수 상한 제거)
 짝 저장소: `woori-haru` (iOS) — **채팅 화면이 필요하다.** 아래 「iOS가 할 일」 참조.
 
 ## 배경
@@ -45,11 +46,30 @@ LLM에서 오는 것은 총평 한 덩어리(`feedback`)와 사용자가 물었�
 
 | | 범위 |
 | --- | --- |
-| **한다** | `(user, date)` 하나당 대화 하나 · **영구 저장**(정리 배치 없음) · 동기 요청/응답 · 턴 상한 · **직전 7일 요약을 컨텍스트에 포함** |
-| **안 한다** | 끼니 단위 채팅 · 요약 말풍선용 API(앱이 `DayResponse`로 조립) · 스트리밍(SSE) · 대화 삭제 엔드포인트 · 대화 검색 · **직전 7일보다 먼 날짜** · 기간 평균·자주 먹은 음식 같은 통계(`DietStatsService`의 몫) |
+| **한다** | 사용자당 **이어지는 대화 하나** · **영구 저장**(정리 배치 없음) · 동기 요청/응답 · **커서 페이징 조회** · **직전 7일 요약을 컨텍스트에 포함** |
+| **안 한다** | 끼니 단위 채팅 · 요약 말풍선용 API(앱이 `DayResponse`로 조립) · 스트리밍(SSE) · 대화 삭제 엔드포인트 · 대화 검색 · **질문 횟수 상한** · **직전 7일보다 먼 날짜** · 기간 평균·자주 먹은 음식 같은 통계(`DietStatsService`의 몫) |
 
-**대화는 어느 날짜로도 열린다.** 경로에 날짜가 들어가고 스레드 단위가 `(user, date)`라, 지난 날
-화면에서 버튼을 눌러도 그날 대화가 열린다. 오늘 전용이 아니다.
+**대화는 어느 날짜로도 열린다.** `POST` 경로에 날짜가 들어가고, 그 날짜가 **코치가 보는 식단이
+어느 날 것인가**를 정한다. 오늘 전용이 아니다.
+
+**화면은 하나로 이어진다.** 채팅앱처럼 최신이 아래에 오고 위로 스크롤하면 과거를 불러온다.
+저장은 여전히 메시지마다 `date`(어느 날에 대한 질문인가)를 갖지만, **조회는 날짜로 자르지 않고
+`id` 커서로 페이징한다.** 그래서 8월 6일에 8월 1일을 물은 질문도 **물은 시각 자리**에 놓인다 —
+말풍선에 「8/1에 대해」를 붙이는 것은 앱의 몫이고, 그래서 응답이 메시지마다 `date`를 준다.
+
+## 세 창이 서로 다르다 — 헷갈리기 쉬운 자리
+
+| 창 | 기준 | 무엇을 자르나 |
+| --- | --- | --- |
+| 데이터 블록의 **직전 7일** | 대화 기준 **날짜**(`Meal.date`) | 프롬프트에 싣는 **식단** |
+| 히스토리 **7일** | **물은 시각**(`createdAt`) | 프롬프트에 싣는 **대화** |
+| 히스토리 **20턴** | 최근순 | 프롬프트에 싣는 **대화**(위 7일 안에서 다시 자른다) |
+
+앞의 것은 「어느 날 밥 얘기인가」이고 뒤의 둘은 「어느 대화를 기억하는가」다. 축이 다르므로
+같은 값(7)이라도 묶지 않는다.
+
+**히스토리는 큐다.** 20턴을 넘으면 오래된 것부터 밀려난다 — 막지 않는다. 그래서 대화가 100번
+쌓여도 한 요청의 프롬프트는 최근 20턴까지이고, **요청 크기가 대화 길이와 무관하게 유계다.**
 
 ---
 
@@ -340,7 +360,6 @@ data class ChatContext(
     /** 저장된 하루 피드백. 아직 생성 전이면 null이고, 그때는 오프닝 턴을 빼고 보낸다. */
     val dayFeedback: String?,
     val history: List<ChatTurn>,
-    val remainingTurns: Int,
 )
 ```
 
@@ -354,7 +373,8 @@ data class ChatContext(
    기록 없는 날도 자리를 만든다
 6. 4·5로 `DietChatPrompts.context(...)` 생성
 7. `feedbackRepository.findByUserAndDate`에서 피드백 문장
-8. 히스토리 로드, `USER` 개수가 상한 이상이면 **`CHAT_TURN_LIMIT_EXCEEDED`**
+8. 히스토리 로드 — **`createdAt`이 7일 이내인 것 중 최근 20턴**(40행)을 `id DESC`로 받아
+   뒤집는다. 상한 검사는 없다(질문 횟수를 막지 않는다)
 
 **빈 날 — 기준일이 비면 직전 7일이 있어도 거절한다.** 「기준일은 비었지만 요즘 얘기는 할 수
 있지 않나」가 되지만, 화면이 기준일 요약 말풍선으로 시작하는 구조라 보여줄 것이 없고, 기록이
@@ -365,13 +385,18 @@ data class ChatContext(
 입력창을 잠그고 정적 문구를 띄운다**(「아직 오늘 기록이 없어요. 먼저 한 끼 기록해 볼까요?」) —
 LLM 호출 없이 즉시 뜨고 비용이 0이다. 서버의 거절은 안전망으로 남긴다.
 
-`append(username, date, question, answer)`: 두 행을 순서대로 저장하고 `DietChatAnswerResponse`를
-돌려준다 — 저장 직후의 id·`createdAt`·남은 턴 수가 다 이 트랜잭션 안에 있다.
+`append(username, date, question, answer)`: 두 행을 순서대로 저장하고 **저장된 답 한 건**을
+돌려준다 — id·`createdAt`이 이 트랜잭션 안에서 채워진다.
+
+`page(username, before: Long?, size: Int)`: `id < before`인 것을 `id DESC`로 `size`개.
+`before`가 null이면 첫 장이다. **날짜로 자르지 않는다** — 사용자 전체가 한 스트림이다.
+`id`가 단조 증가라 `offset` 없이 안정적으로 뒤로 간다(중간에 새 메시지가 들어와도 페이지가
+밀리지 않는다).
 
 ### 6. `DietChatService`
 
 ```kotlin
-fun ask(username: String, date: LocalDate, message: String): DietChatAnswerResponse {
+fun ask(username: String, date: LocalDate, message: String): DietChatMessageResponse {
     val openRouter = client ?: throw CustomException(DietErrorCode.LLM_UNAVAILABLE)
     val context = store.loadContext(username, date)          // 트랜잭션 1
     val turns = buildTurns(context, message)
@@ -381,16 +406,24 @@ fun ask(username: String, date: LocalDate, message: String): DietChatAnswerRespo
 }
 ```
 
-`val isAvailable: Boolean get() = client != null`을 두고 **`ask` 맨 앞에서 확인한다**(함정 4).
+**가드는 `client ?: throw`가 전부다.** 별도 `isAvailable` 프로퍼티를 두지 않는다 — 같은 클래스가
+`client`를 직접 들고 있어 읽을 사람이 없고, 남기면 「가드가 여기 있다」는 오독을 부른다
+(`DietFeedbackGenerator.isAvailable`은 **다른 클래스**가 읽어서 존재 이유가 있는 경우다).
 
 ### 7. 컨트롤러 — **응답 규칙에서 의도적으로 벗어난다**
 
+**두 경로가 다르다.** 묻는 것은 날짜에 매이고 읽는 것은 매이지 않는다.
+
 ```kotlin
 @RestController
-@RequestMapping("/diet/days/{date}/chat")
 class DietChatController(private val service: DietChatService) {
-    @PostMapping fun ask(...): ResponseEntity<DataResponseBody<DietChatAnswerResponse>>
-    @GetMapping  fun list(...): ResponseEntity<DataResponseBody<DietChatResponse>>
+    /** 그날 식단으로 답해야 하므로 날짜가 필요하다. */
+    @PostMapping("/diet/days/{date}/chat")
+    fun ask(...): ResponseEntity<DataResponseBody<DietChatMessageResponse>>
+
+    /** 이어지는 스트림이라 날짜가 없다. `before`가 null이면 첫 장. */
+    @GetMapping("/diet/chat")
+    fun page(before: Long?, size: Int): ResponseEntity<DataResponseBody<DietChatPageResponse>>
 }
 ```
 
@@ -404,35 +437,55 @@ data class DietChatRequest(
     @field:NotBlank @field:Size(max = 500) val message: String,
 )
 
-data class DietChatMessageResponse(val id: Long, val role: ChatRole, val content: String, val createdAt: LocalDateTime)
-data class DietChatAnswerResponse(val message: DietChatMessageResponse, val remainingTurns: Int)
-data class DietChatResponse(val messages: List<DietChatMessageResponse>, val remainingTurns: Int)
+/** `date`는 **어느 날에 대한 질문인가**다 — `createdAt`(언제 물었나)과 다르다. 8/6에 8/1을 물을 수 있다. */
+data class DietChatMessageResponse(
+    val id: Long, val date: LocalDate, val role: ChatRole,
+    val content: String, val createdAt: LocalDateTime,
+)
+
+/** `nextCursor`가 null이면 더 없다 — 앱이 그때 무한 스크롤을 멈춘다. */
+data class DietChatPageResponse(
+    val messages: List<DietChatMessageResponse>,
+    val nextCursor: Long?,
+)
 ```
 
 `@Size(max = 500)`은 프롬프트가 통째로 커지는 것을 막는 상한이다.
-`remainingTurns`를 함께 내려야 앱이 상한에 닿았을 때 입력창을 잠글 수 있다 — 없으면 앱이
-메시지를 세어 서버 상한을 추측하게 된다.
 
-날짜는 `DailyDietController`와 같이 `@DateTimeFormat(iso = ISO.DATE)`를 붙인다.
+**메시지에 `date`를 실어야 한다.** 스트림이 물은 시각 순이라 8/1에 대한 질문이 8/6 대화 사이에
+끼어 앉는다. 이 값이 없으면 앱이 그 말풍선에 「8/1에 대해」를 붙일 수 없다.
 
-### 8. `DietErrorCode` 두 개 추가
+`POST`의 날짜는 `DailyDietController`와 같이 `@DateTimeFormat(iso = ISO.DATE)`를 붙인다.
+
+### 8. `DietErrorCode` 한 개 추가
 
 ```kotlin
-CHAT_TURN_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "하루에 물어볼 수 있는 횟수(%s번)를 넘었습니다."),
 CHAT_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "답변 생성에 실패했습니다. 잠시 후 다시 물어봐 주세요."),
 ```
 
 ### 9. 상수
 
 ```kotlin
-/** 하루당 물어볼 수 있는 횟수. 공개 근거 없는 자체 설정값이다. */
-const val MAX_TURNS_PER_DAY = 20
+/** 프롬프트에 싣는 대화 창. 넘으면 오래된 턴부터 밀려난다 — 막지 않는다. */
+const val HISTORY_TURNS = 20
 
-/** 컨텍스트에 싣는 과거 창. 「이번 주」 감각과 맞춘 값이다. */
+/** 히스토리로 거슬러 올라가는 기간. `createdAt` 기준이다. */
+const val HISTORY_DAYS = 7L
+
+/** 컨텍스트에 싣는 과거 **식단** 창. `Meal.date` 기준이라 위 둘과 축이 다르다. */
 const val RECENT_DAYS = 7
+
+/** 페이징 기본 크기. 앱이 넘기지 않으면 이 값을 쓴다. */
+const val DEFAULT_PAGE_SIZE = 30
 ```
 
-히스토리는 **전량 싣는다.** 상한이 20턴이라 자연히 유계이고, 손잡이를 하나만 둔다.
+**질문 횟수를 막지 않는다.** 예전에는 하루 20문 상한이 비용 방어도 겸했는데, 그 상한이 곧
+「일주일치를 하루에 다 쓰면 남은 엿새를 못 묻는다」가 되어 대화를 끊었다. 히스토리를 큐로 두면
+요청 크기는 그대로 유계이므로(최대 20턴) 상한 없이도 비용이 발산하지 않는다.
+
+**남는 위험 하나** — 질문 횟수를 막는 것이 이제 아무것도 없다. 클라이언트가 루프에 빠지면 그대로
+LLM 호출이 된다. `POST`가 사용자가 타이핑한 메시지를 요구하고 앱이 중복 전송을 막으며 사용자가
+둘이라 감수한다(`AGENTS.md`의 「동시성 방어를 하지 않는다」와 같은 결의 판단이다).
 
 ### 10. 기존 프롬프트 함수 변경 (함정 5)
 
@@ -454,7 +507,7 @@ const val RECENT_DAYS = 7
 
 ## 테스트
 
-- **정상 흐름** — 질문·답 두 행이 `USER`, `ASSISTANT` 순서로 저장되고 `remainingTurns`가 준다
+- **정상 흐름** — 질문·답 두 행이 `USER`, `ASSISTANT` 순서로 저장되고 저장된 답이 돌아온다
 - **데이터 블록은 저장되지 않는다** — 저장된 메시지 어디에도 `[오늘 먹은 끼니]`가 없다.
   함정 2가 재현되는 자리다
 - **매 턴 데이터 블록이 새로 만들어진다** — 두 번째 질문 때 넘어간 `turns[0]`이 그 시점의
@@ -465,10 +518,22 @@ const val RECENT_DAYS = 7
 - **하루 피드백이 null이면 오프닝 턴을 넣지 않는다** — `turns`에 `assistant`가 안 들어간다
 - **히스토리가 교대로 실린다** — `user, assistant, user, ...` 순서
 - **LLM이 null을 돌려주면 아무것도 저장하지 않는다** — `CHAT_FAILED`, 저장 호출 0회. 함정 3
-- **턴 상한 초과** — `CHAT_TURN_LIMIT_EXCEEDED`, **LLM을 부르지 않는다**
 - **키가 없으면** — `LLM_UNAVAILABLE`, 컨텍스트 로드조차 하지 않는다
 - **그날 끼니가 없으면** — `INVALID_REQUEST`. **직전 7일에 기록이 있어도 마찬가지다**
 - **`GET`은 키가 없어도 동작한다** — 저장된 대화를 그대로 준다
+
+히스토리 창과 페이징:
+
+- **20턴을 넘으면 오래된 것부터 밀려난다** — 25턴을 쌓아 두고 `turns`에 최근 20턴만 들어가는지,
+  **가장 오래된 질문이 빠졌는지**. 큐가 재현되는 자리다
+- **7일보다 오래 전에 물은 대화는 안 실린다** — `createdAt` 기준이다. **`date`가 아니다**
+- **날짜를 넘나드는 히스토리가 들어간다** — 어제 물은 것이 오늘 대화의 컨텍스트에 실린다.
+  「그날 것만」으로 되돌리면 빨개진다
+- **페이징이 `id` 커서로 뒤로 간다** — `before`를 넘기면 그보다 작은 id만, `id DESC`로
+- **첫 장은 `before` 없이** — null이면 최신부터
+- **더 없으면 `nextCursor`가 null이다** — 앱이 무한 스크롤을 멈추는 신호다
+- **페이징은 날짜로 자르지 않는다** — 한 페이지에 여러 날짜가 섞여 나온다
+- **응답 메시지에 `date`가 실린다** — `createdAt`과 다른 값일 수 있다(8/6에 8/1을 물은 경우)
 
 직전 7일과 날짜 라벨(함정 5):
 
@@ -487,11 +552,15 @@ const val RECENT_DAYS = 7
 
 | 파손 | 빨개져야 하는 테스트 |
 | --- | --- |
-| 상한 검사 제거 | 턴 상한 |
+| 히스토리 창을 무제한으로 | 20턴 큐 |
+| 히스토리 창을 `date` 기준으로 | 7일은 `createdAt` 기준 |
+| 히스토리를 기준 날짜로만 조회 | 날짜를 넘나드는 히스토리 |
+| 페이징에서 `before`를 무시 | `id` 커서 |
+| 마지막 장에서도 `nextCursor`를 채움 | `nextCursor`가 null |
 | 데이터 블록을 히스토리에 저장 | 데이터 블록 미저장 |
 | `context()`를 `day()`만 쓰도록 되돌림 | 끼니별 상세 |
 | LLM 실패 시 질문만 저장 | LLM null |
-| `isAvailable` 가드 제거 | 키 없음 |
+| `ask`의 `client ?: throw` 가드 제거 | 키 없음 |
 | 직전 7일 블록 제거 | 직전 7일 |
 | `day()` 헤더를 「오늘 먹은 끼니」로 되돌림 | 기준 날짜 |
 | 기록 없는 날을 목록에서 생략 | 기록 없는 날 |
@@ -502,21 +571,20 @@ const val RECENT_DAYS = 7
 ## 의도적으로 하지 않는 것
 
 - **대화를 지우지 않는다 — TTL도, 삭제 엔드포인트도 없다.** 지난 대화를 나중에 다시 열어 볼
-  수 있어야 한다는 것이 이 결정의 이유다. 저장량은 문제가 되지 않는다 — 턴 상한이
-  `(user, date)`당 20이라 하루 최대 40행이고, 상한이 날짜별이라 옛 대화가 새 대화를 막지도
-  않는다.
+  수 있어야 한다는 것이 이 결정의 이유이고, 화면이 무한 스크롤이라 오래된 것도 실제로 보인다.
 
   **대신 대화를 지울 방법이 아예 없다.** 잘못 쓴 질문을 지우거나 운영에서 특정 사용자의
-  대화를 정리하려면 DB를 직접 만져야 한다. 필요해지면 그때 삭제 엔드포인트를 따로 설계한다 —
-  그때는 「지우면 턴 상한이 초기화된다」를 함께 풀어야 한다
+  대화를 정리하려면 DB를 직접 만져야 한다. 필요해지면 그때 삭제 엔드포인트를 따로 설계한다.
+- **질문 횟수를 막지 않는다.** 히스토리가 큐라 요청 크기가 유계이므로 상한이 비용 방어로
+  필요하지 않고, 상한을 두면 「일주일치를 하루에 다 쓰면 남은 엿새를 못 묻는다」가 되어
+  대화를 끊는다. 남는 위험(클라이언트 루프)은 「9. 상수」에 적었다.
 - **끼니를 지워도 대화는 지우지 않는다.** `MealService.delete`가 하루 피드백 캐시는 지우지만
   (낡은 기계 생성물이라), 대화에는 사용자가 직접 쓴 질문이 들어 있다. 데이터 블록은 어차피
   매 턴 새로 만들어진다. 그날 끼니가 전부 사라지면 다음 질문이 `INVALID_REQUEST`로 막히는데,
   그 상태에서 지난 대화를 읽는 것은 여전히 가능하다
-- **동시성 방어 없음** — 두 요청이 겹치면 상한을 한 번 넘길 수 있다. 사용자가 직접 누르는
-  동작이고 사용자가 2명이다(`AGENTS.md`)
+- **동시성 방어 없음** — 사용자가 직접 누르는 동작이고 사용자가 2명이다(`AGENTS.md`)
 - **스트리밍(SSE) 없음** — `flash-lite` 텍스트 호출은 수 초다. WebFlux 스트리밍은 이 규모에 과하다
-- **대화 삭제 엔드포인트 없음** — 지우면 턴 상한이 초기화돼 상한이 무의미해진다
+- **대화 검색 없음** — 무한 스크롤로 거슬러 올라가는 것으로 충분하다고 본다
 - **자동 재시도 없음** — 실패는 사용자가 다시 묻는다. 저장소 전체가 같은 방침이다
 - **요약 말풍선을 서버가 만들지 않는다** — 「오늘 1,240kcal 드셨어요」류는 앱이 `DayResponse`로
   조립한다. 서버가 문장으로 만들어 주면 매번 LLM 비용이 나가거나(결정성도 잃는다) 문구 포맷이
@@ -526,16 +594,18 @@ const val RECENT_DAYS = 7
 
 ## iOS가 할 일 (이 API가 들어온 뒤)
 
-**직전 7일 반영으로 앱에 추가되는 일은 없다.** 응답 스키마가 하나도 바뀌지 않는다 —
-`DayResponse`도 `MealResponse.mealType`(`"LUNCH"`)도 그대로다. 직전 7일은 서버가 프롬프트를
-만들 때만 쓰고 앱은 이 변경을 모른다. 아래는 원래 설계 그대로다.
+**화면이 채팅앱 형태로 바뀐다** — 「그날 대화만」에서 「이어지는 스트림 + 무한 스크롤」로.
+`DayResponse`와 `MealResponse.mealType`(`"LUNCH"`)은 그대로지만 **채팅 API는 바뀐다.**
 
-- **오른쪽 아래 플로팅 버튼** → 채팅 화면. 보고 있던 날짜를 그대로 넘긴다
+- **오른쪽 아래 플로팅 버튼** → 채팅 화면. 보고 있던 날짜를 `POST`에 그대로 넘긴다
 - **코치 오프닝 말풍선 3종을 앱이 조립한다** — 하루 요약·끼니별 점수 요약은 `DayResponse`에서,
   총평은 `DayResponse.feedback`에서. **LLM을 부르지 않는다**
-- `DietServing`에 `fetchDayChat(date:)` / `askDayChat(date:message:)` 추가
-- **`remainingTurns`가 0이면 입력창을 잠근다.** 서버가 400을 주기 전에 앱이 먼저 막는다
-- **`DayResponse.meals`가 비었으면 입력창을 잠그고 정적 문구를 띄운다**(빈 날 처리)
+- `DietServing`에 `fetchChatPage(before:size:)` / `askDayChat(date:message:)` 추가
+- **최신이 아래, 위로 스크롤하면 다음 장.** `nextCursor`가 null이면 멈춘다
+- **말풍선에 `date` 배지를 붙인다** — 스트림이 물은 시각 순이라 8/1에 대한 질문이 8/6 대화
+  사이에 앉는다. `createdAt`이 아니라 `date`로 붙여야 한다
+- **입력창 잠금은 빈 날 하나뿐이다** — 질문 횟수 상한이 없어졌다.
+  `DayResponse.meals`가 비었으면 잠그고 정적 문구를 띄운다
 - `feedback`이 아직 null이면(생성 중) 총평 말풍선 자리에 로딩을 두고, 기존 폴링을 그대로 쓴다
 - 전송 중에는 중복 요청을 막는다 — `MealConfirmViewModel.isSaving`과 같은 가드
 
