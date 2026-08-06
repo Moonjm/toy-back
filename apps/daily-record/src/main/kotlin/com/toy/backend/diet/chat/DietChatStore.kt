@@ -103,19 +103,17 @@ class DietChatStore(
         )
     }
 
-    /** 질문·답 두 행을 순서대로 저장한다. 저장 직후의 id·`createdAt`·남은 턴이 이 트랜잭션 안에 있다. */
+    /** 질문·답 두 행을 순서대로 저장하고 **저장된 답 한 건**을 돌려준다. id·`createdAt`이 이 트랜잭션 안에서 채워진다. */
     @Transactional
     fun append(
         username: String,
         date: LocalDate,
         question: String,
         answer: String,
-    ): DietChatAnswerResponse {
+    ): DietChatMessageResponse {
         val user = findUser(username)
         messageRepository.save(DietChatMessage(user, date, ChatRole.USER, question))
-        val saved = messageRepository.save(DietChatMessage(user, date, ChatRole.ASSISTANT, answer))
-        val used = messageRepository.findByUserAndDateOrderByIdAsc(user, date).count { it.role == ChatRole.USER }
-        return DietChatAnswerResponse(saved.toResponse(), MAX_TURNS_PER_DAY - used)
+        return messageRepository.save(DietChatMessage(user, date, ChatRole.ASSISTANT, answer)).toResponse()
     }
 
     /** `GET`용. **키가 없어도 동작한다** — 저장된 대화를 보여주는 데는 LLM이 필요 없다(함정 4). */
@@ -161,5 +159,5 @@ class DietChatStore(
         userRepository.findByUsername(username)
             ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, username)
 
-    private fun DietChatMessage.toResponse() = DietChatMessageResponse(requiredId, role, content, createdAt)
+    private fun DietChatMessage.toResponse() = DietChatMessageResponse(requiredId, date, role, content, createdAt)
 }

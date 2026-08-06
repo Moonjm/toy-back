@@ -36,7 +36,7 @@ class DietChatController(
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) date: LocalDate,
         @Valid @RequestBody request: DietChatRequest,
         authentication: Authentication,
-    ): ResponseEntity<DataResponseBody<DietChatAnswerResponse>> =
+    ): ResponseEntity<DataResponseBody<DietChatMessageResponse>> =
         ResponseEntity.ok(DataResponseBody(service.ask(authentication.name, date, request.message)))
 
     @GetMapping

@@ -186,30 +186,28 @@ class DietChatStoreTest :
         // 아무 데서도 잡히지 않는다. DietChatServiceTest는 append에 무엇을 넘기는지만 보고
         // append가 실제로 무엇을 저장하는지는 못 본다.
         Given("질문과 답을 저장하면") {
-            val slots = mutableListOf<DietChatMessage>()
-            every { messageRepository.save(capture(slots)) } answers {
-                firstArg<DietChatMessage>().withId(slots.size.toLong())
-            }
-            every { messageRepository.findByUserAndDateOrderByIdAsc(user, date) } returns
-                listOf(
-                    DietChatMessage(user, date, ChatRole.USER, "왜 낮아?").withId(1L),
-                    DietChatMessage(user, date, ChatRole.ASSISTANT, "나트륨").withId(2L),
-                )
-
-            val response = store.append("testuser", date, "왜 낮아?", "나트륨")
-
-            Then("USER, ASSISTANT 두 행만 저장된다 — 데이터 블록은 저장하지 않는다") {
-                slots.map { it.role } shouldBe listOf(ChatRole.USER, ChatRole.ASSISTANT)
-                slots.map { it.content } shouldBe listOf("왜 낮아?", "나트륨")
+            val saved = mutableListOf<DietChatMessage>()
+            every { messageRepository.save(capture(saved)) } answers {
+                firstArg<DietChatMessage>().withId(saved.size.toLong())
             }
 
-            Then("남은 턴이 준다") {
-                response.remainingTurns shouldBe MAX_TURNS_PER_DAY - 1
+            val response = store.append("testuser", date, "왜 낮아?", "나트륨 때문입니다")
+
+            // 데이터 블록이 세 번째 행으로 저장되면 여기서 잡힌다 — 함정 2가 재현되는 자리다.
+            Then("USER, ASSISTANT 두 행만 저장된다") {
+                saved.map { it.role } shouldBe listOf(ChatRole.USER, ChatRole.ASSISTANT)
+                saved.map { it.content } shouldBe listOf("왜 낮아?", "나트륨 때문입니다")
             }
 
-            Then("응답은 방금 저장한 답 메시지다") {
-                response.message.role shouldBe ChatRole.ASSISTANT
-                response.message.content shouldBe "나트륨"
+            Then("저장된 답 한 건을 돌려준다") {
+                response.role shouldBe ChatRole.ASSISTANT
+                response.content shouldBe "나트륨 때문입니다"
+            }
+
+            // 스트림이 물은 시각 순이라 8/1에 대한 질문이 8/6 대화 사이에 앉는다.
+            // 이 값이 없으면 앱이 말풍선에 「8/1에 대해」를 못 붙인다.
+            Then("어느 날에 대한 질문인지가 실린다") {
+                response.date shouldBe date
             }
         }
 

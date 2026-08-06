@@ -26,7 +26,7 @@ class DietChatService(
         username: String,
         date: LocalDate,
         message: String,
-    ): DietChatAnswerResponse {
+    ): DietChatMessageResponse {
         val openRouter = client ?: throw CustomException(DietErrorCode.LLM_UNAVAILABLE)
         val context = store.loadContext(username, date)
         // 데이터 → 총평 → 히스토리 → 이번 질문. 총평은 대화의 출발점이라 assistant 자리에 넣고,

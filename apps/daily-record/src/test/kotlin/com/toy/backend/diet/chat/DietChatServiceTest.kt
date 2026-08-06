@@ -32,10 +32,7 @@ class DietChatServiceTest :
         )
 
         val answer =
-            DietChatAnswerResponse(
-                DietChatMessageResponse(2L, ChatRole.ASSISTANT, "나트륨 때문입니다", LocalDateTime.now()),
-                19,
-            )
+            DietChatMessageResponse(2L, date, ChatRole.ASSISTANT, "나트륨 때문입니다", LocalDateTime.now())
 
         Given("정상 흐름이면") {
             val service = DietChatService(store, client)
