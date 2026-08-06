@@ -124,13 +124,19 @@ class DietChatStoreTest :
                     feedback = "총평",
                     generatedAt = LocalDateTime.now(),
                 )
-            // 8/6에 물었지만 8/1에 대한 질문 — 접두는 date(08-01)이지 createdAt(08-06)이 아니다.
+            // 8/6에 물었지만 7/27에 대한 질문이다. 접두는 date(07-27)이지 createdAt(08-06)도
+            // 기준 날짜(08-01)도 아니다 — 세 값을 전부 다르게 둬서 구현이 셋 중 어느 것을
+            // 잘못 써도 이 테스트가 빨개지게 한다.
             every {
                 messageRepository.findByUserAndCreatedAtAfterOrderByIdDesc(eq(user), any(), any())
             } returns
                 listOf(
-                    DietChatMessage(user, date, ChatRole.ASSISTANT, "나트륨 때문입니다").withId(2L),
-                    DietChatMessage(user, date, ChatRole.USER, "왜 낮아?").withId(1L),
+                    DietChatMessage(user, date.minusDays(5), ChatRole.ASSISTANT, "나트륨 때문입니다")
+                        .withId(2L)
+                        .also { it.createdAt = LocalDateTime.of(2026, 8, 6, 9, 0) },
+                    DietChatMessage(user, date.minusDays(5), ChatRole.USER, "왜 낮아?")
+                        .withId(1L)
+                        .also { it.createdAt = LocalDateTime.of(2026, 8, 6, 9, 0) },
                 )
 
             val context = store.loadContext("testuser", date)
@@ -141,7 +147,7 @@ class DietChatStoreTest :
 
             // 히스토리가 날짜를 넘나들어서, 안 붙이면 모델이 예전 질문을 오늘 것으로 읽는다.
             Then("사용자 턴 앞에 그 질문의 날짜가 붙는다") {
-                context.history[0].content shouldBe "[08-01] 왜 낮아?"
+                context.history[0].content shouldBe "[07-27] 왜 낮아?"
             }
 
             Then("답변 턴에는 안 붙는다 — 바로 뒤에 와서 짝이 명확하다") {
