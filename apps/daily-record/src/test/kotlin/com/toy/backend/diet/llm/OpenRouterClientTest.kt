@@ -65,7 +65,7 @@ class OpenRouterClientTest :
 
         Given("문장 생성 요청 본문") {
             val client = clientWith()
-            val body = client.textBody("시스템", "사용자")
+            val body = client.chatBody("시스템", listOf(ChatTurn("user", "사용자")))
 
             Then("max_tokens를 싣는다") {
                 body["max_tokens"] shouldBe 2000
@@ -73,12 +73,30 @@ class OpenRouterClientTest :
 
             Then("설정값을 그대로 쓴다") {
                 clientWith(OpenRouterProperties(apiKey = "k", textMaxTokens = 123))
-                    .textBody("s", "u")["max_tokens"] shouldBe 123
+                    .chatBody("s", listOf(ChatTurn("user", "u")))["max_tokens"] shouldBe 123
             }
 
             Then("사진 인식과 다른 모델·한도를 쓴다 — 문장 생성이 더 싸고 짧다") {
-                body["model"] shouldBe "google/gemini-2.5-flash-lite"
+                body["model"] shouldNotBe client.visionBody("QUJD", "image/jpeg")["model"]
                 body["max_tokens"] shouldNotBe client.visionBody("QUJD", "image/jpeg")["max_tokens"]
+            }
+
+            // 히스토리가 뒤섞이면 모델이 누가 무슨 말을 했는지 잃는다.
+            Then("system이 맨 앞이고 턴이 준 순서 그대로 뒤에 붙는다") {
+                val many =
+                    client.chatBody(
+                        "시스템",
+                        listOf(
+                            ChatTurn("user", "데이터"),
+                            ChatTurn("assistant", "총평"),
+                            ChatTurn("user", "질문"),
+                        ),
+                    )
+
+                @Suppress("UNCHECKED_CAST")
+                val messages = many["messages"] as List<Map<String, String>>
+                messages.map { it["role"] } shouldBe listOf("system", "user", "assistant", "user")
+                messages.map { it["content"] } shouldBe listOf("시스템", "데이터", "총평", "질문")
             }
         }
 

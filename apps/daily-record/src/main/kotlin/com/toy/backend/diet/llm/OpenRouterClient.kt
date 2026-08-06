@@ -30,6 +30,16 @@ data class RecognizedFood(
 )
 
 /**
+ * OpenRouter `messages` 배열의 한 칸. **`role`은 API 값**(`"user"`/`"assistant"`)이다 —
+ * 도메인 enum(`ChatRole`)을 여기 두면 `diet.llm`이 `diet.chat`을 알게 되어 의존이 뒤집힌다.
+ * 변환은 부르는 쪽에서 한다.
+ */
+data class ChatTurn(
+    val role: String,
+    val content: String,
+)
+
+/**
  * OpenRouter `chat/completions` 래퍼. **매칭에 성공한 음식의 수치는 LLM에게 묻지 않는다** —
  * 같은 사진에서도 호출마다 값이 달라지기 때문이다. 여기서 얻는 것은 *음식 식별*과 *문장*이고,
  * `estimated*` 값은 식품DB 매칭이 실패했을 때만 쓰는 fallback이다.
@@ -56,10 +66,19 @@ class OpenRouterClient(
         }
     }
 
+    /**
+     * 여러 턴을 보낸다. `generateText`가 이 위의 얇은 래퍼라 **요청을 만드는 자리가 하나로
+     * 유지된다** — 두 벌이면 `max_tokens`처럼 한쪽에만 빠지는 값이 생긴다.
+     */
+    fun chat(
+        systemPrompt: String,
+        turns: List<ChatTurn>,
+    ): String? = post(chatBody(systemPrompt, turns))?.trim()?.takeIf { it.isNotBlank() }
+
     fun generateText(
         systemPrompt: String,
         userPrompt: String,
-    ): String? = post(textBody(systemPrompt, userPrompt))?.trim()?.takeIf { it.isNotBlank() }
+    ): String? = chat(systemPrompt, listOf(ChatTurn("user", userPrompt)))
 
     /** 본문 구성만 떼어 둔다 — `max_tokens`가 빠지면 402가 나는데, 그건 실기동에서만 드러난다. */
     internal fun visionBody(
@@ -87,17 +106,16 @@ class OpenRouterClient(
             "max_tokens" to properties.visionMaxTokens,
         )
 
-    internal fun textBody(
+    internal fun chatBody(
         systemPrompt: String,
-        userPrompt: String,
+        turns: List<ChatTurn>,
     ): Map<String, Any> =
         mapOf(
             "model" to properties.textModel,
             "messages" to
-                listOf(
-                    mapOf("role" to "system", "content" to systemPrompt),
-                    mapOf("role" to "user", "content" to userPrompt),
-                ),
+                listOf(mapOf("role" to "system", "content" to systemPrompt)) +
+                turns.map { mapOf("role" to it.role, "content" to it.content) },
+            // 안 보내면 잔액이 남았는데도 402가 난다(`visionBody`와 같은 이유).
             "max_tokens" to properties.textMaxTokens,
         )
 
