@@ -99,7 +99,7 @@ class DietFeedbackPromptsTest :
             // 날짜가 없으면 모델은 어느 날 얘기인지 모른다. 지난 날짜 대화에서도 「오늘」이라 말하고,
             // 자기가 보고 있는 게 그 날짜인데도 「오늘 기록만 볼 수 있다」고 거절할 수 있다.
             Then("헤더에 기준 날짜와 요일이 박힌다 — 「오늘」이 아니다") {
-                prompt shouldContain "[2026-08-01 (금) 먹은 끼니]"
+                prompt shouldContain "[2026-08-01 (토) 먹은 끼니]"
                 prompt shouldNotContain "오늘 먹은 끼니"
             }
 
@@ -174,7 +174,7 @@ Expected: **컴파일 실패** — `day()`가 `date`를 받지 않아 인자 개
 
 ```kotlin
     /**
-     * `2026-08-01 (금)`. **요일까지 넣는다** — 주말 과식 같은 요일 효과는 날짜만으로는 안 보인다.
+     * `2026-08-01 (토)`. **요일까지 넣는다** — 주말 과식 같은 요일 효과는 날짜만으로는 안 보인다.
      */
     private val PROMPT_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd (E)", Locale.KOREAN)
 ```
@@ -674,7 +674,7 @@ class DietChatPromptsTest :
             val ctx = DietChatPrompts.context(date, meals, meals.totals(), targets, 61, 320, recent)
 
             Then("기준일이 먼저, 직전 7일이 뒤다") {
-                ctx.indexOf("[2026-08-01 (금) 먹은 끼니]") shouldBeLessThan ctx.indexOf("[직전 2일]")
+                ctx.indexOf("[2026-08-01 (토) 먹은 끼니]") shouldBeLessThan ctx.indexOf("[직전 2일]")
             }
 
             // 화면이 「점심 74점」을 보여주므로 「왜 그래?」가 반드시 온다. day()만으로는 못 답한다.
@@ -950,7 +950,7 @@ class DietChatStoreTest :
             val context = store.loadContext("testuser", date)
 
             Then("기준일 상세와 직전 7일이 한 블록에 담긴다") {
-                context.dataBlock shouldContain "[2026-08-01 (금) 먹은 끼니]"
+                context.dataBlock shouldContain "[2026-08-01 (토) 먹은 끼니]"
                 context.dataBlock shouldContain "[직전 7일]"
                 context.dataBlock shouldContain "저녁: 치킨"
             }
@@ -1329,7 +1329,7 @@ class DietChatServiceTest :
             feedback: String? = "총평",
             history: List<ChatTurn> = emptyList(),
         ) = ChatContext(
-            dataBlock = "[2026-08-01 (금) 먹은 끼니]\n- 점심: 제육볶음 (555kcal)\n[직전 7일]\n- 07-30 (목) 58점 2930kcal",
+            dataBlock = "[2026-08-01 (토) 먹은 끼니]\n- 점심: 제육볶음 (555kcal)\n[직전 7일]\n- 07-30 (목) 58점 2930kcal",
             dayFeedback = feedback,
             history = history,
             remainingTurns = 19,

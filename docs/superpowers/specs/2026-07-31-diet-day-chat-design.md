@@ -163,7 +163,7 @@ fun context(date: LocalDate, meals: List<Meal>, totals: NutritionTotals, targets
 이건 채팅만의 문제가 아니다. **하루 피드백도 지난 날짜를 조회하면 그때 생성되므로 지금도
 「오늘」이 틀린 경우가 있다.**
 
-**→ `day()`가 `date`를 받아 헤더에 박는다.** `[2026-08-01 (금) 먹은 끼니]`. 하루 피드백과 채팅이
+**→ `day()`가 `date`를 받아 헤더에 박는다.** `[2026-08-01 (토) 먹은 끼니]`. 하루 피드백과 채팅이
 한 번에 정확해진다. 호출부는 `DayFeedbackStore.loadPrompt` 하나뿐이고 이미 `date`를 갖고 있다.
 
 **끼니 종류도 함께 한글로 렌더링한다.** 사용자가 한국어로 묻고 모델이 한국어로 답하는데
@@ -447,7 +447,7 @@ const val RECENT_DAYS = 7
 
 - `MealType`에 프롬프트 표시명 `label`을 단다(아침·점심·저녁·간식). **enum 이름과 API 응답은
   그대로다** — `MealResponse.mealType`은 `"LUNCH"`다.
-- `DietFeedbackPrompts.day(date, ...)` — 헤더를 `[2026-08-01 (금) 먹은 끼니]`로, 끼니 종류를
+- `DietFeedbackPrompts.day(date, ...)` — 헤더를 `[2026-08-01 (토) 먹은 끼니]`로, 끼니 종류를
   `label`로. 호출부는 `DayFeedbackStore.loadPrompt` 하나뿐이고 이미 `date`를 갖고 있다.
 - `DietFeedbackPrompts.meal(...)` — `[이번 끼니]` 뒤를 `label`로.
 
