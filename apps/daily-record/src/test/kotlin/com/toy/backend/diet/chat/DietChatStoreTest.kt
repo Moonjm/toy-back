@@ -154,4 +154,59 @@ class DietChatStoreTest :
                 context.remainingTurns shouldBe MAX_TURNS_PER_DAY - 1
             }
         }
+
+        // 유일한 쓰기 경로다 — 여기가 비면 함정 2(데이터 블록을 히스토리에 저장)가 실제로는
+        // 아무 데서도 잡히지 않는다. DietChatServiceTest는 append에 무엇을 넘기는지만 보고
+        // append가 실제로 무엇을 저장하는지는 못 본다.
+        Given("질문과 답을 저장하면") {
+            val slots = mutableListOf<DietChatMessage>()
+            every { messageRepository.save(capture(slots)) } answers {
+                firstArg<DietChatMessage>().withId(slots.size.toLong())
+            }
+            every { messageRepository.findByUserAndDateOrderByIdAsc(user, date) } returns
+                listOf(
+                    DietChatMessage(user, date, ChatRole.USER, "왜 낮아?").withId(1L),
+                    DietChatMessage(user, date, ChatRole.ASSISTANT, "나트륨").withId(2L),
+                )
+
+            val response = store.append("testuser", date, "왜 낮아?", "나트륨")
+
+            Then("USER, ASSISTANT 두 행만 저장된다 — 데이터 블록은 저장하지 않는다") {
+                slots.map { it.role } shouldBe listOf(ChatRole.USER, ChatRole.ASSISTANT)
+                slots.map { it.content } shouldBe listOf("왜 낮아?", "나트륨")
+            }
+
+            Then("남은 턴이 준다") {
+                response.remainingTurns shouldBe MAX_TURNS_PER_DAY - 1
+            }
+
+            Then("응답은 방금 저장한 답 메시지다") {
+                response.message.role shouldBe ChatRole.ASSISTANT
+                response.message.content shouldBe "나트륨"
+            }
+        }
+
+        Given("history는") {
+            Then("빈 대화면 남은 턴이 상한 그대로다") {
+                // beforeContainer가 messageRepository를 빈 목록으로 기본 스텁해 둔다.
+                val response = store.history("testuser", date)
+
+                response.messages shouldBe emptyList()
+                response.remainingTurns shouldBe MAX_TURNS_PER_DAY
+            }
+
+            Then("저장된 메시지가 쌓인 순서대로 나온다") {
+                every { messageRepository.findByUserAndDateOrderByIdAsc(user, date) } returns
+                    listOf(
+                        DietChatMessage(user, date, ChatRole.USER, "왜 낮아?").withId(1L),
+                        DietChatMessage(user, date, ChatRole.ASSISTANT, "나트륨").withId(2L),
+                    )
+
+                val response = store.history("testuser", date)
+
+                response.messages.map { it.role } shouldBe listOf(ChatRole.USER, ChatRole.ASSISTANT)
+                response.messages.map { it.content } shouldBe listOf("왜 낮아?", "나트륨")
+                response.remainingTurns shouldBe MAX_TURNS_PER_DAY - 1
+            }
+        }
     })

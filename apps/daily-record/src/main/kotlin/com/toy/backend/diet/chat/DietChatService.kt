@@ -18,8 +18,6 @@ class DietChatService(
     // 키가 없으면 빈이 등록되지 않는다 — `DietFeedbackGenerator`와 같은 모양이다.
     @Autowired(required = false) private val client: OpenRouterClient?,
 ) {
-    val isAvailable: Boolean get() = client != null
-
     /**
      * **가드가 맨 앞이다**(함정 4). 키가 없으면 컨텍스트를 읽지도 않고 거절한다 — 읽어 봐야
      * 호출할 수 없고, 상한 검사에 걸려 엉뚱한 오류가 나갈 수도 있다.
