@@ -116,5 +116,12 @@ class DietChatPromptsTest :
             Then("범위 밖을 거절이 아니라 길 안내로 돌린다") {
                 DietChatPrompts.SYSTEM_PROMPT shouldContain "그 날짜를 열어서"
             }
+
+            // 「점수·열량과 음식 이름만 있습니다」라고 못 박아 두면, 눈앞에 주의 줄이 있는데도
+            // 모델이 「그 정보는 없습니다」라고 답하거나 그 줄을 무시할 여지가 생긴다.
+            Then("직전 7일에 무엇이 있는지가 실제 블록과 맞는다") {
+                DietChatPrompts.recentDaysBlock(recent) shouldContain "· 주의: "
+                DietChatPrompts.SYSTEM_PROMPT shouldContain "주의 영양소"
+            }
         }
     })
