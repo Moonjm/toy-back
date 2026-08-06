@@ -4,6 +4,9 @@ import com.toy.backend.diet.meal.Meal
 import com.toy.backend.diet.profile.NutritionTargets
 import com.toy.backend.diet.score.MacroStatus
 import com.toy.backend.diet.score.MealScoreBasis
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.math.roundToInt
 
 data class NutritionTotals(
@@ -28,6 +31,11 @@ fun List<Meal>.totals(): NutritionTotals =
     )
 
 object DietFeedbackPrompts {
+    /**
+     * `2026-08-01 (토)`. **요일까지 넣는다** — 주말 과식 같은 요일 효과는 날짜만으로는 안 보인다.
+     */
+    private val PROMPT_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd (E)", Locale.KOREAN)
+
     /**
      * **3요소를 강제한다.** ③을 강제하지 않으면 "골고루 드세요"류로 흐른다.
      * 의학적 진단·처방은 금지 항목으로 명시한다 — 앱이 의료기기가 아니다.
@@ -57,7 +65,7 @@ object DietFeedbackPrompts {
         basis: MealScoreBasis?,
     ): String =
         buildString {
-            appendLine("[이번 끼니] ${meal.mealType}")
+            appendLine("[이번 끼니] ${meal.mealType.label}")
             meal.items.forEach {
                 appendLine(
                     "- ${it.foodName} ${it.quantityG.roundToInt()}g / ${it.kcal.roundToInt()}kcal " +
@@ -86,6 +94,7 @@ object DietFeedbackPrompts {
         }
 
     fun day(
+        date: LocalDate,
         meals: List<Meal>,
         totals: NutritionTotals,
         targets: NutritionTargets,
@@ -93,10 +102,10 @@ object DietFeedbackPrompts {
         activeEnergyKcal: Int?,
     ): String =
         buildString {
-            appendLine("[오늘 먹은 끼니]")
+            appendLine("[${date.format(PROMPT_DATE)} 먹은 끼니]")
             meals.forEach { meal ->
                 appendLine(
-                    "- ${meal.mealType}: ${meal.items.joinToString(", ") { it.foodName }} " +
+                    "- ${meal.mealType.label}: ${meal.items.joinToString(", ") { it.foodName }} " +
                         "(${meal.totalKcal.roundToInt()}kcal)",
                 )
             }

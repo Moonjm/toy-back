@@ -54,7 +54,7 @@ class DayFeedbackStore(
         val dayScore = DietScoreCalculator.scoreDay(totals.kcal, totals.carbsG, totals.proteinG, totals.fatG, targets).score
         val activeEnergyKcal = activityRepository.findByUserAndDate(user, date)?.activeEnergyKcal
         return DayPrompt(
-            prompt = DietFeedbackPrompts.day(meals, totals, targets, dayScore, activeEnergyKcal),
+            prompt = DietFeedbackPrompts.day(date, meals, totals, targets, dayScore, activeEnergyKcal),
             dayScore = dayScore,
         )
     }
