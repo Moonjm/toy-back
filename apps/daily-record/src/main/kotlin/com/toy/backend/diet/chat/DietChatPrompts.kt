@@ -121,6 +121,10 @@ object DietChatPrompts {
     /** `07-30 (목)`. 기준일 헤더와 달리 연도를 빼 줄을 짧게 유지한다 — 같은 해 안의 최근 7일이다. */
     private val RECENT_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd (E)", Locale.KOREAN)
 
-    /** 히스토리 접두. 연도를 빼 줄을 짧게 유지한다 — 7일 창 안이라 해가 갈릴 일이 드물다. */
+    /**
+     * 히스토리 접두. 연도를 빼 줄을 짧게 유지한다 — 찍히는 값은 `date`(어느 날에 대한
+     * 질문인가)이고, `date`는 7일 창에 갇혀 있지 않다(`POST`가 상한 없이 과거 날짜를 받는다).
+     * 그래도 빼는 이유는 같은 MM-dd가 해를 걸쳐 겹칠 확률이 낮아서다.
+     */
     private val HISTORY_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd")
 }

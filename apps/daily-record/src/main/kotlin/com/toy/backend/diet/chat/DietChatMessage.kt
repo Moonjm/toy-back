@@ -21,13 +21,17 @@ enum class ChatRole { USER, ASSISTANT }
  * 가리키는데, 하루 피드백과 달리 **대화는 무효화할 수 없다**(이미 한 말을 취소할 수 없다).
  * 매 요청 현재 DB에서 새로 만들면 지난 대화가 옛 숫자를 언급하더라도 다음 답변은 최신을 본다.
  *
- * **스레드 테이블을 두지 않는다.** 하루당 대화가 하나뿐이라 `(user, date)`가 곧 스레드다.
- * 턴 수도 별도 컬럼 없이 `USER` 메시지 개수로 센다 — 카운터를 두면 메시지와 어긋날 자리가 생긴다.
+ * **스레드 테이블을 두지 않는다.** 대화는 사용자당 하나의 이어지는 스트림이라 별도 스레드
+ * 식별자가 필요 없다 — `user`만으로 그 사람의 전체 대화가 정해진다. `date`는 스레드가 아니라
+ * **그 질문이 어느 날 식단에 대한 것인가**로만 남는다(대화 자체는 날짜로 자르지 않는다). 질문
+ * 횟수 상한이 없어 턴 수를 세는 코드도 없다.
  */
 @Entity
 @Table(
     name = "diet_chat_message",
-    indexes = [Index(name = "idx_diet_chat_user_date", columnList = "user_id, date, id")],
+    // 남은 쿼리 둘을 받친다 — 히스토리(user_id, created_at>? ORDER BY id DESC)와
+    // 커서 페이징(user_id, id<? ORDER BY id DESC). 둘 다 date를 안 쓴다.
+    indexes = [Index(name = "idx_diet_chat_user_id", columnList = "user_id, id")],
 )
 class DietChatMessage(
     @ManyToOne(fetch = FetchType.LAZY)

@@ -233,7 +233,9 @@ enum class ChatRole { USER, ASSISTANT }
 @Entity
 @Table(
     name = "diet_chat_message",
-    indexes = [Index(name = "idx_diet_chat_user_date", columnList = "user_id, date, id")],
+    // 남은 쿼리 둘을 받친다 — 히스토리(user_id, created_at>? ORDER BY id DESC)와
+    // 커서 페이징(user_id, id<? ORDER BY id DESC). 둘 다 date를 안 쓴다.
+    indexes = [Index(name = "idx_diet_chat_user_id", columnList = "user_id, id")],
 )
 class DietChatMessage(
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "user_id", nullable = false)
@@ -248,17 +250,32 @@ class DietChatMessage(
 `columnDefinition = "varchar(20)"`은 필수다 — `ddl-auto`가 CHECK 제약을 갱신하지 못해
 나중에 enum 값을 늘리면 기존 DB에서 INSERT가 깨진다(`AGENTS.md`).
 
-**스레드 테이블은 두지 않는다.** 하루당 대화가 하나뿐이라 `(user, date)`가 곧 스레드다.
-턴 수도 별도 컬럼 없이 `USER` 메시지 개수로 센다 — 카운터를 두면 메시지와 어긋날 자리가 생긴다.
+**스레드 테이블은 두지 않는다.** 대화는 사용자당 하나의 이어지는 스트림이라 별도 스레드
+식별자가 필요 없다 — `user`만으로 그 사람의 전체 대화가 정해진다. `date`는 스레드가 아니라
+**그 질문이 어느 날 식단에 대한 것인가**로만 남는다(대화 자체는 날짜로 자르지 않는다). 질문
+횟수 상한이 없어 턴 수를 세는 코드도 없다.
 
 ```kotlin
 interface DietChatMessageRepository : JpaRepository<DietChatMessage, Long> {
-    fun findByUserAndDateOrderByIdAsc(user: User, date: LocalDate): List<DietChatMessage>
+    /** 프롬프트에 실을 히스토리. `createdAt` 기준으로 최근 것부터, 개수는 `Pageable`로 자른다. */
+    fun findByUserAndCreatedAtAfterOrderByIdDesc(
+        user: User,
+        createdAt: LocalDateTime,
+        pageable: Pageable,
+    ): List<DietChatMessage>
+
+    /** 화면용 커서 페이징. 날짜로 자르지 않는다 — 사용자 전체가 한 스트림이다. */
+    fun findByUserAndIdLessThanOrderByIdDesc(
+        user: User,
+        id: Long,
+        pageable: Pageable,
+    ): List<DietChatMessage>
 }
 ```
 
-턴 수는 `findByUserAndDateOrderByIdAsc`로 가져온 목록에서 센다 — 어차피 히스토리를 전부
-읽어야 하므로 `count` 쿼리를 따로 두지 않는다.
+리포지토리 메서드는 둘이다 — 프롬프트용 히스토리 조회(`createdAt` 창 + 개수 제한)와 화면용
+커서 페이징(`id` 기준)이 서로 다른 쿼리라 하나로 합치지 않는다. 인덱스는 `(user_id, id)`
+하나로 둘 다 받친다.
 
 ### 2. `OpenRouterClient` — 여러 턴을 보낼 수 있게
 

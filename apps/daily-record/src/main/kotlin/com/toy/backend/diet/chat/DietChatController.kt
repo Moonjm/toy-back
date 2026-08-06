@@ -22,7 +22,7 @@ import java.time.LocalDate
  * 왕복이 두 번이 되고, 사용자가 화면에서 기다리는 대화에서 그 지연은 그대로 체감된다.
  * 답변 자체가 데이터라 `DataResponseBody`가 맞다. **관례 위반이 아니라 기록된 예외다.**
  */
-@Tag(name = "하루 채팅", description = "하루 평가에 대해 되묻는 대화")
+@Tag(name = "하루 채팅", description = "하루 평가에 대해 되묻는 대화 — 질문은 날짜별이지만 조회는 날짜에 매이지 않는 이어지는 스트림 전체다")
 @RestController
 class DietChatController(
     private val service: DietChatService,

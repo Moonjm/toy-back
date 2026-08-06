@@ -171,9 +171,12 @@ class DietChatStoreTest :
 
             store.loadContext("testuser", date)
 
+            // 폭을 좁게 조인다 — HISTORY_DAYS를 6이나 8로 바꿔도 잡히도록, `now`를 두 번 평가해
+            // 생기는 시차보다 훨씬 좁은 ±1분 창을 쓴다.
             Then("createdAt 기준 7일이다 — date 기준이 아니다") {
-                cutoff.captured shouldBeAfter LocalDateTime.now().minusDays(8)
-                cutoff.captured shouldBeBefore LocalDateTime.now().minusDays(6)
+                val now = LocalDateTime.now()
+                cutoff.captured shouldBeAfter now.minusDays(7).minusMinutes(1)
+                cutoff.captured shouldBeBefore now.minusDays(7).plusMinutes(1)
             }
 
             Then("20턴, 즉 40행을 받는다") {
@@ -216,15 +219,44 @@ class DietChatStoreTest :
         }
 
         Given("마지막 장이면") {
+            val before = slot<Long>()
             every {
-                messageRepository.findByUserAndIdLessThanOrderByIdDesc(eq(user), any(), any())
+                messageRepository.findByUserAndIdLessThanOrderByIdDesc(eq(user), capture(before), any())
             } returns listOf(DietChatMessage(user, date, ChatRole.USER, "질문").withId(1L))
 
             val page = store.page("testuser", 5L, 2)
 
+            // before가 리포지토리로 그대로 전달되는지 — 무조건 Long.MAX_VALUE로 바꿔도
+            // 이 값이 안 잡히면 무한 스크롤이 영원히 첫 장만 받는다.
+            Then("넘긴 before가 그대로 전달된다") {
+                before.captured shouldBe 5L
+            }
+
             // 앱이 무한 스크롤을 멈추는 신호다.
             Then("nextCursor가 null이다") {
                 page.nextCursor shouldBe null
+            }
+        }
+
+        Given("정확히 꽉 찬 마지막 장이면") {
+            // size(2)와 정확히 같은 개수만 돌아온다 — `rows.size > size` 경계가 여기서 갈린다.
+            // `>`를 `>=`로 바꾸면 이 경우도 nextCursor가 남아 앱이 빈 요청을 한 번 더 하게 된다.
+            every {
+                messageRepository.findByUserAndIdLessThanOrderByIdDesc(eq(user), any(), any())
+            } returns
+                listOf(
+                    DietChatMessage(user, date, ChatRole.ASSISTANT, "답2").withId(4L),
+                    DietChatMessage(user, date, ChatRole.USER, "질문2").withId(3L),
+                )
+
+            val page = store.page("testuser", null, 2)
+
+            Then("nextCursor가 null이다") {
+                page.nextCursor shouldBe null
+            }
+
+            Then("size만큼 다 돌려준다") {
+                page.messages.map { it.id } shouldBe listOf(4L, 3L)
             }
         }
 

@@ -101,6 +101,36 @@ class DietChatServiceTest :
             }
         }
 
+        // coerceIn을 지우면 size=100000 한 번이 대화 전량 조회가 되고, size=0이면
+        // 스토어가 `rows.take(0)` 뒤 `page.last()`에서 500을 낸다 — 스토어로 넘어가는
+        // 값을 직접 잡아 이 방어가 실제로 동작하는지 확인한다.
+        Given("size가 범위를 벗어나면") {
+            val service = DietChatService(store, client)
+            val size = slot<Int>()
+            every { store.page(any(), any(), capture(size)) } returns DietChatPageResponse(emptyList(), null)
+
+            service.page("testuser", null, 0)
+            val zeroCoercedTo = size.captured
+
+            service.page("testuser", null, 101)
+            val overCoercedTo = size.captured
+
+            service.page("testuser", null, -1)
+            val negativeCoercedTo = size.captured
+
+            Then("0이면 1로 올린다") {
+                zeroCoercedTo shouldBe 1
+            }
+
+            Then("101이면 100으로 내린다") {
+                overCoercedTo shouldBe 100
+            }
+
+            Then("음수면 1로 올린다") {
+                negativeCoercedTo shouldBe 1
+            }
+        }
+
         // 데이터 블록이 저장되면 대화 도중 끼니를 고쳤을 때 낡은 숫자가 굳는다.
         Given("저장 호출은") {
             val service = DietChatService(store, client)
