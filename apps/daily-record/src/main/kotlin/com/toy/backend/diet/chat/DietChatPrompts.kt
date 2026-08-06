@@ -108,7 +108,7 @@ object DietChatPrompts {
      * 오늘 점심 얘기로 읽는다.
      *
      * 붙이는 값은 `date`(어느 날에 대한 질문인가)이지 `createdAt`(언제 물었나)이 아니다 —
-     * 8월 6일에 8월 1일을 물었다면 `[08-01]`이다.
+     * 8월 6일에 8월 1일을 물었다면 `[2026-08-01]`이다.
      *
      * **답변에는 안 붙인다.** 바로 뒤에 와서 짝이 명확하고, 양쪽에 붙이면 노이즈만 는다.
      */
@@ -120,13 +120,23 @@ object DietChatPrompts {
             }
         }
 
-    /** `07-30 (목)`. 기준일 헤더와 달리 연도를 빼 줄을 짧게 유지한다 — 같은 해 안의 최근 7일이다. */
-    private val RECENT_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd (E)", Locale.KOREAN)
+    /**
+     * `2025-12-27 (토)`. **연도를 넣는다 — 7일 창이 해를 넘으면 두 해가 한 목록에 섞인다.**
+     *
+     * 매년 1월 초 7일 동안 반드시 일어난다. 연도가 없으면 2026-01-02에 열었을 때 헤더는
+     * `2026-01-02`인데 목록 앞쪽은 2025년이라, 모델이 `12-27`을 11개월 뒤 미래로 읽을 여지가 남는다.
+     *
+     * 요일이 대신 막아주지도 않는다 — 2025-12-27은 토요일이고 2026-12-27은 일요일이라,
+     * 연도를 잘못 잡은 모델은 요일과 안 맞는 조합을 보게 된다.
+     */
+    private val RECENT_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd (E)", Locale.KOREAN)
 
     /**
-     * 히스토리 접두. 연도를 빼 줄을 짧게 유지한다 — 찍히는 값은 `date`(어느 날에 대한
-     * 질문인가)이고, `date`는 7일 창에 갇혀 있지 않다(`POST`가 상한 없이 과거 날짜를 받는다).
-     * 그래도 빼는 이유는 같은 MM-dd가 해를 걸쳐 겹칠 확률이 낮아서다.
+     * 히스토리 접두. 찍히는 값은 `date`(어느 날에 대한 질문인가)이고, **`date`는 7일 창에 갇혀
+     * 있지 않다**(`POST`가 상한 없이 과거 날짜를 받는다) — 작년 같은 날을 이번 주에 물으면
+     * `MM-dd`만으로는 올해 것과 구분되지 않는다.
+     *
+     * 20턴에 연도를 넣는 값이 100자다. 그 정도로 모호함을 살 이유가 없다.
      */
-    private val HISTORY_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd")
+    private val HISTORY_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 }

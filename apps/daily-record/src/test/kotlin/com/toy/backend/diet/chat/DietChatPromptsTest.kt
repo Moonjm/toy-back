@@ -48,7 +48,7 @@ class DietChatPromptsTest :
             val block = DietChatPrompts.recentDaysBlock(recent)
 
             Then("하루 한 줄에 점수·열량이 들어간다") {
-                block shouldContain "- 07-30 (목) 58점 2930kcal"
+                block shouldContain "- 2026-07-30 (목) 58점 2930kcal"
             }
 
             // 점수가 보이면 이유를 묻는다(함정 2-1). 이름이 없으면 모델이 지어낸다.
@@ -64,13 +64,34 @@ class DietChatPromptsTest :
 
             // 빼 버리면 모델이 날짜가 연속인 줄 알고 「이틀 연속 좋았다」처럼 없는 추세를 만든다.
             Then("기록 없는 날도 자리를 지킨다") {
-                block shouldContain "- 07-31 (금) 기록 없음"
+                block shouldContain "- 2026-07-31 (금) 기록 없음"
             }
 
             // 7일치에 매크로까지 실으면 기준일 상세와 크기가 비슷해진다.
             Then("수량·매크로는 없다") {
                 block shouldNotContain "탄 "
                 block shouldNotContain "균형 근거"
+            }
+        }
+
+        // 창이 7일이라 해가 바뀌는 주에는 **반드시** 두 해가 한 목록에 섞인다 — 매년 7일씩
+        // 확정적으로 생긴다. 연도가 없으면 2026-01-02에 열었을 때 헤더는 2026인데 목록 앞쪽은
+        // 2025년이라, 모델이 12-27을 11개월 뒤 미래로 읽을 여지가 남는다.
+        //
+        // 요일이 대신 막아주지도 않는다. 2025-12-27은 토요일이고 2026-12-27은 일요일이라,
+        // 연도를 잘못 잡은 모델은 요일과 안 맞는 조합을 보게 되고 그때 뭘 버릴지는 알 수 없다.
+        Given("직전 7일이 해를 넘어가면") {
+            val block =
+                DietChatPrompts.recentDaysBlock(
+                    listOf(
+                        RecentDaySummary(LocalDate.of(2025, 12, 27), 58, 2930.0, emptyList(), emptyList()),
+                        RecentDaySummary(LocalDate.of(2026, 1, 1), 71, 2100.0, emptyList(), emptyList()),
+                    ),
+                )
+
+            Then("줄마다 연도가 붙어 두 해가 구분된다") {
+                block shouldContain "- 2025-12-27 (토)"
+                block shouldContain "- 2026-01-01 (목)"
             }
         }
 

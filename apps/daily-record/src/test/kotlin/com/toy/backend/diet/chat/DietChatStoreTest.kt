@@ -83,8 +83,8 @@ class DietChatStoreTest :
 
             // 창이 오늘 기준이면 지난 날짜 대화에서 엉뚱한 7일이 실린다.
             Then("창은 기준 날짜 기준이다") {
-                context.dataBlock shouldContain "- 07-30 (목)"
-                context.dataBlock shouldNotContain "- 08-02"
+                context.dataBlock shouldContain "- 2026-07-30 (목)"
+                context.dataBlock shouldNotContain "- 2026-08-02"
             }
 
             Then("기록 없는 날도 자리를 지킨다 — 7일 전부가 목록에 있다") {
@@ -92,7 +92,7 @@ class DietChatStoreTest :
                     context.dataBlock shouldContain
                         date.minusDays(back).format(
                             java.time.format.DateTimeFormatter
-                                .ofPattern("MM-dd"),
+                                .ofPattern("yyyy-MM-dd"),
                         )
                 }
             }
@@ -194,8 +194,9 @@ class DietChatStoreTest :
             }
 
             // 히스토리가 날짜를 넘나들어서, 안 붙이면 모델이 예전 질문을 오늘 것으로 읽는다.
+            // 연도까지 붙인다 — `date`는 창에 갇혀 있지 않아 작년 같은 날도 올 수 있다.
             Then("사용자 턴 앞에 그 질문의 날짜가 붙는다") {
-                context.history[0].content shouldBe "[07-27] 왜 낮아?"
+                context.history[0].content shouldBe "[2026-07-27] 왜 낮아?"
             }
 
             Then("답변 턴에는 안 붙는다 — 바로 뒤에 와서 짝이 명확하다") {
