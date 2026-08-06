@@ -32,8 +32,10 @@ class MealFeedbackStore(
             log.warn { "피드백 대상 끼니가 없다: id=$mealId" }
             return null
         }
-        val basis = DietScoreCalculator.scoreMeal(meal.carbsG, meal.proteinG, meal.fatG).basis
-        return MealPrompt(DietFeedbackPrompts.meal(meal, basis), meal.updatedAt)
+        // 점수와 근거를 **한 번에** 받아 그대로 넘긴다 — 저장된 `Meal.score` 컬럼을 따로 읽으면
+        // 감점 기울기를 튜닝했을 때 점수와 근거가 서로 어긋난다(`DietFeedbackPrompts.meal` 주석).
+        val scored = DietScoreCalculator.scoreMeal(meal.carbsG, meal.proteinG, meal.fatG)
+        return MealPrompt(DietFeedbackPrompts.meal(meal, scored), meal.updatedAt)
     }
 
     /**

@@ -61,12 +61,24 @@ class DietFeedbackPromptsTest :
             val prompt =
                 DietFeedbackPrompts.meal(
                     meal,
-                    DietScoreCalculator.scoreMeal(meal.carbsG, meal.proteinG, meal.fatG).basis,
+                    DietScoreCalculator.scoreMeal(meal.carbsG, meal.proteinG, meal.fatG),
                 )
 
             Then("끼니 종류가 한글이다") {
                 prompt shouldContain "[이번 끼니] 점심"
                 prompt shouldNotContain "LUNCH"
+            }
+
+            // 점수는 저장된 `Meal.score` 컬럼에서, 근거는 그때 재계산해서 오면 한 블록 안에서
+            // 둘이 어긋난다. 이 저장소는 감점 기울기를 2.0 → 1.0으로 한 번 바꿨고 저장된 점수를
+            // 백필하지 않았다 — 그 이전 끼니는 지금도 컬럼 값이 낡아 있다.
+            // `MealDtos.toResponse`가 같은 이유로 점수와 근거를 함께 재계산한다.
+            Then("점수와 근거가 같은 계산에서 나온다 — 저장된 컬럼이 아니다") {
+                val scored = DietScoreCalculator.scoreMeal(meal.carbsG, meal.proteinG, meal.fatG)
+                prompt shouldContain "이번 끼니 균형 점수: ${scored.score}"
+                // 픽스처의 저장된 값이다. 재계산 값과 달라야 이 테스트가 무엇을 가르는지가 있다.
+                meal.score shouldBe 74
+                prompt shouldNotContain "균형 점수: 74"
             }
         }
 

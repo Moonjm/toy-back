@@ -62,8 +62,8 @@ object DietChatPrompts {
             appendLine()
             appendLine("[끼니별 상세]")
             // 화면이 「점심 47점」을 보여주므로 「왜 그래?」가 반드시 온다. day()는 이름과 열량만
-            // 담아 그 질문에 못 답한다. basis는 저장하지 않고 그때 다시 계산한다 — 감점 기울기를
-            // 바꿨을 때 응답과 프롬프트가 어긋나지 않는다.
+            // 담아 그 질문에 못 답한다. 점수와 근거를 저장하지 않고 **함께** 다시 계산한다 —
+            // 감점 기울기를 바꿨을 때 응답과 프롬프트가 어긋나지 않는다.
             //
             // meal()은 끼니 피드백 생성에도 쓰여 첫 줄이 "[이번 끼니] X"다 — 여기서는 여러 끼니가
             // 목록으로 나열되니 그 라벨이 어느 것도 가리키지 못한다("이번"이 모호). meal() 자체는
@@ -73,7 +73,7 @@ object DietChatPrompts {
             meals.forEach {
                 val block =
                     DietFeedbackPrompts
-                        .meal(it, DietScoreCalculator.scoreMeal(it.carbsG, it.proteinG, it.fatG).basis)
+                        .meal(it, DietScoreCalculator.scoreMeal(it.carbsG, it.proteinG, it.fatG))
                         .replaceFirst("[이번 끼니] ", "[끼니 상세] ")
                 append(block)
                 appendLine()
