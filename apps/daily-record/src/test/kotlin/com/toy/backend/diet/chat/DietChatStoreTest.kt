@@ -98,6 +98,55 @@ class DietChatStoreTest :
             }
         }
 
+        // 총평은 캐시다. 끼니를 고치면 낡는데, 하루 화면을 다시 열지 않으면 그 문장이 그대로
+        // 남는다(하루 화면이 열려야 마커 upsert가 feedback을 null로 민다). 과거 날짜 채팅이
+        // 정확히 그 경로다 — 오늘 8/1 아침을 고치고 8/1 채팅을 열면 8/1 하루 화면은 안 불린다.
+        Given("하루 총평이 끼니 수정보다 이르면") {
+            val meal = mealOn(date, MealType.LUNCH, "제육볶음", 7L)
+            meal.contentUpdatedAt = LocalDateTime.of(2026, 8, 1, 12, 0)
+            every {
+                mealRepository.findByUserAndDateBetweenOrderByDateAscCreatedAtAscIdAsc(user, date.minusDays(7), date)
+            } returns listOf(meal)
+            every { feedbackRepository.findByUserAndDate(user, date) } returns
+                DailyDietFeedback(
+                    user = user,
+                    date = date,
+                    dayScore = 61,
+                    feedback = "치킨을 드셨네요",
+                    generatedAt = LocalDateTime.of(2026, 8, 1, 11, 0),
+                )
+
+            val context = store.loadContext("testuser", date)
+
+            // 최신 데이터 블록과 수정 전 음식을 말하는 총평이 한 프롬프트에 섞이면, 모델이
+            // 지금은 없는 음식을 근거로 답한다. 여기서 재생성하지는 않는다 — readOnly 트랜잭션이고
+            // 채팅이 유료 호출을 촉발해서는 안 된다. 총평 없이 시작하는 길은 이미 있다.
+            Then("낡은 총평은 빼고 나온다") {
+                context.dayFeedback shouldBe null
+            }
+        }
+
+        // 경계다. `isBefore`를 `!isAfter`로 바꾸면 멀쩡한 총평이 매번 버려진다.
+        Given("하루 총평과 끼니 수정이 같은 시각이면") {
+            val meal = mealOn(date, MealType.LUNCH, "제육볶음", 8L)
+            meal.contentUpdatedAt = LocalDateTime.of(2026, 8, 1, 12, 0)
+            every {
+                mealRepository.findByUserAndDateBetweenOrderByDateAscCreatedAtAscIdAsc(user, date.minusDays(7), date)
+            } returns listOf(meal)
+            every { feedbackRepository.findByUserAndDate(user, date) } returns
+                DailyDietFeedback(
+                    user = user,
+                    date = date,
+                    dayScore = 61,
+                    feedback = "총평",
+                    generatedAt = LocalDateTime.of(2026, 8, 1, 12, 0),
+                )
+
+            Then("유효한 캐시다") {
+                store.loadContext("testuser", date).dayFeedback shouldBe "총평"
+            }
+        }
+
         Given("기준일에 기록이 없으면") {
             every {
                 mealRepository.findByUserAndDateBetweenOrderByDateAscCreatedAtAscIdAsc(user, date.minusDays(7), date)

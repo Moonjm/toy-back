@@ -95,7 +95,7 @@ class DietChatStore(
                     activityRepository.findByUserAndDate(user, date)?.activeEnergyKcal,
                     recent,
                 ),
-            dayFeedback = feedbackRepository.findByUserAndDate(user, date)?.feedback,
+            dayFeedback = freshFeedback(user, date, meals),
             history = DietChatPrompts.historyTurns(history),
         )
     }
@@ -137,6 +137,29 @@ class DietChatStore(
             messages = page.map { it.toResponse() },
             nextCursor = if (rows.size > size) page.last().requiredId else null,
         )
+    }
+
+    /**
+     * 저장된 하루 총평은 **캐시**라 낡을 수 있다. 무효 판정은 `DailyDietService.resolveFeedback`과
+     * 같은 기준이다 — `generatedAt`이 그날 끼니의 최종 `contentUpdatedAt`보다 이르면 낡았다.
+     *
+     * **낡았으면 재생성하지 않고 뺀다.** 여기는 `readOnly` 트랜잭션이고, 채팅이 유료 호출을
+     * 촉발해서는 안 된다. 총평 없이 시작하는 길은 이미 있다(아직 생성 전이면 null이다).
+     *
+     * 빼지 않으면 **수정 전 음식·합계를 말하는 문장이 최신 데이터 블록과 한 프롬프트에 섞여**,
+     * 모델이 지금은 없는 음식을 근거로 답한다. 하루 화면을 다시 열면 마커 upsert가 이 문장을
+     * null로 밀지만(`DailyDietService`), 과거 날짜 채팅은 그 화면을 거치지 않는다.
+     */
+    private fun freshFeedback(
+        user: User,
+        date: LocalDate,
+        meals: List<Meal>,
+    ): String? {
+        val latestMealUpdate = meals.maxOf { it.contentUpdatedAt }
+        return feedbackRepository
+            .findByUserAndDate(user, date)
+            ?.takeIf { !it.generatedAt.isBefore(latestMealUpdate) }
+            ?.feedback
     }
 
     /** 기록이 없는 날도 자리를 만든다 — 빼면 모델이 날짜가 연속인 줄 알고 없는 추세를 만든다. */
