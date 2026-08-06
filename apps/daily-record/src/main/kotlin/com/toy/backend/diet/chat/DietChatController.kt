@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.time.LocalDate
 
@@ -24,11 +24,11 @@ import java.time.LocalDate
  */
 @Tag(name = "하루 채팅", description = "하루 평가에 대해 되묻는 대화")
 @RestController
-@RequestMapping("/diet/days/{date}/chat")
 class DietChatController(
     private val service: DietChatService,
 ) {
-    @PostMapping
+    /** 그날 식단으로 답해야 하므로 날짜가 필요하다. */
+    @PostMapping("/diet/days/{date}/chat")
     @Operation(summary = "질문 — 답변을 만들어 저장하고 그대로 돌려준다")
     fun ask(
         @Parameter(description = "기준 날짜", example = "2026-08-01")
@@ -39,12 +39,21 @@ class DietChatController(
     ): ResponseEntity<DataResponseBody<DietChatMessageResponse>> =
         ResponseEntity.ok(DataResponseBody(service.ask(authentication.name, date, request.message)))
 
-    @GetMapping
-    @Operation(summary = "대화 조회 — LLM 키가 없어도 동작한다")
-    fun list(
-        @Parameter(description = "기준 날짜", example = "2026-08-01")
-        @PathVariable
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) date: LocalDate,
+    /**
+     * **날짜가 없다** — 이어지는 스트림이라 날짜로 자르지 않는다. 최신이 먼저 오고 앱이
+     * 뒤집어 아래에 붙인다. 위로 스크롤하면 `nextCursor`로 다음 장을 부른다.
+     */
+    @GetMapping("/diet/chat")
+    @Operation(summary = "대화 페이징 조회 — LLM 키가 없어도 동작한다")
+    fun page(
+        @Parameter(description = "이 id보다 이전 것. 첫 장은 비운다", example = "120")
+        @RequestParam(required = false) before: Long?,
+        @Parameter(description = "한 장 크기", example = DEFAULT_PAGE_SIZE)
+        @RequestParam(defaultValue = DEFAULT_PAGE_SIZE) size: Int,
         authentication: Authentication,
-    ): ResponseEntity<DataResponseBody<DietChatResponse>> = ResponseEntity.ok(DataResponseBody(service.history(authentication.name, date)))
+    ): ResponseEntity<DataResponseBody<DietChatPageResponse>> =
+        ResponseEntity.ok(DataResponseBody(service.page(authentication.name, before, size)))
 }
+
+/** 애너테이션 인자라 컴파일 상수여야 해서 문자열이다. */
+private const val DEFAULT_PAGE_SIZE = "30"

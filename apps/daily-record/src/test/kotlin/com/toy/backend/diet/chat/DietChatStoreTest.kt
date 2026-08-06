@@ -55,7 +55,6 @@ class DietChatStoreTest :
             every { userRepository.findByUsername("testuser") } returns user
             every { activityRepository.findByUserAndDate(user, date) } returns null
             every { feedbackRepository.findByUserAndDate(user, date) } returns null
-            every { messageRepository.findByUserAndDateOrderByIdAsc(user, date) } returns emptyList()
             every {
                 messageRepository.findByUserAndCreatedAtAfterOrderByIdDesc(any(), any(), any())
             } returns emptyList()
@@ -182,6 +181,53 @@ class DietChatStoreTest :
             }
         }
 
+        Given("대화를 페이징으로 읽으면") {
+            val before = slot<Long>()
+            val pageable = slot<org.springframework.data.domain.Pageable>()
+            // size(2)보다 한 건 더 준다 — 다음 장이 있다는 뜻이다.
+            every {
+                messageRepository.findByUserAndIdLessThanOrderByIdDesc(eq(user), capture(before), capture(pageable))
+            } returns
+                listOf(
+                    DietChatMessage(user, date, ChatRole.ASSISTANT, "답2").withId(4L),
+                    DietChatMessage(user, date.minusDays(3), ChatRole.USER, "질문2").withId(3L),
+                    DietChatMessage(user, date.minusDays(3), ChatRole.ASSISTANT, "답1").withId(2L),
+                )
+
+            val page = store.page("testuser", null, 2)
+
+            Then("첫 장은 커서 없이 최신부터다") {
+                before.captured shouldBe Long.MAX_VALUE
+                page.messages.map { it.id } shouldBe listOf(4L, 3L)
+            }
+
+            Then("다음 장이 있으면 nextCursor가 마지막 id다") {
+                page.nextCursor shouldBe 3L
+            }
+
+            // 날짜로 자르지 않으므로 한 페이지에 여러 날짜가 섞인다.
+            Then("메시지마다 어느 날에 대한 질문인지가 실린다") {
+                page.messages.map { it.date } shouldBe listOf(date, date.minusDays(3))
+            }
+
+            Then("다음 장이 있는지 보려고 한 건 더 받는다") {
+                pageable.captured.pageSize shouldBe 3
+            }
+        }
+
+        Given("마지막 장이면") {
+            every {
+                messageRepository.findByUserAndIdLessThanOrderByIdDesc(eq(user), any(), any())
+            } returns listOf(DietChatMessage(user, date, ChatRole.USER, "질문").withId(1L))
+
+            val page = store.page("testuser", 5L, 2)
+
+            // 앱이 무한 스크롤을 멈추는 신호다.
+            Then("nextCursor가 null이다") {
+                page.nextCursor shouldBe null
+            }
+        }
+
         // 유일한 쓰기 경로다 — 여기가 비면 함정 2(데이터 블록을 히스토리에 저장)가 실제로는
         // 아무 데서도 잡히지 않는다. DietChatServiceTest는 append에 무엇을 넘기는지만 보고
         // append가 실제로 무엇을 저장하는지는 못 본다.
@@ -208,30 +254,6 @@ class DietChatStoreTest :
             // 이 값이 없으면 앱이 말풍선에 「8/1에 대해」를 못 붙인다.
             Then("어느 날에 대한 질문인지가 실린다") {
                 response.date shouldBe date
-            }
-        }
-
-        Given("history는") {
-            Then("빈 대화면 남은 턴이 상한 그대로다") {
-                // beforeContainer가 messageRepository를 빈 목록으로 기본 스텁해 둔다.
-                val response = store.history("testuser", date)
-
-                response.messages shouldBe emptyList()
-                response.remainingTurns shouldBe MAX_TURNS_PER_DAY
-            }
-
-            Then("저장된 메시지가 쌓인 순서대로 나온다") {
-                every { messageRepository.findByUserAndDateOrderByIdAsc(user, date) } returns
-                    listOf(
-                        DietChatMessage(user, date, ChatRole.USER, "왜 낮아?").withId(1L),
-                        DietChatMessage(user, date, ChatRole.ASSISTANT, "나트륨").withId(2L),
-                    )
-
-                val response = store.history("testuser", date)
-
-                response.messages.map { it.role } shouldBe listOf(ChatRole.USER, ChatRole.ASSISTANT)
-                response.messages.map { it.content } shouldBe listOf("왜 낮아?", "나트륨")
-                response.remainingTurns shouldBe MAX_TURNS_PER_DAY - 1
             }
         }
     })

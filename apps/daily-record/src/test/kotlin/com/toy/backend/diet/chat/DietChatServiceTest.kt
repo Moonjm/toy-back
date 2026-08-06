@@ -95,9 +95,9 @@ class DietChatServiceTest :
 
             // 저장된 대화를 보여주는 데는 LLM이 필요 없다(함정 4).
             Then("조회는 그대로 동작한다") {
-                val response = DietChatResponse(emptyList(), MAX_TURNS_PER_DAY)
-                every { store.history("testuser", date) } returns response
-                service.history("testuser", date) shouldBe response
+                val response = DietChatPageResponse(emptyList(), null)
+                every { store.page("testuser", null, 30) } returns response
+                service.page("testuser", null, 30) shouldBe response
             }
         }
 

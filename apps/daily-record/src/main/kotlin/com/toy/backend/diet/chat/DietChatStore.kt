@@ -20,9 +20,6 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import kotlin.math.roundToInt
 
-/** 하루당 물어볼 수 있는 횟수. 공개 근거 없는 자체 설정값이다. */
-const val MAX_TURNS_PER_DAY = 20
-
 /**
  * 프롬프트 재료와 히스토리. **엔티티를 담지 않는다** — 트랜잭션 밖으로 나가는 값이다.
  */
@@ -116,16 +113,29 @@ class DietChatStore(
         return messageRepository.save(DietChatMessage(user, date, ChatRole.ASSISTANT, answer)).toResponse()
     }
 
-    /** `GET`용. **키가 없어도 동작한다** — 저장된 대화를 보여주는 데는 LLM이 필요 없다(함정 4). */
+    /**
+     * 화면용 페이징. **키가 없어도 동작한다** — 저장된 대화를 보여주는 데는 LLM이 필요 없다(함정 4).
+     *
+     * **한 건 더 받아 「다음 장이 있는가」를 판별한다.** `size`만 받으면 마지막 장이 정확히
+     * 꽉 찼을 때 커서가 남아 앱이 빈 요청을 한 번 더 한다.
+     */
     @Transactional(readOnly = true)
-    fun history(
+    fun page(
         username: String,
-        date: LocalDate,
-    ): DietChatResponse {
-        val messages = messageRepository.findByUserAndDateOrderByIdAsc(findUser(username), date)
-        return DietChatResponse(
-            messages = messages.map { it.toResponse() },
-            remainingTurns = MAX_TURNS_PER_DAY - messages.count { it.role == ChatRole.USER },
+        before: Long?,
+        size: Int,
+    ): DietChatPageResponse {
+        val rows =
+            messageRepository.findByUserAndIdLessThanOrderByIdDesc(
+                findUser(username),
+                // 첫 장은 커서가 없다 — 가장 큰 id보다 큰 값으로 열어 준다.
+                before ?: Long.MAX_VALUE,
+                PageRequest.of(0, size + 1),
+            )
+        val page = rows.take(size)
+        return DietChatPageResponse(
+            messages = page.map { it.toResponse() },
+            nextCursor = if (rows.size > size) page.last().requiredId else null,
         )
     }
 

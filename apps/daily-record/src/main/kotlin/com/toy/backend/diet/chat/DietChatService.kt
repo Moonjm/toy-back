@@ -44,9 +44,19 @@ class DietChatService(
         return store.append(username, date, message, answer)
     }
 
-    /** **키가 없어도 동작한다**(함정 4) — 저장된 대화를 보여주는 데는 LLM이 필요 없다. */
-    fun history(
+    /**
+     * **키가 없어도 동작한다**(함정 4) — 저장된 대화를 보여주는 데는 LLM이 필요 없다.
+     *
+     * `size`를 조인다. 없으면 `size=100000` 한 번이 대화 전량 조회가 된다.
+     */
+    fun page(
         username: String,
-        date: LocalDate,
-    ): DietChatResponse = store.history(username, date)
+        before: Long?,
+        size: Int,
+    ): DietChatPageResponse = store.page(username, before, size.coerceIn(1, MAX_PAGE_SIZE))
+
+    private companion object {
+        /** 한 장의 상한. 앱은 기본값(30)을 쓰고, 이 값은 잘못된 요청을 막는 자리다. */
+        const val MAX_PAGE_SIZE = 100
+    }
 }

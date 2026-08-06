@@ -16,7 +16,6 @@ enum class DietErrorCode(
     // 「실패한 사진이 없다」와 구분한다 — 앱이 재시도 버튼을 잠글지 안내만 할지 갈린다.
     ANALYSIS_IN_PROGRESS(HttpStatus.BAD_REQUEST, "인식이 진행 중입니다. 끝난 뒤에 다시 시도해 주세요: %s"),
     FEEDBACK_NOT_RETRYABLE(HttpStatus.BAD_REQUEST, "실패 상태의 끼니만 피드백을 재생성할 수 있습니다: %s"),
-    CHAT_TURN_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "하루에 물어볼 수 있는 횟수(%s번)를 넘었습니다."),
     CHAT_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "답변 생성에 실패했습니다. 잠시 후 다시 물어봐 주세요."),
     ;
 

@@ -24,7 +24,12 @@ data class DietChatMessageResponse(
     val createdAt: LocalDateTime,
 )
 
-data class DietChatResponse(
+/**
+ * 한 장. **`nextCursor`가 null이면 더 없다** — 앱이 그때 무한 스크롤을 멈춘다.
+ *
+ * 최신이 먼저 온다(`id DESC`). 앱이 뒤집어 아래에 붙인다.
+ */
+data class DietChatPageResponse(
     val messages: List<DietChatMessageResponse>,
-    val remainingTurns: Int,
+    val nextCursor: Long?,
 )
