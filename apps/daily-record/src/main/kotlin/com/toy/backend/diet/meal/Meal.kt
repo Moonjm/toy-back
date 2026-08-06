@@ -36,6 +36,23 @@ enum class MealType {
      * 판단을 여기 두는 것은 서비스에 `if (mealType != SNACK)`을 흩어 두지 않기 위해서다.
      */
     val mergesWithinDay: Boolean get() = this != SNACK
+
+    /**
+     * **프롬프트 표기 전용이다.** API 응답(`MealResponse.mealType`)은 enum 이름(`"LUNCH"`)이고
+     * iOS가 그 값으로 디코딩한다 — 여기 값을 응답에 쓰면 앱이 깨진다.
+     *
+     * 프롬프트를 한글로 쓰는 이유 — 사용자가 한국어로 묻고 모델이 한국어로 답하는데 컨텍스트만
+     * 영어면 모델이 점심↔LUNCH를 한 홉 건너뛴 뒤 근거를 찾고, 인용할 때 「LUNCH에 드신 짜장면이」
+     * 처럼 새어 나온다.
+     */
+    val label: String
+        get() =
+            when (this) {
+                BREAKFAST -> "아침"
+                LUNCH -> "점심"
+                DINNER -> "저녁"
+                SNACK -> "간식"
+            }
 }
 
 /**

@@ -3,7 +3,10 @@ package com.toy.backend.diet.feedback
 import com.toy.backend.diet.meal.Meal
 import com.toy.backend.diet.profile.NutritionTargets
 import com.toy.backend.diet.score.MacroStatus
-import com.toy.backend.diet.score.MealScoreBasis
+import com.toy.backend.diet.score.MealScore
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.math.roundToInt
 
 data class NutritionTotals(
@@ -29,6 +32,11 @@ fun List<Meal>.totals(): NutritionTotals =
 
 object DietFeedbackPrompts {
     /**
+     * `2026-08-01 (토)`. **요일까지 넣는다** — 주말 과식 같은 요일 효과는 날짜만으로는 안 보인다.
+     */
+    private val PROMPT_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd (E)", Locale.KOREAN)
+
+    /**
      * **3요소를 강제한다.** ③을 강제하지 않으면 "골고루 드세요"류로 흐른다.
      * 의학적 진단·처방은 금지 항목으로 명시한다 — 앱이 의료기기가 아니다.
      *
@@ -51,13 +59,19 @@ object DietFeedbackPrompts {
      * 이유와 같다), 프롬프트만 이 경계를 넘어 하루 맥락을 실었다. 그러면 앞선 끼니를 고치거나
      * 지울 때 이 끼니의 피드백까지 같이 낡는데, 지금 구조는 직접 바뀐 끼니만 재생성하므로 아무도
      * 그걸 고쳐주지 않는다(교차 staleness). 종합은 하루 마감 피드백(`day`)의 몫으로 남긴다.
+     *
+     * **점수와 근거를 [scored] 하나로 받는다 — 저장된 `Meal.score` 컬럼을 읽지 않는다.**
+     * 점수는 컬럼에서, 근거는 그때 재계산해서 오면 한 블록 안에서 둘이 어긋난다. 감점 기울기를
+     * 2.0 → 1.0으로 바꿨을 때 저장된 점수를 백필하지 않았으므로, 그 이전 끼니는 지금도 컬럼 값이
+     * 낡아 있다 — 사용자가 화면에서 보는 점수(`MealDtos.toResponse`도 함께 재계산한다)와
+     * LLM이 설명하는 점수가 달라진다.
      */
     fun meal(
         meal: Meal,
-        basis: MealScoreBasis?,
+        scored: MealScore,
     ): String =
         buildString {
-            appendLine("[이번 끼니] ${meal.mealType}")
+            appendLine("[이번 끼니] ${meal.mealType.label}")
             meal.items.forEach {
                 appendLine(
                     "- ${it.foodName} ${it.quantityG.roundToInt()}g / ${it.kcal.roundToInt()}kcal " +
@@ -68,9 +82,9 @@ object DietFeedbackPrompts {
                 "이번 끼니 합계: ${meal.totalKcal.roundToInt()}kcal, 탄 ${meal.carbsG.roundToInt()}g, " +
                     "단 ${meal.proteinG.roundToInt()}g, 지 ${meal.fatG.roundToInt()}g",
             )
-            appendLine("이번 끼니 균형 점수: ${meal.score ?: "산출 불가"}")
+            appendLine("이번 끼니 균형 점수: ${scored.score ?: "산출 불가"}")
             // 근거 없이 "부족·과다를 짚어라"고만 시키면 하루 목표를 뺀 자리를 LLM이 지어낸다.
-            if (basis != null) {
+            scored.basis?.let { basis ->
                 appendLine("[균형 근거] ${basis.standard}")
                 basis.macros.forEach {
                     appendLine("- ${it.name} ${it.percent}% (권장 ${it.rangeMin}~${it.rangeMax}%, ${it.status.toKorean()})")
@@ -86,6 +100,7 @@ object DietFeedbackPrompts {
         }
 
     fun day(
+        date: LocalDate,
         meals: List<Meal>,
         totals: NutritionTotals,
         targets: NutritionTargets,
@@ -93,10 +108,10 @@ object DietFeedbackPrompts {
         activeEnergyKcal: Int?,
     ): String =
         buildString {
-            appendLine("[오늘 먹은 끼니]")
+            appendLine("[${date.format(PROMPT_DATE)} 먹은 끼니]")
             meals.forEach { meal ->
                 appendLine(
-                    "- ${meal.mealType}: ${meal.items.joinToString(", ") { it.foodName }} " +
+                    "- ${meal.mealType.label}: ${meal.items.joinToString(", ") { it.foodName }} " +
                         "(${meal.totalKcal.roundToInt()}kcal)",
                 )
             }

@@ -121,8 +121,12 @@ fun MealItemRequest.toEntity(meal: Meal): MealItem =
 
 /**
  * 점수와 근거를 저장된 매크로에서 **한 번에 함께** 다시 계산한다 — 같은 입력에서 같은 값이 나오는
- * 순수 함수라 중복 저장할 이유가 없다. 저장된 `Meal.score` 컬럼(프롬프트·집계용)을 따로 읽으면
- * 감점 기울기를 튜닝했을 때 `score`와 `scoreBasis`가 서로 어긋난다.
+ * 순수 함수라 중복 저장할 이유가 없다. 저장된 `Meal.score` 컬럼을 따로 읽으면 감점 기울기를
+ * 튜닝했을 때 `score`와 `scoreBasis`가 서로 어긋난다.
+ *
+ * **이제 그 컬럼을 읽는 곳은 없다.** 프롬프트도 같은 이유로 재계산으로 옮겼다
+ * (`DietFeedbackPrompts.meal`). 컬럼은 쓰이기만 하고(`Meal.applyScore`) 읽히지 않는다 —
+ * 지우려면 스키마 변경이라 별건으로 둔다.
  */
 fun Meal.toResponse(urls: Map<Long, String>): MealResponse {
     val scored = DietScoreCalculator.scoreMeal(carbsG, proteinG, fatG)
