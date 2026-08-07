@@ -445,7 +445,7 @@ class DietChatStoreTest :
                         generatedAt = LocalDateTime.now(),
                     ),
                 )
-            every { mealRepository.findByUserAndDateIn(user, listOf(date)) } returns listOf(meal)
+            every { mealRepository.findByUserAndDateInOrderByCreatedAtAscIdAsc(user, listOf(date)) } returns listOf(meal)
 
             val card =
                 store
@@ -477,7 +477,7 @@ class DietChatStoreTest :
                     DietChatMessage(user, date, ChatRole.USER, "질문").withId(8L),
                 )
             every { feedbackRepository.findByUserAndDateIn(user, listOf(date)) } returns emptyList()
-            every { mealRepository.findByUserAndDateIn(user, listOf(date)) } returns emptyList()
+            every { mealRepository.findByUserAndDateInOrderByCreatedAtAscIdAsc(user, listOf(date)) } returns emptyList()
 
             val page = store.page("testuser", null, 10)
 
@@ -506,7 +506,7 @@ class DietChatStoreTest :
                         generatedAt = LocalDateTime.now(),
                     ),
                 )
-            every { mealRepository.findByUserAndDateIn(user, listOf(date)) } returns
+            every { mealRepository.findByUserAndDateInOrderByCreatedAtAscIdAsc(user, listOf(date)) } returns
                 listOf(mealOn(date, MealType.LUNCH, "제육볶음", 7L))
 
             val card =
@@ -519,6 +519,50 @@ class DietChatStoreTest :
             Then("카드는 남고 문장만 null이다") {
                 card.feedback shouldBe null
                 card.dayScore shouldBe 61
+            }
+        }
+
+        // `findByUserAndDateInOrderByCreatedAtAscIdAsc`의 정렬이 빠지면(이름만 `findByUserAndDateIn`으로
+        // 되돌아가도) `dayCardsOf`의 `meals.first()`가 어느 끼니를 목표 스냅샷으로 쓸지 보장이 없어진다.
+        // **이 테스트는 실제 SQL의 ORDER BY가 존재함을 증명하지 못한다** — 이 저장소는 전부 mockk
+        // 단위 테스트라 DB가 뜨지 않는다(`FoodRepositoryQueryTest`와 같은 한계). 여기서 고정하는 것은
+        // 두 가지뿐이다 — ① `dayCardsOf`가 정렬을 이름에 담은 그 메서드를 실제로 부르는지
+        // (이름이 바뀌면 이 스텁이 안 맞아 mockk가 예외를 던진다), ② 리포지토리가 돌려준 목록의
+        // **첫 번째 원소**를 그대로 목표로 쓰는지(정렬을 믿고 `first()`를 쓰는 계약).
+        Given("총평 카드가 있는 날에 끼니가 둘이면") {
+            val earlierMeal = mealOn(date, MealType.BREAKFAST, "죽", 20L).also { it.targetKcal = 1800 }
+            val laterMeal = mealOn(date, MealType.DINNER, "치킨", 21L).also { it.targetKcal = 2200 }
+            every {
+                messageRepository.findByUserAndIdLessThanOrderByIdDesc(eq(user), any(), any())
+            } returns
+                listOf(
+                    DietChatMessage(user, date, ChatRole.ASSISTANT, "", ChatMessageType.DAY_SUMMARY)
+                        .withId(9L),
+                )
+            every { feedbackRepository.findByUserAndDateIn(user, listOf(date)) } returns
+                listOf(
+                    DailyDietFeedback(
+                        user = user,
+                        date = date,
+                        dayScore = 61,
+                        feedback = "총평",
+                        generatedAt = LocalDateTime.now(),
+                    ),
+                )
+            // 쿼리가 약속하는 정렬(먼저 생긴 끼니가 앞)대로 돌려준다 — earlierMeal이 목록의 첫 번째다.
+            every { mealRepository.findByUserAndDateInOrderByCreatedAtAscIdAsc(user, listOf(date)) } returns
+                listOf(earlierMeal, laterMeal)
+
+            val card =
+                store
+                    .page("testuser", null, 10)
+                    .messages
+                    .single()
+                    .day!!
+
+            Then("목표는 정렬상 첫 번째로 온 끼니의 값이다") {
+                card.targetKcal shouldBe earlierMeal.targetKcal
+                card.targetKcal shouldNotBe laterMeal.targetKcal
             }
         }
 

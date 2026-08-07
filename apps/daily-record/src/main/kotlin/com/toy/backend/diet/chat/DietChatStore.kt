@@ -192,7 +192,9 @@ class DietChatStore(
         if (dates.isEmpty()) return emptyMap()
         // 그날 끼니는 총평의 열량·목표를 내는 데 필요하다. 목표는 **첫 끼니의 스냅샷**이라
         // 프로필을 읽지 않는다 — 읽으면 몸무게를 바꿨을 때 과거 카드의 분모가 흔들린다.
-        val mealsByDate = mealRepository.findByUserAndDateIn(user, dates).groupBy { it.date }
+        // `OrderByCreatedAtAscIdAsc`로 읽어야 날짜별로 묶었을 때 `first()`가 실제 첫 끼니가
+        // 된다(Kotlin `groupBy`는 원래 순서를 보존한다).
+        val mealsByDate = mealRepository.findByUserAndDateInOrderByCreatedAtAscIdAsc(user, dates).groupBy { it.date }
         return feedbackRepository
             .findByUserAndDateIn(user, dates)
             .mapNotNull { cached ->
