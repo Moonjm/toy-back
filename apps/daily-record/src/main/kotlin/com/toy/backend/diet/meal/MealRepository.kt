@@ -42,4 +42,13 @@ interface MealRepository : JpaRepository<Meal, Long> {
         date: LocalDate,
         mealType: MealType,
     ): Meal?
+
+    /**
+     * 여러 날짜의 끼니를 한 번에. 채팅 한 장에 총평 카드가 여러 날짜만큼 들어 있어,
+     * 날짜마다 조회하면 N+1이 된다.
+     */
+    fun findByUserAndDateIn(
+        user: User,
+        dates: Collection<LocalDate>,
+    ): List<Meal>
 }

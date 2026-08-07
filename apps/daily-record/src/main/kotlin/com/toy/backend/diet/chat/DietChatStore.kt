@@ -132,19 +132,21 @@ class DietChatStore(
         before: Long?,
         size: Int,
     ): DietChatPageResponse {
+        val user = findUser(username)
         val rows =
             messageRepository.findByUserAndIdLessThanOrderByIdDesc(
-                findUser(username),
+                user,
                 // 첫 장은 커서가 없다 — 가장 큰 id보다 큰 값으로 열어 준다.
                 before ?: Long.MAX_VALUE,
                 PageRequest.of(0, size + 1),
             )
         val page = rows.take(size)
         val mealCards = mealCardsOf(page)
+        val dayCards = dayCardsOf(user, page)
         return DietChatPageResponse(
             // **매달린 참조는 행째로 뺀다.** 삭제 경로가 제대로 돌면 생기지 않지만, 생겼을 때
             // 빈 카드를 내리는 것보다 낫다. `nextCursor`는 원래 행에서 내므로 흔들리지 않는다.
-            messages = page.mapNotNull { it.toResponse(mealCards) },
+            messages = page.mapNotNull { it.toResponse(mealCards, dayCards) },
             nextCursor = if (rows.size > size) page.last().requiredId else null,
         )
     }
@@ -177,6 +179,34 @@ class DietChatStore(
             photoUrl = photos.firstOrNull()?.let { urls[it.fileId] },
             feedback = feedback,
         )
+    }
+
+    /**
+     * 총평 카드가 가리키는 날짜들을 **`IN` 한 번**으로 읽어 날짜별 카드로 만든다.
+     */
+    private fun dayCardsOf(
+        user: User,
+        page: List<DietChatMessage>,
+    ): Map<LocalDate, ChatDayCard> {
+        val dates = page.filter { it.type == ChatMessageType.DAY_SUMMARY }.map { it.date }.distinct()
+        if (dates.isEmpty()) return emptyMap()
+        // 그날 끼니는 총평의 열량·목표를 내는 데 필요하다. 목표는 **첫 끼니의 스냅샷**이라
+        // 프로필을 읽지 않는다 — 읽으면 몸무게를 바꿨을 때 과거 카드의 분모가 흔들린다.
+        val mealsByDate = mealRepository.findByUserAndDateIn(user, dates).groupBy { it.date }
+        return feedbackRepository
+            .findByUserAndDateIn(user, dates)
+            .mapNotNull { cached ->
+                val meals = mealsByDate[cached.date]?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                val totals = meals.totals()
+                cached.date to
+                    ChatDayCard(
+                        dayScore = cached.dayScore,
+                        totalKcal = totals.kcal,
+                        targetKcal = meals.first().targetKcal,
+                        // 재생성 중이면 null이다 — 카드는 남고 앱이 「만들고 있어요」를 띄운다.
+                        feedback = cached.feedback,
+                    )
+            }.toMap()
     }
 
     /**
@@ -236,12 +266,19 @@ class DietChatStore(
      * 카드 자리는 `mealCards`가 채운다. **매달린 참조면 null을 돌려주고 로그를 남긴다** —
      * 삭제 경로(`MealService.delete`·`mergeInto`)가 새고 있다는 신호라, 조용히 넘기면 아무도 모른다.
      */
-    private fun DietChatMessage.toResponse(mealCards: Map<Long, ChatMealCard> = emptyMap()): DietChatMessageResponse? {
+    private fun DietChatMessage.toResponse(
+        mealCards: Map<Long, ChatMealCard> = emptyMap(),
+        dayCards: Map<LocalDate, ChatDayCard> = emptyMap(),
+    ): DietChatMessageResponse? {
         val meal = if (type == ChatMessageType.MEAL_CARD) mealCards[mealId] else null
         if (type == ChatMessageType.MEAL_CARD && meal == null) {
             log.warn { "카드가 가리키는 끼니가 없어 건너뛴다 — 삭제 경로가 새고 있다: messageId=$requiredId, mealId=$mealId" }
             return null
         }
+        val day = if (type == ChatMessageType.DAY_SUMMARY) dayCards[date] else null
+        // 그날 끼니를 전부 지우면 총평 행도 함께 지워진다(`MealService.delete`) — 정상 경로다.
+        // 끼니 카드와 달리 로그를 남기지 않는다.
+        if (type == ChatMessageType.DAY_SUMMARY && day == null) return null
         return DietChatMessageResponse(
             id = requiredId,
             type = type,
@@ -250,6 +287,7 @@ class DietChatStore(
             createdAt = createdAt,
             content = if (type == ChatMessageType.TEXT) content else null,
             meal = meal,
+            day = day,
         )
     }
 }

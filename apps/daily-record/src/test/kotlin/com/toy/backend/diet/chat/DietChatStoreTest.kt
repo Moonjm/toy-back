@@ -426,6 +426,102 @@ class DietChatStoreTest :
             }
         }
 
+        Given("총평 카드를 읽으면") {
+            val meal = mealOn(date, MealType.LUNCH, "제육볶음", 7L)
+            every {
+                messageRepository.findByUserAndIdLessThanOrderByIdDesc(eq(user), any(), any())
+            } returns
+                listOf(
+                    DietChatMessage(user, date, ChatRole.ASSISTANT, "", ChatMessageType.DAY_SUMMARY)
+                        .withId(9L),
+                )
+            every { feedbackRepository.findByUserAndDateIn(user, listOf(date)) } returns
+                listOf(
+                    DailyDietFeedback(
+                        user = user,
+                        date = date,
+                        dayScore = 61,
+                        feedback = "나트륨이 기준을 넘었어요",
+                        generatedAt = LocalDateTime.now(),
+                    ),
+                )
+            every { mealRepository.findByUserAndDateIn(user, listOf(date)) } returns listOf(meal)
+
+            val card =
+                store
+                    .page("testuser", null, 10)
+                    .messages
+                    .single()
+                    .day!!
+
+            Then("지금 총평과 하루 점수가 실린다") {
+                card.dayScore shouldBe 61
+                card.feedback shouldBe "나트륨이 기준을 넘었어요"
+            }
+
+            // 프로필의 현재 목표를 읽으면 몸무게를 바꿨을 때 과거 카드의 분모가 흔들린다.
+            Then("목표는 그날 첫 끼니의 스냅샷이다") {
+                card.targetKcal shouldBe meal.targetKcal
+                card.totalKcal shouldBe meal.totalKcal
+            }
+        }
+
+        // 끼니를 전부 지우면 총평 행도 함께 지워진다(`MealService.delete`).
+        Given("총평 카드가 가리키는 총평이 없으면") {
+            every {
+                messageRepository.findByUserAndIdLessThanOrderByIdDesc(eq(user), any(), any())
+            } returns
+                listOf(
+                    DietChatMessage(user, date, ChatRole.ASSISTANT, "", ChatMessageType.DAY_SUMMARY)
+                        .withId(9L),
+                    DietChatMessage(user, date, ChatRole.USER, "질문").withId(8L),
+                )
+            every { feedbackRepository.findByUserAndDateIn(user, listOf(date)) } returns emptyList()
+            every { mealRepository.findByUserAndDateIn(user, listOf(date)) } returns emptyList()
+
+            val page = store.page("testuser", null, 10)
+
+            Then("그 행만 빠진다") {
+                page.messages.map { it.id } shouldBe listOf(8L)
+            }
+        }
+
+        // 재생성 중이면 문장이 잠깐 null이다. 카드를 없애면 타임라인에서 뭔가가 사라졌다
+        // 다시 나타난다 — 자리를 지키고 앱이 「만들고 있어요」를 띄운다.
+        Given("총평이 재생성 중이면") {
+            every {
+                messageRepository.findByUserAndIdLessThanOrderByIdDesc(eq(user), any(), any())
+            } returns
+                listOf(
+                    DietChatMessage(user, date, ChatRole.ASSISTANT, "", ChatMessageType.DAY_SUMMARY)
+                        .withId(9L),
+                )
+            every { feedbackRepository.findByUserAndDateIn(user, listOf(date)) } returns
+                listOf(
+                    DailyDietFeedback(
+                        user = user,
+                        date = date,
+                        dayScore = 61,
+                        feedback = null,
+                        generatedAt = LocalDateTime.now(),
+                    ),
+                )
+            every { mealRepository.findByUserAndDateIn(user, listOf(date)) } returns
+                listOf(mealOn(date, MealType.LUNCH, "제육볶음", 7L))
+
+            val card =
+                store
+                    .page("testuser", null, 10)
+                    .messages
+                    .single()
+                    .day!!
+
+            Then("카드는 남고 문장만 null이다") {
+                card.feedback shouldBe null
+                card.dayScore shouldBe 61
+            }
+        }
+
         // 유일한 쓰기 경로다 — 여기가 비면 함정 2(데이터 블록을 히스토리에 저장)가 실제로는
         // 아무 데서도 잡히지 않는다. DietChatServiceTest는 append에 무엇을 넘기는지만 보고
         // append가 실제로 무엇을 저장하는지는 못 본다.

@@ -18,4 +18,10 @@ interface DailyDietFeedbackRepository : JpaRepository<DailyDietFeedback, Long> {
         user: User,
         date: LocalDate,
     ): Long
+
+    /** 채팅 한 장에 실린 총평 카드들을 한 번에 읽는다. */
+    fun findByUserAndDateIn(
+        user: User,
+        dates: Collection<LocalDate>,
+    ): List<DailyDietFeedback>
 }
