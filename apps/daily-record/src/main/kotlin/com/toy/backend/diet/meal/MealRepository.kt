@@ -57,4 +57,19 @@ interface MealRepository : JpaRepository<Meal, Long> {
         user: User,
         dates: Collection<LocalDate>,
     ): List<Meal>
+
+    /**
+     * id 목록으로 끼니를 한 번에. **`user` 조건이 이 메서드의 존재 이유다** —
+     * `findAllById`로도 같은 일을 할 수 있지만 그것은 남의 끼니도 돌려준다.
+     *
+     * 호출부(`DietChatStore.mealCardsOf`)가 받는 id는 채팅 카드의 `meal_id`인데, 그 컬럼에는
+     * **FK도 소유권 제약도 없다** — 끼니 삭제가 채팅 행에 막히면 안 되어 일부러 뺐다
+     * (`DietChatMessage.mealId` 주석). 그래서 카드를 쓰는 경로가 한 번만 새면 남의 끼니의
+     * 영양 수치와 presigned 사진 URL이 그대로 응답에 실린다. 그 불변식을 받치는 것이
+     * 여기뿐이라, 조회 자체를 사용자로 조인다.
+     */
+    fun findByUserAndIdIn(
+        user: User,
+        ids: Collection<Long>,
+    ): List<Meal>
 }

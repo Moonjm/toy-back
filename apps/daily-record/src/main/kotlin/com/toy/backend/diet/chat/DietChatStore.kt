@@ -142,7 +142,7 @@ class DietChatStore(
                 PageRequest.of(0, size + 1),
             )
         val page = rows.take(size)
-        val mealCards = mealCardsOf(page)
+        val mealCards = mealCardsOf(user, page)
         val dayCards = dayCardsOf(user, page)
         return DietChatPageResponse(
             // **매달린 참조는 행째로 뺀다.** 삭제 경로가 제대로 돌면 생기지 않지만, 생겼을 때
@@ -155,11 +155,20 @@ class DietChatStore(
     /**
      * 카드가 가리키는 끼니를 **`IN` 한 번**으로 읽어 `mealId`별 카드로 만든다. 한 장이 100건까지
      * 오므로 카드마다 조회하면 그대로 N+1이다. presigned URL도 한 번에 받는다.
+     *
+     * **조회를 [user]로 조인다.** `findAllById`로도 같은 일을 하지만 그것은 남의 끼니도
+     * 돌려준다. 여기 들어오는 id는 카드의 `meal_id`인데 그 컬럼에는 FK도 소유권 제약도 없어
+     * (`DietChatMessage.mealId` 주석), 카드를 쓰는 경로가 한 번만 새면 **남의 영양 수치와
+     * presigned 사진 URL이 그대로 나간다.** 지금 그 경로는 없지만 받치는 것도 여기뿐이다 —
+     * `dayCardsOf`가 이미 같은 이유로 사용자별 조회를 쓴다.
      */
-    private fun mealCardsOf(page: List<DietChatMessage>): Map<Long, ChatMealCard> {
+    private fun mealCardsOf(
+        user: User,
+        page: List<DietChatMessage>,
+    ): Map<Long, ChatMealCard> {
         val ids = page.filter { it.type == ChatMessageType.MEAL_CARD }.mapNotNull { it.mealId }
         if (ids.isEmpty()) return emptyMap()
-        val meals = mealRepository.findAllById(ids)
+        val meals = mealRepository.findByUserAndIdIn(user, ids)
         val urls = fileService.getPresignedUrls(meals.mapNotNull { it.photos.firstOrNull()?.fileId })
         return meals.associate { it.requiredId to it.toChatCard(urls) }
     }

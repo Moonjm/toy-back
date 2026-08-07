@@ -354,7 +354,7 @@ class DietChatStoreTest :
                     DietChatMessage(user, date, ChatRole.ASSISTANT, "", ChatMessageType.MEAL_CARD, 42L)
                         .withId(9L),
                 )
-            every { mealRepository.findAllById(listOf(42L)) } returns listOf(meal)
+            every { mealRepository.findByUserAndIdIn(user, listOf(42L)) } returns listOf(meal)
             every { fileService.getPresignedUrls(any()) } returns emptyMap()
 
             val page = store.page("testuser", null, 10)
@@ -401,7 +401,7 @@ class DietChatStoreTest :
                     DietChatMessage(user, date, ChatRole.ASSISTANT, "", ChatMessageType.MEAL_CARD, 43L)
                         .withId(9L),
                 )
-            every { mealRepository.findAllById(listOf(43L)) } returns listOf(meal)
+            every { mealRepository.findByUserAndIdIn(user, listOf(43L)) } returns listOf(meal)
             every { fileService.getPresignedUrls(listOf(21L)) } returns mapOf(21L to "https://example.com/21")
 
             val card =
@@ -425,14 +425,14 @@ class DietChatStoreTest :
                     DietChatMessage(user, date, ChatRole.ASSISTANT, "", ChatMessageType.MEAL_CARD, it)
                         .withId(it + 10)
                 }
-            every { mealRepository.findAllById(any<Iterable<Long>>()) } returns
+            every { mealRepository.findByUserAndIdIn(eq(user), any<Collection<Long>>()) } returns
                 (1L..3L).map { mealOn(date, MealType.LUNCH, "밥", it) }
             every { fileService.getPresignedUrls(any()) } returns emptyMap()
 
             store.page("testuser", null, 10)
 
             Then("끼니 조회는 한 번이다") {
-                verify(exactly = 1) { mealRepository.findAllById(any<Iterable<Long>>()) }
+                verify(exactly = 1) { mealRepository.findByUserAndIdIn(eq(user), any<Collection<Long>>()) }
             }
         }
 
@@ -446,13 +446,46 @@ class DietChatStoreTest :
                         .withId(9L),
                     DietChatMessage(user, date, ChatRole.USER, "질문").withId(8L),
                 )
-            every { mealRepository.findAllById(listOf(99L)) } returns emptyList()
+            every { mealRepository.findByUserAndIdIn(user, listOf(99L)) } returns emptyList()
             every { fileService.getPresignedUrls(any()) } returns emptyMap()
 
             val page = store.page("testuser", null, 10)
 
             Then("그 행만 빠지고 나머지는 남는다") {
                 page.messages.map { it.id } shouldBe listOf(8L)
+            }
+        }
+
+        // 채팅 행은 사용자별로 조회되지만 `meal_id`에는 FK도 소유권 제약도 없다(끼니 삭제가
+        // 채팅 행에 막히면 안 되어 일부러 뺐다). 그래서 쓰기 경로가 한 번만 새면 **남의 끼니의
+        // 영양 수치와 presigned 사진 URL**이 그대로 나간다. `AGENTS.md`가 「사용자 데이터 격리」를
+        // 규모와 무관하게 엄격히 다루라고 못 박은 범주라, 도달 경로가 지금 없어도 조여 둔다.
+        //
+        // 조회를 사용자로 조이지 않으면 이 테스트는 strict mockk에서 터진다 — 프로덕션이
+        // `findAllById`를 부르는데 그 스텁이 없기 때문이다.
+        Given("카드가 남의 끼니를 가리키면") {
+            val mine = mealOn(date, MealType.LUNCH, "제육볶음", 42L)
+            every {
+                messageRepository.findByUserAndIdLessThanOrderByIdDesc(eq(user), any(), any())
+            } returns
+                listOf(
+                    DietChatMessage(user, date, ChatRole.ASSISTANT, "", ChatMessageType.MEAL_CARD, 42L)
+                        .withId(11L),
+                    DietChatMessage(user, date, ChatRole.ASSISTANT, "", ChatMessageType.MEAL_CARD, 99L)
+                        .withId(10L),
+                )
+            // 소유권으로 조인 조회는 내 것만 돌려준다 — 99L은 남의 끼니다.
+            every { mealRepository.findByUserAndIdIn(user, listOf(42L, 99L)) } returns listOf(mine)
+            every { fileService.getPresignedUrls(any()) } returns emptyMap()
+
+            val page = store.page("testuser", null, 10)
+
+            Then("남의 끼니 카드는 응답에서 빠지고 내 카드만 남는다") {
+                page.messages.map { it.id } shouldBe listOf(11L)
+                page.messages
+                    .single()
+                    .meal
+                    ?.mealId shouldBe 42L
             }
         }
 
