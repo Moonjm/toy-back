@@ -8,6 +8,7 @@ import com.toy.backend.diet.DietErrorCode
 import com.toy.backend.diet.NutritionSource
 import com.toy.backend.diet.analysis.MealAnalysisRepository
 import com.toy.backend.diet.analysis.MealAnalysisService
+import com.toy.backend.diet.chat.DietChatCardWriter
 import com.toy.backend.diet.dietUser
 import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
 import com.toy.backend.diet.feedback.DietFeedbackGenerator
@@ -35,6 +36,7 @@ class MealServiceTest :
         val fileService = mockk<FileService>()
         val feedbackGenerator = mockk<DietFeedbackGenerator>()
         val dailyFeedbackRepository = mockk<DailyDietFeedbackRepository>()
+        val chatCards = mockk<DietChatCardWriter>()
         val service =
             MealService(
                 repository,
@@ -46,6 +48,7 @@ class MealServiceTest :
                 jacksonObjectMapper(),
                 feedbackGenerator,
                 dailyFeedbackRepository,
+                chatCards,
             )
 
         val user = dietUser()
@@ -95,6 +98,7 @@ class MealServiceTest :
             every { userRepository.findByUsername("testuser") } returns user
             justRun { feedbackGenerator.generateForMeal(any()) }
             every { feedbackGenerator.isAvailable } returns true
+            justRun { chatCards.deleteMealCards(any()) }
         }
 
         Given("항목 전체 교체") {
