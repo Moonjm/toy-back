@@ -278,6 +278,13 @@ class DietChatStoreTest :
             Then("다음 장이 있는지 보려고 한 건 더 받는다") {
                 pageable.captured.pageSize shouldBe 3
             }
+
+            Then("TEXT 메시지는 타입이 실리고 카드 자리는 비어 있다") {
+                page.messages.first().type shouldBe ChatMessageType.TEXT
+                page.messages.first().content shouldBe "답2"
+                page.messages.first().meal shouldBe null
+                page.messages.first().day shouldBe null
+            }
         }
 
         Given("마지막 장이면") {
@@ -348,6 +355,10 @@ class DietChatStoreTest :
             // 이 값이 없으면 앱이 말풍선에 「8/1에 대해」를 못 붙인다.
             Then("어느 날에 대한 질문인지가 실린다") {
                 response.date shouldBe date
+            }
+
+            Then("저장된 답은 TEXT다") {
+                response.type shouldBe ChatMessageType.TEXT
             }
         }
     })

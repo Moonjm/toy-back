@@ -193,5 +193,14 @@ class DietChatStore(
         userRepository.findByUsername(username)
             ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, username)
 
-    private fun DietChatMessage.toResponse() = DietChatMessageResponse(requiredId, date, role, content, createdAt)
+    /** 카드 자리는 `page`가 채운다 — `append`가 돌려주는 것은 늘 `TEXT`다. */
+    private fun DietChatMessage.toResponse() =
+        DietChatMessageResponse(
+            id = requiredId,
+            type = type,
+            date = date,
+            role = role,
+            createdAt = createdAt,
+            content = if (type == ChatMessageType.TEXT) content else null,
+        )
 }
