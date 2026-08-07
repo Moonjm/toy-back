@@ -56,7 +56,7 @@ class DietChatStoreTest :
             every { activityRepository.findByUserAndDate(user, date) } returns null
             every { feedbackRepository.findByUserAndDate(user, date) } returns null
             every {
-                messageRepository.findByUserAndCreatedAtAfterOrderByIdDesc(any(), any(), any())
+                messageRepository.findByUserAndTypeAndCreatedAtAfterOrderByIdDesc(any(), any(), any(), any())
             } returns emptyList()
         }
 
@@ -176,7 +176,7 @@ class DietChatStoreTest :
             // 기준 날짜(08-01)도 아니다 — 세 값을 전부 다르게 둬서 구현이 셋 중 어느 것을
             // 잘못 써도 이 테스트가 빨개지게 한다.
             every {
-                messageRepository.findByUserAndCreatedAtAfterOrderByIdDesc(eq(user), any(), any())
+                messageRepository.findByUserAndTypeAndCreatedAtAfterOrderByIdDesc(eq(user), any(), any(), any())
             } returns
                 listOf(
                     DietChatMessage(user, date.minusDays(5), ChatRole.ASSISTANT, "나트륨 때문입니다")
@@ -210,16 +210,28 @@ class DietChatStoreTest :
 
         // 「어느 날 밥 얘기인가」가 아니라 「어느 대화를 기억하는가」라 축이 다르다.
         Given("히스토리 창은") {
+            val type = slot<ChatMessageType>()
             val cutoff = slot<LocalDateTime>()
             val pageable = slot<org.springframework.data.domain.Pageable>()
             every {
                 mealRepository.findByUserAndDateBetweenOrderByDateAscCreatedAtAscIdAsc(user, date.minusDays(7), date)
             } returns listOf(mealOn(date, MealType.LUNCH, "제육볶음", 6L))
             every {
-                messageRepository.findByUserAndCreatedAtAfterOrderByIdDesc(eq(user), capture(cutoff), capture(pageable))
+                messageRepository.findByUserAndTypeAndCreatedAtAfterOrderByIdDesc(
+                    eq(user),
+                    capture(type),
+                    capture(cutoff),
+                    capture(pageable),
+                )
             } returns emptyList()
 
             store.loadContext("testuser", date)
+
+            // 카드가 섞이면 20턴 창을 카드가 먹어 정작 대화가 밀려난다. 카드 내용은 이미
+            // `[끼니별 상세]`로 매 요청 실리므로 중복이기도 하다.
+            Then("TEXT만 싣는다 — 카드는 프롬프트에 안 들어간다") {
+                type.captured shouldBe ChatMessageType.TEXT
+            }
 
             // 폭을 좁게 조인다 — HISTORY_DAYS를 6이나 8로 바꿔도 잡히도록, `now`를 두 번 평가해
             // 생기는 시차보다 훨씬 좁은 ±1분 창을 쓴다.

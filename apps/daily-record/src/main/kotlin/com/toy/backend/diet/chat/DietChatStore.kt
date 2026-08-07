@@ -78,8 +78,9 @@ class DietChatStore(
         // 뒤집은 목록의 맨 앞은 항상 질문이다.
         val history =
             messageRepository
-                .findByUserAndCreatedAtAfterOrderByIdDesc(
+                .findByUserAndTypeAndCreatedAtAfterOrderByIdDesc(
                     user,
+                    ChatMessageType.TEXT,
                     LocalDateTime.now().minusDays(DietChatPrompts.HISTORY_DAYS),
                     PageRequest.of(0, DietChatPrompts.HISTORY_TURNS * 2),
                 ).reversed()
