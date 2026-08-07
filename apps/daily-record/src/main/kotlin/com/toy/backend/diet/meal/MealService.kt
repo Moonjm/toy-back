@@ -8,6 +8,7 @@ import com.toy.backend.diet.analysis.AnalysisResult
 import com.toy.backend.diet.analysis.MealAnalysis
 import com.toy.backend.diet.analysis.MealAnalysisRepository
 import com.toy.backend.diet.analysis.MealAnalysisService
+import com.toy.backend.diet.chat.DietChatCardWriter
 import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
 import com.toy.backend.diet.feedback.DietFeedbackGenerator
 import com.toy.backend.diet.profile.NutritionProfileService
@@ -35,6 +36,7 @@ class MealService(
     private val objectMapper: ObjectMapper,
     private val feedbackGenerator: DietFeedbackGenerator,
     private val dailyFeedbackRepository: DailyDietFeedbackRepository,
+    private val chatCards: DietChatCardWriter,
 ) {
     /**
      * 확정. **점수는 동기, 피드백은 비동기다** — 점수는 룰 기반이라 즉시 나오고 사용자가 바로
@@ -95,6 +97,10 @@ class MealService(
 
         // 기존 끼니는 영속 상태라 더티 체킹으로 반영된다. 새 끼니만 저장한다.
         val saved = existing ?: repository.save(meal)
+        // **합쳤으면 카드를 만들지 않는다.** 참조 방식이라 기존 카드가 이미 합쳐진 값을
+        // 보여주고, 또 만들면 같은 끼니를 가리키는 카드가 둘이 되어 같은 내용이 두 번 뜬다.
+        // 대신 「간식을 추가했는데 타임라인에 새로 안 뜬다」가 되는데, 그게 이 설계의 값이다.
+        if (existing == null) chatCards.writeMealCard(user, meal.date, saved.requiredId)
         analysis?.let { analysisRepository.delete(it) }
         // 커밋 뒤에 시작해야 비동기 스레드가 저장된 끼니를 볼 수 있다.
         runAfterCommit { feedbackGenerator.generateForMeal(saved.requiredId) }
@@ -246,6 +252,9 @@ class MealService(
         }
         target.applyScore(DietScoreCalculator.scoreMeal(target.carbsG, target.proteinG, target.fatG).score)
         target.markFeedbackPending()
+        // 원본이 사라지므로 그 카드도 지운다 — 남기면 없는 끼니를 가리킨다. 대상의 카드는
+        // 그대로 두면 된다(참조라 합쳐진 값을 보여준다).
+        chatCards.deleteMealCards(source.requiredId)
         repository.delete(source)
         runAfterCommit { feedbackGenerator.generateForMeal(target.requiredId) }
         return target.requiredId
@@ -266,6 +275,7 @@ class MealService(
     ) {
         val meal = requireOwned(findUser(username), id)
         fileService.detachFiles(meal.photos.map { it.fileId })
+        chatCards.deleteMealCards(id)
         repository.delete(meal)
         dailyFeedbackRepository.deleteByUserAndDate(meal.user, meal.date)
     }

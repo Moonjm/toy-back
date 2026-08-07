@@ -42,4 +42,19 @@ interface MealRepository : JpaRepository<Meal, Long> {
         date: LocalDate,
         mealType: MealType,
     ): Meal?
+
+    /**
+     * 여러 날짜의 끼니를 한 번에. 채팅 한 장에 총평 카드가 여러 날짜만큼 들어 있어,
+     * 날짜마다 조회하면 N+1이 된다.
+     *
+     * **정렬이 장식이 아니다.** 호출부(`DietChatStore.dayCardsOf`)가 날짜별로 묶은 뒤
+     * `first()`를 그날 목표 열량(`targetKcal`)의 스냅샷으로 쓴다. 정렬 없이 `IN` 조회하면
+     * DB가 어떤 순서로 돌려줄지 보장이 없어, 그날 두 번째 이후 끼니의 스냅샷이 목표로 잡힐
+     * 수 있다. `findByUserAndDateOrderByCreatedAtAscIdAsc`와 같은 정렬을 써야 「첫 끼니」의
+     * 정의가 어긋나지 않는다.
+     */
+    fun findByUserAndDateInOrderByCreatedAtAscIdAsc(
+        user: User,
+        dates: Collection<LocalDate>,
+    ): List<Meal>
 }

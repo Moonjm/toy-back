@@ -11,7 +11,9 @@ import com.toy.backend.diet.analysis.AnalyzedPhoto
 import com.toy.backend.diet.analysis.MealAnalysis
 import com.toy.backend.diet.analysis.MealAnalysisRepository
 import com.toy.backend.diet.analysis.MealAnalysisService
+import com.toy.backend.diet.chat.DietChatCardWriter
 import com.toy.backend.diet.dietUser
+import com.toy.backend.diet.dummyMeal
 import com.toy.backend.diet.dummyProfile
 import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
 import com.toy.backend.diet.feedback.DietFeedbackGenerator
@@ -21,10 +23,14 @@ import com.toy.backend.user.UserRepository
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
+import io.mockk.Runs
 import io.mockk.every
+import io.mockk.just
 import io.mockk.justRun
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
+import org.springframework.data.repository.findByIdOrNull
 import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.time.LocalDate
 
@@ -39,6 +45,7 @@ class MealConfirmTest :
         val objectMapper = jacksonObjectMapper()
         val feedbackGenerator = mockk<DietFeedbackGenerator>()
         val dailyFeedbackRepository = mockk<DailyDietFeedbackRepository>()
+        val chatCards = mockk<DietChatCardWriter>()
         val service =
             MealService(
                 repository,
@@ -50,6 +57,7 @@ class MealConfirmTest :
                 objectMapper,
                 feedbackGenerator,
                 dailyFeedbackRepository,
+                chatCards,
             )
 
         val user = dietUser()
@@ -107,6 +115,8 @@ class MealConfirmTest :
             justRun { feedbackGenerator.generateForMeal(any()) }
             // 기본은 「그날 그 끼니가 아직 없다」 — 병합 케이스만 따로 덮어쓴다.
             every { repository.findFirstByUserAndDateAndMealTypeOrderByCreatedAtAscIdAsc(any(), any(), any()) } returns null
+            justRun { chatCards.writeMealCard(any(), any(), any()) }
+            justRun { chatCards.deleteMealCards(any()) }
         }
 
         Given("끼니 확정") {
@@ -262,6 +272,89 @@ class MealConfirmTest :
 
                 Then("null로 정규화해 저장한다") {
                     verify { repository.save(match { meal -> meal.items.all { it.foodCode == null } }) }
+                }
+            }
+        }
+
+        Given("타임라인 카드") {
+            When("새 끼니를 확정하면") {
+                // 오늘(테스트 실행일)과 다른 날짜를 골라야 「어느 값을 넘겼든 상관없다」는
+                // 거짓 통과를 막는다 — `LocalDate.now()`로 바꿔치기해도 이 날짜와는 다르므로
+                // 아래 캡처된 값이 어긋나 이 테스트가 잡아낸다.
+                val requestDate = LocalDate.of(2026, 7, 29)
+                val cardDate = slot<LocalDate>()
+                val cardMealId = slot<Long>()
+                every { repository.save(any()) } answers { (firstArg() as Meal).withId(70L) }
+                every { chatCards.writeMealCard(any(), capture(cardDate), capture(cardMealId)) } just Runs
+
+                val id =
+                    service.confirm(
+                        "testuser",
+                        MealConfirmRequest(
+                            date = requestDate,
+                            mealType = MealType.LUNCH,
+                            analysisId = null,
+                            items = userItems,
+                        ),
+                    )
+
+                Then("타임라인에 그 끼니 카드가 쌓인다") {
+                    cardMealId.captured shouldBe id
+                }
+
+                // meal.date를 LocalDate.now()로 바꿔치기해도 다른 테스트는 깨지지 않는다 —
+                // 확정 요청이 오늘 날짜로 온 것과 우연히 같아 보일 뿐이다. 어제 저녁을 오늘
+                // 확정하는 경우(요청이 클라이언트가 지정한 과거 날짜를 실어 온다) 그 바꿔치기는
+                // 카드에 엉뚱한 날을 찍는데, 여기서만 그 사고가 잡힌다.
+                Then("카드는 요청이 지정한 날짜를 그대로 싣는다") {
+                    cardDate.captured shouldBe requestDate
+                }
+            }
+
+            // 참조 방식이라 기존 카드가 이미 합쳐진 값을 보여준다. 또 만들면 같은 끼니를
+            // 가리키는 카드가 둘이 되어 같은 내용이 두 번 뜬다.
+            When("같은 날 같은 끼니가 이미 있어 합쳐지면") {
+                val existing =
+                    dummyMeal(
+                        user = user,
+                        date = LocalDate.of(2026, 7, 29),
+                        mealType = MealType.LUNCH,
+                        id = 71L,
+                    )
+                every {
+                    repository.findFirstByUserAndDateAndMealTypeOrderByCreatedAtAscIdAsc(
+                        user,
+                        LocalDate.of(2026, 7, 29),
+                        MealType.LUNCH,
+                    )
+                } returns existing
+
+                service.confirm(
+                    "testuser",
+                    MealConfirmRequest(
+                        date = LocalDate.of(2026, 7, 29),
+                        mealType = MealType.LUNCH,
+                        analysisId = null,
+                        items = userItems,
+                    ),
+                )
+
+                Then("카드를 새로 만들지 않는다") {
+                    verify(exactly = 0) { chatCards.writeMealCard(any(), any(), any()) }
+                }
+            }
+
+            When("끼니를 지우면") {
+                val meal = dummyMeal(user = user, date = LocalDate.of(2026, 7, 29), id = 72L)
+                every { repository.findByIdOrNull(72L) } returns meal
+                justRun { fileService.detachFiles(any()) }
+                justRun { repository.delete(meal) }
+                every { dailyFeedbackRepository.deleteByUserAndDate(user, meal.date) } returns 1L
+
+                service.delete("testuser", 72L)
+
+                Then("그 끼니의 카드도 지운다") {
+                    verify { chatCards.deleteMealCards(72L) }
                 }
             }
         }

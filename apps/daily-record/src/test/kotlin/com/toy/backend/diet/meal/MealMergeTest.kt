@@ -8,6 +8,7 @@ import com.toy.backend.diet.analysis.AnalyzedPhoto
 import com.toy.backend.diet.analysis.MealAnalysis
 import com.toy.backend.diet.analysis.MealAnalysisRepository
 import com.toy.backend.diet.analysis.MealAnalysisService
+import com.toy.backend.diet.chat.DietChatCardWriter
 import com.toy.backend.diet.dietUser
 import com.toy.backend.diet.dummyProfile
 import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
@@ -40,6 +41,7 @@ class MealMergeTest :
         val objectMapper = jacksonObjectMapper()
         val feedbackGenerator = mockk<DietFeedbackGenerator>()
         val dailyFeedbackRepository = mockk<DailyDietFeedbackRepository>()
+        val chatCards = mockk<DietChatCardWriter>()
         val service =
             MealService(
                 repository,
@@ -51,6 +53,7 @@ class MealMergeTest :
                 objectMapper,
                 feedbackGenerator,
                 dailyFeedbackRepository,
+                chatCards,
             )
 
         val user = dietUser()
@@ -134,6 +137,7 @@ class MealMergeTest :
             every { userRepository.findByUsername("testuser") } returns user
             every { profileService.requireProfile(user) } returns laterProfile
             justRun { feedbackGenerator.generateForMeal(any()) }
+            justRun { chatCards.writeMealCard(any(), any(), any()) }
         }
 
         Given("같은 날 같은 아침을 다시 확정") {

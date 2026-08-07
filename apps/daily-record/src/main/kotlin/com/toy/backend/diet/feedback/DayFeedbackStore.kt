@@ -1,5 +1,6 @@
 package com.toy.backend.diet.feedback
 
+import com.toy.backend.diet.chat.DietChatCardWriter
 import com.toy.backend.diet.daily.DailyActivityRepository
 import com.toy.backend.diet.meal.MealRepository
 import com.toy.backend.diet.score.DietScoreCalculator
@@ -33,6 +34,7 @@ class DayFeedbackStore(
     private val mealRepository: MealRepository,
     private val activityRepository: DailyActivityRepository,
     private val feedbackRepository: DailyDietFeedbackRepository,
+    private val chatCards: DietChatCardWriter,
 ) {
     /** 프롬프트와 하루 점수만 뽑아 나온다 — 엔티티를 밖으로 들고 나가지 않는 것이 이 분리의 요점이다. */
     @Transactional(readOnly = true)
@@ -85,6 +87,14 @@ class DayFeedbackStore(
         // `generatedAt`을 갱신하지 않는다. 마커를 찍은 시각으로 남겨야, 생성 중에 끼니가 수정된
         // 경우 무효화 판정에 걸려 다음 조회가 다시 만든다.
         cached.publish(dayScore, feedback)
+        // **문장이 실제로 실린 뒤에만 쌓는다.** 위의 두 `return`(마커 없음·마커 낡음)은 이
+        // 문장을 버리는 자리라, 거기서 카드를 만들면 있지도 않은 총평을 가리킨다.
+        //
+        // 총평은 끼니를 고칠 때마다 재생성되어 여기가 여러 번 불리는데, `writeDaySummary`가
+        // 이미 있는 날짜를 걸러 낸다. 그래서 **카드는 그 날짜의 총평이 처음 완성된 시각에
+        // 앉고** 재생성으로 자리가 움직이지 않는다 — 타임라인에서 아래로 튀어 오르지 않는
+        // 편이 읽기 쉽다.
+        chatCards.writeDaySummary(user, date)
     }
 }
 

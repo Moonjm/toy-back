@@ -6,6 +6,7 @@ import com.toy.backend.common.exception.CustomException
 import com.toy.backend.diet.NutritionSource
 import com.toy.backend.diet.analysis.MealAnalysisRepository
 import com.toy.backend.diet.analysis.MealAnalysisService
+import com.toy.backend.diet.chat.DietChatCardWriter
 import com.toy.backend.diet.dietUser
 import com.toy.backend.diet.dummyMeal
 import com.toy.backend.diet.dummyMealItem
@@ -42,6 +43,7 @@ class MealQueryTest :
         val objectMapper = jacksonObjectMapper()
         val feedbackGenerator = mockk<DietFeedbackGenerator>()
         val dailyFeedbackRepository = mockk<DailyDietFeedbackRepository>()
+        val chatCards = mockk<DietChatCardWriter>()
         val service =
             MealService(
                 repository,
@@ -53,6 +55,7 @@ class MealQueryTest :
                 objectMapper,
                 feedbackGenerator,
                 dailyFeedbackRepository,
+                chatCards,
             )
 
         val user = dietUser(id = 1L)

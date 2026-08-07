@@ -15,6 +15,9 @@ import java.time.LocalDate
 
 enum class ChatRole { USER, ASSISTANT }
 
+/** 타임라인에 무엇이 놓인 자리인가. */
+enum class ChatMessageType { TEXT, MEAL_CARD, DAY_SUMMARY }
+
 /**
  * 하루 평가에 대해 주고받은 말. **저장되는 것은 사용자가 쓴 질문과 모델의 답뿐이다** —
  * 프롬프트의 데이터 블록은 저장하지 않는다. 대화 도중 끼니를 고치면 그 블록이 낡은 수치를
@@ -46,4 +49,18 @@ class DietChatMessage(
     var role: ChatRole,
     @Column(nullable = false, columnDefinition = "text")
     var content: String,
+    /**
+     * **기존 행은 전부 `TEXT`다.** 컬럼 정의에 `default`를 둬야 ddl-auto가 not null 컬럼을
+     * 붙일 때 이미 있는 행이 살아남는다. `role`이 이미 같은 이유로 `columnDefinition`을 쓴다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, columnDefinition = "varchar(20) default 'TEXT'")
+    var type: ChatMessageType = ChatMessageType.TEXT,
+    /**
+     * `MEAL_CARD`가 가리키는 끼니. **FK를 걸지 않는다** — 걸면 카드 삭제가 한 번 새는 순간
+     * **끼니를 못 지우는 상태**가 되는데, 그건 카드가 남는 것보다 나쁘다. 정합성은 삭제
+     * 경로에서 지키고, 혹시 매달린 참조가 남아도 조회가 그 행을 조용히 건너뛴다.
+     */
+    @Column(name = "meal_id")
+    var mealId: Long? = null,
 ) : BaseEntity()

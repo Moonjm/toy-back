@@ -7,6 +7,7 @@ import com.toy.backend.diet.AnalysisStatus
 import com.toy.backend.diet.NutritionSource
 import com.toy.backend.diet.analysis.MealAnalysisRepository
 import com.toy.backend.diet.analysis.MealAnalysisService
+import com.toy.backend.diet.chat.DietChatCardWriter
 import com.toy.backend.diet.dietUser
 import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
 import com.toy.backend.diet.feedback.DietFeedbackGenerator
@@ -45,6 +46,7 @@ class MealTypeChangeTest :
         val objectMapper = jacksonObjectMapper()
         val feedbackGenerator = mockk<DietFeedbackGenerator>()
         val dailyFeedbackRepository = mockk<DailyDietFeedbackRepository>()
+        val chatCards = mockk<DietChatCardWriter>()
         val service =
             MealService(
                 repository,
@@ -56,6 +58,7 @@ class MealTypeChangeTest :
                 objectMapper,
                 feedbackGenerator,
                 dailyFeedbackRepository,
+                chatCards,
             )
 
         val user = dietUser()
@@ -115,6 +118,7 @@ class MealTypeChangeTest :
             clearMocks(repository, fileService, feedbackGenerator, dailyFeedbackRepository, answers = false)
             every { userRepository.findByUsername("testuser") } returns user
             justRun { feedbackGenerator.generateForMeal(any()) }
+            justRun { chatCards.deleteMealCards(any()) }
         }
 
         // 앱이 실수로 같은 값을 보내도 유료 호출이 나가면 안 된다.
@@ -316,6 +320,11 @@ class MealTypeChangeTest :
             // ②③ 모두 contentUpdatedAt이 올라 무효화 조건에 그대로 걸린다.
             Then("하루 피드백 캐시는 직접 지우지 않는다") {
                 verify(exactly = 0) { dailyFeedbackRepository.deleteByUserAndDate(any(), any()) }
+            }
+
+            // 병합은 원본을 지운다 — 그 카드가 남으면 없는 끼니를 가리킨다.
+            Then("사라지는 원본의 카드를 지운다") {
+                verify { chatCards.deleteMealCards(81L) }
             }
         }
 

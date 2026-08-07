@@ -7,6 +7,7 @@ import com.toy.backend.diet.AnalysisStatus
 import com.toy.backend.diet.NutritionSource
 import com.toy.backend.diet.analysis.MealAnalysisRepository
 import com.toy.backend.diet.analysis.MealAnalysisService
+import com.toy.backend.diet.chat.DietChatCardWriter
 import com.toy.backend.diet.dietUser
 import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
 import com.toy.backend.diet.feedback.DietFeedbackGenerator
@@ -35,6 +36,7 @@ class MealPhotoDeleteTest :
         val fileService = mockk<FileService>()
         val feedbackGenerator = mockk<DietFeedbackGenerator>()
         val dailyFeedbackRepository = mockk<DailyDietFeedbackRepository>()
+        val chatCards = mockk<DietChatCardWriter>()
         val service =
             MealService(
                 repository,
@@ -46,6 +48,7 @@ class MealPhotoDeleteTest :
                 jacksonObjectMapper(),
                 feedbackGenerator,
                 dailyFeedbackRepository,
+                chatCards,
             )
 
         val user = dietUser()
