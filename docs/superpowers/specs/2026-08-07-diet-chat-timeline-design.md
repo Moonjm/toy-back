@@ -185,6 +185,11 @@ data class ChatMealCard(
 data class ChatDayCard(
     val dayScore: Int,
     val totalKcal: Double,
+    /**
+     * 그날 **첫 끼니의 스냅샷**이다(`Meal.targetKcal`). 카드가 `1,240 / 2,509 kcal`을 보여주려면
+     * 분모가 필요한데, 프로필의 현재 목표를 읽으면 과거 카드의 분모가 오늘 몸무게로 바뀐다.
+     */
+    val targetKcal: Int,
     /** 재생성 중이면 null — 앱이 「마감 피드백을 만들고 있어요」를 띄운다. */
     val feedback: String?,
 )
