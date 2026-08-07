@@ -11,14 +11,18 @@ import com.toy.backend.diet.llm.ChatTurn
 import com.toy.backend.diet.meal.Meal
 import com.toy.backend.diet.meal.MealRepository
 import com.toy.backend.diet.score.DietScoreCalculator
+import com.toy.backend.file.FileService
 import com.toy.backend.user.User
 import com.toy.backend.user.UserRepository
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.time.LocalDateTime
 import kotlin.math.roundToInt
+
+private val log = KotlinLogging.logger {}
 
 /**
  * 프롬프트 재료와 히스토리. **엔티티를 담지 않는다** — 트랜잭션 밖으로 나가는 값이다.
@@ -44,6 +48,7 @@ class DietChatStore(
     private val activityRepository: DailyActivityRepository,
     private val feedbackRepository: DailyDietFeedbackRepository,
     private val messageRepository: DietChatMessageRepository,
+    private val fileService: FileService,
 ) {
     /**
      * **조회를 한 번으로 묶는다.** 기준일과 직전 7일을 따로 읽지 않고 8일치를 받아 날짜로 쪼갠다.
@@ -111,7 +116,8 @@ class DietChatStore(
     ): DietChatMessageResponse {
         val user = findUser(username)
         messageRepository.save(DietChatMessage(user, date, ChatRole.USER, question))
-        return messageRepository.save(DietChatMessage(user, date, ChatRole.ASSISTANT, answer)).toResponse()
+        // 방금 저장한 TEXT 행이라 매달린 참조가 있을 수 없다.
+        return messageRepository.save(DietChatMessage(user, date, ChatRole.ASSISTANT, answer)).toResponse()!!
     }
 
     /**
@@ -134,9 +140,42 @@ class DietChatStore(
                 PageRequest.of(0, size + 1),
             )
         val page = rows.take(size)
+        val mealCards = mealCardsOf(page)
         return DietChatPageResponse(
-            messages = page.map { it.toResponse() },
+            // **매달린 참조는 행째로 뺀다.** 삭제 경로가 제대로 돌면 생기지 않지만, 생겼을 때
+            // 빈 카드를 내리는 것보다 낫다. `nextCursor`는 원래 행에서 내므로 흔들리지 않는다.
+            messages = page.mapNotNull { it.toResponse(mealCards) },
             nextCursor = if (rows.size > size) page.last().requiredId else null,
+        )
+    }
+
+    /**
+     * 카드가 가리키는 끼니를 **`IN` 한 번**으로 읽어 `mealId`별 카드로 만든다. 한 장이 100건까지
+     * 오므로 카드마다 조회하면 그대로 N+1이다. presigned URL도 한 번에 받는다.
+     */
+    private fun mealCardsOf(page: List<DietChatMessage>): Map<Long, ChatMealCard> {
+        val ids = page.filter { it.type == ChatMessageType.MEAL_CARD }.mapNotNull { it.mealId }
+        if (ids.isEmpty()) return emptyMap()
+        val meals = mealRepository.findAllById(ids)
+        val urls = fileService.getPresignedUrls(meals.mapNotNull { it.photos.firstOrNull()?.fileId })
+        return meals.associate { it.requiredId to it.toChatCard(urls) }
+    }
+
+    /** `@OrderBy("sortOrder asc")`라 `photos.first()`가 첫 장이다. */
+    private fun Meal.toChatCard(urls: Map<Long, String>): ChatMealCard {
+        // 점수와 근거를 한 번에 받는다 — 따로 구하면 둘이 어긋난다(`MealDtos.toResponse`와 같다).
+        val scored = DietScoreCalculator.scoreMeal(carbsG, proteinG, fatG)
+        return ChatMealCard(
+            mealId = requiredId,
+            mealType = mealType,
+            score = scored.score,
+            scoreBasis = scored.basis,
+            totalKcal = totalKcal,
+            carbsG = carbsG,
+            proteinG = proteinG,
+            fatG = fatG,
+            photoUrl = photos.firstOrNull()?.let { urls[it.fileId] },
+            feedback = feedback,
         )
     }
 
@@ -193,14 +232,24 @@ class DietChatStore(
         userRepository.findByUsername(username)
             ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, username)
 
-    /** 카드 자리는 `page`가 채운다 — `append`가 돌려주는 것은 늘 `TEXT`다. */
-    private fun DietChatMessage.toResponse() =
-        DietChatMessageResponse(
+    /**
+     * 카드 자리는 `mealCards`가 채운다. **매달린 참조면 null을 돌려주고 로그를 남긴다** —
+     * 삭제 경로(`MealService.delete`·`mergeInto`)가 새고 있다는 신호라, 조용히 넘기면 아무도 모른다.
+     */
+    private fun DietChatMessage.toResponse(mealCards: Map<Long, ChatMealCard> = emptyMap()): DietChatMessageResponse? {
+        val meal = if (type == ChatMessageType.MEAL_CARD) mealCards[mealId] else null
+        if (type == ChatMessageType.MEAL_CARD && meal == null) {
+            log.warn { "카드가 가리키는 끼니가 없어 건너뛴다 — 삭제 경로가 새고 있다: messageId=$requiredId, mealId=$mealId" }
+            return null
+        }
+        return DietChatMessageResponse(
             id = requiredId,
             type = type,
             date = date,
             role = role,
             createdAt = createdAt,
             content = if (type == ChatMessageType.TEXT) content else null,
+            meal = meal,
         )
+    }
 }
