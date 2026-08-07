@@ -5,6 +5,7 @@ import com.toy.backend.common.exception.CustomException
 import com.toy.backend.diet.daily.DailyActivityRepository
 import com.toy.backend.diet.daily.NutrientLimitEvaluator
 import com.toy.backend.diet.daily.NutrientStatus
+import com.toy.backend.diet.feedback.DailyDietFeedback
 import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
 import com.toy.backend.diet.feedback.totals
 import com.toy.backend.diet.llm.ChatTurn
@@ -183,6 +184,11 @@ class DietChatStore(
 
     /**
      * 총평 카드가 가리키는 날짜들을 **`IN` 한 번**으로 읽어 날짜별 카드로 만든다.
+     *
+     * **카드는 끼니로 만들고, 캐시 행(`DailyDietFeedback`)은 문장 하나만 얹는다.** 캐시 행을
+     * 기준으로 만들면 `MealService.delete`가 그날 끼니 아무거나 하나만 지워도 캐시 행을
+     * 통째로 지우므로(`dailyFeedbackRepository.deleteByUserAndDate`), 두 끼니가 남아 있는데도
+     * 카드가 통째로 사라진다. 그날 끼니가 **하나도** 없어야 진짜로 빈 날이다.
      */
     private fun dayCardsOf(
         user: User,
@@ -190,23 +196,28 @@ class DietChatStore(
     ): Map<LocalDate, ChatDayCard> {
         val dates = page.filter { it.type == ChatMessageType.DAY_SUMMARY }.map { it.date }.distinct()
         if (dates.isEmpty()) return emptyMap()
-        // 그날 끼니는 총평의 열량·목표를 내는 데 필요하다. 목표는 **첫 끼니의 스냅샷**이라
+        // 그날 끼니는 총평의 열량·점수·목표를 내는 데 필요하다. 목표는 **첫 끼니의 스냅샷**이라
         // 프로필을 읽지 않는다 — 읽으면 몸무게를 바꿨을 때 과거 카드의 분모가 흔들린다.
         // `OrderByCreatedAtAscIdAsc`로 읽어야 날짜별로 묶었을 때 `first()`가 실제 첫 끼니가
         // 된다(Kotlin `groupBy`는 원래 순서를 보존한다).
         val mealsByDate = mealRepository.findByUserAndDateInOrderByCreatedAtAscIdAsc(user, dates).groupBy { it.date }
-        return feedbackRepository
-            .findByUserAndDateIn(user, dates)
-            .mapNotNull { cached ->
-                val meals = mealsByDate[cached.date]?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        val feedbackByDate = feedbackRepository.findByUserAndDateIn(user, dates).associateBy { it.date }
+        return dates
+            .mapNotNull { date ->
+                val meals = mealsByDate[date]?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
                 val totals = meals.totals()
-                cached.date to
+                val targets = meals.first().targets()
+                date to
                     ChatDayCard(
-                        dayScore = cached.dayScore,
+                        // 저장된 컬럼이 아니라 현재 끼니에서 재계산한다 — `ChatMealCard.score`와
+                        // 같은 이유다. 캐시 행의 `dayScore`는 그 문장을 만들 때의 스냅샷이라
+                        // 끼니를 고친 뒤에는 지금 합계와 어긋난다.
+                        dayScore = DietScoreCalculator.scoreDay(totals.kcal, totals.carbsG, totals.proteinG, totals.fatG, targets).score,
                         totalKcal = totals.kcal,
                         targetKcal = meals.first().targetKcal,
-                        // 재생성 중이면 null이다 — 카드는 남고 앱이 「만들고 있어요」를 띄운다.
-                        feedback = cached.feedback,
+                        // 캐시가 없거나 낡았으면(`isFreshFor`) null이다 — 카드는 남고
+                        // 앱이 「만들고 있어요」를 띄운다.
+                        feedback = feedbackByDate[date]?.takeIf { it.isFreshFor(meals) }?.feedback,
                     )
             }.toMap()
     }
@@ -226,13 +237,17 @@ class DietChatStore(
         user: User,
         date: LocalDate,
         meals: List<Meal>,
-    ): String? {
-        val latestMealUpdate = meals.maxOf { it.contentUpdatedAt }
-        return feedbackRepository
+    ): String? =
+        feedbackRepository
             .findByUserAndDate(user, date)
-            ?.takeIf { !it.generatedAt.isBefore(latestMealUpdate) }
+            ?.takeIf { it.isFreshFor(meals) }
             ?.feedback
-    }
+
+    /**
+     * 캐시 무효화 판정. `dayCardsOf`도 같은 기준을 쓴다 — 두 곳이 각자 계산하면 한쪽만
+     * 고쳐지는 자리가 생긴다.
+     */
+    private fun DailyDietFeedback.isFreshFor(meals: List<Meal>): Boolean = !generatedAt.isBefore(meals.maxOf { it.contentUpdatedAt })
 
     /** 기록이 없는 날도 자리를 만든다 — 빼면 모델이 날짜가 연속인 줄 알고 없는 추세를 만든다. */
     private fun summarize(
@@ -278,8 +293,10 @@ class DietChatStore(
             return null
         }
         val day = if (type == ChatMessageType.DAY_SUMMARY) dayCards[date] else null
-        // 그날 끼니를 전부 지우면 총평 행도 함께 지워진다(`MealService.delete`) — 정상 경로다.
-        // 끼니 카드와 달리 로그를 남기지 않는다.
+        // `dayCardsOf`는 끼니가 하나라도 남아 있으면 카드를 만든다 — 끼니 하나를 지워도
+        // 캐시 행이 통째로 지워지는 것과 무관하다(`MealService.delete`). 여기서 null인 것은
+        // 그날 끼니가 하나도 안 남은, 진짜로 빈 날뿐이다 — 정상 경로라 끼니 카드와 달리
+        // 로그를 남기지 않는다.
         if (type == ChatMessageType.DAY_SUMMARY && day == null) return null
         return DietChatMessageResponse(
             id = requiredId,

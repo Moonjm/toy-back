@@ -278,15 +278,20 @@ class MealConfirmTest :
 
         Given("타임라인 카드") {
             When("새 끼니를 확정하면") {
+                // 오늘(테스트 실행일)과 다른 날짜를 골라야 「어느 값을 넘겼든 상관없다」는
+                // 거짓 통과를 막는다 — `LocalDate.now()`로 바꿔치기해도 이 날짜와는 다르므로
+                // 아래 캡처된 값이 어긋나 이 테스트가 잡아낸다.
+                val requestDate = LocalDate.of(2026, 7, 29)
+                val cardDate = slot<LocalDate>()
                 val cardMealId = slot<Long>()
                 every { repository.save(any()) } answers { (firstArg() as Meal).withId(70L) }
-                every { chatCards.writeMealCard(any(), any(), capture(cardMealId)) } just Runs
+                every { chatCards.writeMealCard(any(), capture(cardDate), capture(cardMealId)) } just Runs
 
                 val id =
                     service.confirm(
                         "testuser",
                         MealConfirmRequest(
-                            date = LocalDate.of(2026, 7, 29),
+                            date = requestDate,
                             mealType = MealType.LUNCH,
                             analysisId = null,
                             items = userItems,
@@ -295,6 +300,14 @@ class MealConfirmTest :
 
                 Then("타임라인에 그 끼니 카드가 쌓인다") {
                     cardMealId.captured shouldBe id
+                }
+
+                // meal.date를 LocalDate.now()로 바꿔치기해도 다른 테스트는 깨지지 않는다 —
+                // 확정 요청이 오늘 날짜로 온 것과 우연히 같아 보일 뿐이다. 어제 저녁을 오늘
+                // 확정하는 경우(요청이 클라이언트가 지정한 과거 날짜를 실어 온다) 그 바꿔치기는
+                // 카드에 엉뚱한 날을 찍는데, 여기서만 그 사고가 잡힌다.
+                Then("카드는 요청이 지정한 날짜를 그대로 싣는다") {
+                    cardDate.captured shouldBe requestDate
                 }
             }
 

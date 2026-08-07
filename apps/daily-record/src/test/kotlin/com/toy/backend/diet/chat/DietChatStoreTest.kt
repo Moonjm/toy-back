@@ -10,6 +10,7 @@ import com.toy.backend.diet.dummyMealItem
 import com.toy.backend.diet.feedback.DailyDietFeedback
 import com.toy.backend.diet.feedback.DailyDietFeedbackRepository
 import com.toy.backend.diet.meal.Meal
+import com.toy.backend.diet.meal.MealPhoto
 import com.toy.backend.diet.meal.MealRepository
 import com.toy.backend.diet.meal.MealType
 import com.toy.backend.diet.score.DietScoreCalculator
@@ -386,6 +387,35 @@ class DietChatStoreTest :
             }
         }
 
+        // 모든 끼니 카드 픽스처가 사진 없는 끼니(`dummyMeal`)와 `getPresignedUrls(any()) returns
+        // emptyMap()`만 쓰면, 위의 "사진이 없으면 photoUrl이 null이다"는 null이 아닌 값을 낼 수
+        // 없는 경로만 통과한다 — `toChatCard`가 `urls[it.fileId]`를 엉뚱한 키로 찾아도 이 사실이
+        // 안 드러난다(`MealQueryTest`의 사진 있는 픽스처와 같은 이유로 추가한다).
+        Given("끼니에 사진이 있으면") {
+            val meal = mealOn(date, MealType.LUNCH, "제육볶음", 43L)
+            meal.addPhoto(MealPhoto(meal = meal, fileId = 21L, sortOrder = 0).withId(2L))
+            every {
+                messageRepository.findByUserAndIdLessThanOrderByIdDesc(eq(user), any(), any())
+            } returns
+                listOf(
+                    DietChatMessage(user, date, ChatRole.ASSISTANT, "", ChatMessageType.MEAL_CARD, 43L)
+                        .withId(9L),
+                )
+            every { mealRepository.findAllById(listOf(43L)) } returns listOf(meal)
+            every { fileService.getPresignedUrls(listOf(21L)) } returns mapOf(21L to "https://example.com/21")
+
+            val card =
+                store
+                    .page("testuser", null, 10)
+                    .messages
+                    .single()
+                    .meal!!
+
+            Then("photoUrl에 presigned URL이 실린다") {
+                card.photoUrl shouldBe "https://example.com/21"
+            }
+        }
+
         // 한 장에 끼니 카드가 셋이면 카드마다 조회하면 그대로 N+1이다.
         Given("한 장에 끼니 카드가 셋이면") {
             every {
@@ -454,9 +484,16 @@ class DietChatStoreTest :
                     .single()
                     .day!!
 
-            Then("지금 총평과 하루 점수가 실린다") {
-                card.dayScore shouldBe 61
+            Then("지금 총평이 실린다") {
                 card.feedback shouldBe "나트륨이 기준을 넘었어요"
+            }
+
+            // 저장된 컬럼(61)이 아니라 지금 끼니에서 재계산한 값이어야 한다 — `ChatMealCard.score`와
+            // 같은 이유다.
+            Then("하루 점수는 지금 끼니에서 재계산된다") {
+                card.dayScore shouldBe
+                    DietScoreCalculator.scoreDay(meal.totalKcal, meal.carbsG, meal.proteinG, meal.fatG, meal.targets()).score
+                card.dayScore shouldNotBe 61
             }
 
             // 프로필의 현재 목표를 읽으면 몸무게를 바꿨을 때 과거 카드의 분모가 흔들린다.
@@ -506,8 +543,8 @@ class DietChatStoreTest :
                         generatedAt = LocalDateTime.now(),
                     ),
                 )
-            every { mealRepository.findByUserAndDateInOrderByCreatedAtAscIdAsc(user, listOf(date)) } returns
-                listOf(mealOn(date, MealType.LUNCH, "제육볶음", 7L))
+            val meal = mealOn(date, MealType.LUNCH, "제육볶음", 7L)
+            every { mealRepository.findByUserAndDateInOrderByCreatedAtAscIdAsc(user, listOf(date)) } returns listOf(meal)
 
             val card =
                 store
@@ -518,7 +555,80 @@ class DietChatStoreTest :
 
             Then("카드는 남고 문장만 null이다") {
                 card.feedback shouldBe null
-                card.dayScore shouldBe 61
+                // 저장된 컬럼(61)이 아니라 지금 끼니에서 재계산한 값이다.
+                card.dayScore shouldBe
+                    DietScoreCalculator.scoreDay(meal.totalKcal, meal.carbsG, meal.proteinG, meal.fatG, meal.targets()).score
+            }
+        }
+
+        // 캐시 행의 generatedAt이 끼니 수정보다 이르면 낡은 캐시다. `freshFeedback`이 프롬프트
+        // 경로에서 이미 하는 판정을 `dayCardsOf`도 같은 기준으로 하지 않으면, 수정 전 음식을
+        // 말하는 문장과 낡은 dayScore가 최신 totalKcal 옆에 나란히 나온다.
+        Given("총평 캐시가 끼니 수정보다 낡았으면") {
+            val meal = mealOn(date, MealType.LUNCH, "제육볶음", 32L)
+            meal.contentUpdatedAt = LocalDateTime.of(2026, 8, 1, 13, 0)
+            every {
+                messageRepository.findByUserAndIdLessThanOrderByIdDesc(eq(user), any(), any())
+            } returns
+                listOf(
+                    DietChatMessage(user, date, ChatRole.ASSISTANT, "", ChatMessageType.DAY_SUMMARY)
+                        .withId(9L),
+                )
+            every { feedbackRepository.findByUserAndDateIn(user, listOf(date)) } returns
+                listOf(
+                    DailyDietFeedback(
+                        user = user,
+                        date = date,
+                        dayScore = 61,
+                        feedback = "치킨을 드셨네요",
+                        generatedAt = LocalDateTime.of(2026, 8, 1, 12, 0),
+                    ),
+                )
+            every { mealRepository.findByUserAndDateInOrderByCreatedAtAscIdAsc(user, listOf(date)) } returns listOf(meal)
+
+            val card =
+                store
+                    .page("testuser", null, 10)
+                    .messages
+                    .single()
+                    .day!!
+
+            Then("낡은 문장은 빠지고 앱이 「만들고 있어요」를 띄운다") {
+                card.feedback shouldBe null
+            }
+
+            Then("하루 점수도 캐시가 아니라 지금 끼니에서 재계산된다") {
+                card.dayScore shouldBe
+                    DietScoreCalculator.scoreDay(meal.totalKcal, meal.carbsG, meal.proteinG, meal.fatG, meal.targets()).score
+                card.dayScore shouldNotBe 61
+            }
+        }
+
+        // MealService.delete는 끼니 하나만 지워도 그날 캐시 행을 통째로 지운다
+        // (dailyFeedbackRepository.deleteByUserAndDate). 남은 끼니가 있는데 캐시가 없다고
+        // 카드를 통째로 빼면 두 끼니가 남아 있어도 총평 카드가 사라진다 — `toResponse`가
+        // day == null이면 행 자체를 걸러 응답에서 아예 빠지므로, 이 테스트는 카드가
+        // 살아 있는지(행이 응답에 남아 있는지)까지 함께 확인한다.
+        Given("총평 캐시 행은 없는데 그날 끼니가 남아 있으면") {
+            val meal = mealOn(date, MealType.LUNCH, "제육볶음", 33L)
+            every {
+                messageRepository.findByUserAndIdLessThanOrderByIdDesc(eq(user), any(), any())
+            } returns
+                listOf(
+                    DietChatMessage(user, date, ChatRole.ASSISTANT, "", ChatMessageType.DAY_SUMMARY)
+                        .withId(9L),
+                )
+            every { feedbackRepository.findByUserAndDateIn(user, listOf(date)) } returns emptyList()
+            every { mealRepository.findByUserAndDateInOrderByCreatedAtAscIdAsc(user, listOf(date)) } returns listOf(meal)
+
+            val page = store.page("testuser", null, 10)
+
+            Then("카드 행은 응답에 남고, 문장만 null이다") {
+                page.messages.map { it.id } shouldBe listOf(9L)
+                val card = page.messages.single().day!!
+                card.feedback shouldBe null
+                card.dayScore shouldBe
+                    DietScoreCalculator.scoreDay(meal.totalKcal, meal.carbsG, meal.proteinG, meal.fatG, meal.targets()).score
             }
         }
 
