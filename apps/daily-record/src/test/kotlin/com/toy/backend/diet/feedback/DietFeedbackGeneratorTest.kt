@@ -4,6 +4,7 @@ import com.toy.backend.common.entity.withAudit
 import com.toy.backend.common.entity.withId
 import com.toy.backend.diet.AnalysisStatus
 import com.toy.backend.diet.NutritionSource
+import com.toy.backend.diet.chat.DietChatCardWriter
 import com.toy.backend.diet.daily.DailyActivityRepository
 import com.toy.backend.diet.dietUser
 import com.toy.backend.diet.llm.OpenRouterClient
@@ -19,6 +20,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.every
+import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
@@ -37,10 +39,11 @@ class DietFeedbackGeneratorTest :
         val feedbackRepository = mockk<DailyDietFeedbackRepository>()
         val userRepository = mockk<UserRepository>()
         val client = mockk<OpenRouterClient>()
+        val chatCards = mockk<DietChatCardWriter>()
         // 얇은 트랜잭션 경계 래퍼라 실물을 쓴다 — 목으로 바꾸면 이 테스트들이 아무것도 확인하지 않게 된다.
         val store = MealFeedbackStore(mealRepository)
         // 진짜 스토어를 쓴다 — 트랜잭션 경계만 다른 얇은 위임이라 목으로 바꾸면 확인할 게 없어진다.
-        val dayStore = DayFeedbackStore(userRepository, mealRepository, activityRepository, feedbackRepository)
+        val dayStore = DayFeedbackStore(userRepository, mealRepository, activityRepository, feedbackRepository, chatCards)
 
         val user = dietUser()
         val date = LocalDate.of(2026, 7, 29)
@@ -231,6 +234,7 @@ class DietFeedbackGeneratorTest :
                 val prompt = slot<String>()
                 every { client.generateText(any(), capture(prompt)) } returns
                     "오늘 잘 드셨어요. 아침에 단백질이 부족했으니 간식으로 그릭요거트를 곁들이세요."
+                justRun { chatCards.writeDaySummary(any(), any()) }
 
                 generator.generateForDay(user.requiredId, date, MARKER_AT)
 
@@ -399,6 +403,7 @@ class DietFeedbackGeneratorTest :
                 every { activityRepository.findByUserAndDate(user, date) } returns null
                 every { feedbackRepository.findByUserAndDate(user, date) } returns marker
                 every { client.generateText(any(), any()) } returns "제대로 실려야 하는 문장입니다."
+                justRun { chatCards.writeDaySummary(any(), any()) }
 
                 generator.generateForDay(user.requiredId, date, fromJvm)
 
@@ -416,6 +421,54 @@ class DietFeedbackGeneratorTest :
 
                 Then("LLM을 부르지 않는다 — 캐시 행은 끼니 삭제 경로에서 이미 지워졌다") {
                     verify(exactly = 0) { client.generateText(any(), any()) }
+                }
+            }
+        }
+
+        Given("총평을 실을 때") {
+            val summaryDate = LocalDate.of(2026, 8, 1)
+            val markerAt = LocalDateTime.of(2026, 8, 1, 22, 0)
+
+            When("마커가 내 것과 같으면") {
+                val cached =
+                    DailyDietFeedback(
+                        user = user,
+                        date = summaryDate,
+                        dayScore = 0,
+                        feedback = null,
+                        generatedAt = markerAt,
+                    ).withId(20L)
+                every { userRepository.findByIdOrNull(user.requiredId) } returns user
+                every { feedbackRepository.findByUserAndDate(user, summaryDate) } returns cached
+                justRun { chatCards.writeDaySummary(any(), any()) }
+
+                dayStore.publish(user.requiredId, summaryDate, markerAt, dayScore = 61, feedback = "총평")
+
+                Then("문장이 실리고 그 날짜에 총평 카드가 놓인다") {
+                    cached.feedback shouldBe "총평"
+                    verify { chatCards.writeDaySummary(user, summaryDate) }
+                }
+            }
+
+            // 마커가 낡았다는 것은 그 사이 끼니가 바뀌어 이 문장이 이미 낡았다는 뜻이다.
+            // 문장을 버리면서 카드만 만들면 있지도 않은 총평을 가리킨다.
+            When("그 사이 새 마커가 찍혔으면") {
+                val newer =
+                    DailyDietFeedback(
+                        user = user,
+                        date = summaryDate,
+                        dayScore = 0,
+                        feedback = null,
+                        generatedAt = markerAt.plusMinutes(3),
+                    ).withId(21L)
+                every { userRepository.findByIdOrNull(user.requiredId) } returns user
+                every { feedbackRepository.findByUserAndDate(user, summaryDate) } returns newer
+
+                dayStore.publish(user.requiredId, summaryDate, markerAt, dayScore = 61, feedback = "총평")
+
+                Then("문장을 버리고 카드도 만들지 않는다") {
+                    newer.feedback shouldBe null
+                    verify(exactly = 0) { chatCards.writeDaySummary(any(), any()) }
                 }
             }
         }
