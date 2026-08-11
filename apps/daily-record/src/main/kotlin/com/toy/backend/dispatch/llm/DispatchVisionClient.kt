@@ -9,6 +9,21 @@ import tools.jackson.databind.json.JsonMapper
 
 private val log = KotlinLogging.logger {}
 
+/**
+ * `post()` 한 번의 결과. **재시도할 가치가 있는 실패와 없는 실패를 구분**한다 —
+ * `finish_reason == "length"`나 빈 content는 이미지·프롬프트·토큰 한도의 거의
+ * 결정론적 결과라 다시 불러도 똑같지만, 네트워크 예외는 다시 불러볼 가치가 있다.
+ */
+private sealed interface PostOutcome {
+    data class Content(
+        val text: String,
+    ) : PostOutcome
+
+    data object Empty : PostOutcome
+
+    data object Retryable : PostOutcome
+}
+
 data class RecognizedCell(
     val day: Int,
     /** 칸에 보이는 그대로. **빈 칸은 빈 문자열이다** — null로 두면 스키마가 strict를 못 건다. */
@@ -42,13 +57,26 @@ class DispatchVisionClient(
     ): RecognizedSlice? {
         val body = visionBody(slice, targetName, knownRowIndex)
         repeat(MAX_ATTEMPTS) { attempt ->
-            val content = post(body)
-            if (content != null) {
-                try {
-                    return parse(content)
-                } catch (e: Exception) {
-                    log.warn(e) { "배차표 인식 응답 파싱 실패 (${attempt + 1}/$MAX_ATTEMPTS): $content" }
+            when (val outcome = post(body)) {
+                is PostOutcome.Content -> {
+                    try {
+                        return parse(outcome.text)
+                    } catch (e: Exception) {
+                        log.warn(e) {
+                            "배차표 인식 응답 파싱 실패 (${attempt + 1}/$MAX_ATTEMPTS): " +
+                                outcome.text.take(LOG_CONTENT_LIMIT)
+                        }
+                    }
                 }
+
+                // max_tokens에 걸려 잘렸거나 content가 빈 경우는 이미지·프롬프트·토큰 한도의
+                // 거의 결정론적 결과라 다시 불러도 똑같다. 재시도하지 않고 바로 포기한다.
+                PostOutcome.Empty -> {
+                    return null
+                }
+
+                // 네트워크 등 일시적 실패만 재시도할 가치가 있다. 아무 것도 하지 않고 다음 시도로 넘어간다.
+                PostOutcome.Retryable -> {}
             }
         }
         return null
@@ -80,7 +108,7 @@ class DispatchVisionClient(
             "max_tokens" to properties.visionMaxTokens,
         )
 
-    private fun post(body: Map<String, Any>): String? =
+    private fun post(body: Map<String, Any>): PostOutcome =
         try {
             val response =
                 webClient
@@ -94,14 +122,16 @@ class DispatchVisionClient(
             if (choice?.path("finish_reason")?.asString() == "length") {
                 log.error { "배차표 인식이 max_tokens에 걸려 잘렸다 — 한도를 올려야 한다" }
             }
-            choice
-                ?.path("message")
-                ?.path("content")
-                ?.asString()
-                ?.takeIf { it.isNotBlank() }
+            val content =
+                choice
+                    ?.path("message")
+                    ?.path("content")
+                    ?.asString()
+                    ?.takeIf { it.isNotBlank() }
+            if (content != null) PostOutcome.Content(content) else PostOutcome.Empty
         } catch (e: Exception) {
             log.error(e) { "배차표 인식 호출 실패" }
-            null
+            PostOutcome.Retryable
         }
 
     private fun parse(content: String): RecognizedSlice {
@@ -172,6 +202,9 @@ class DispatchVisionClient(
 
     companion object {
         private const val MAX_ATTEMPTS = 2
+
+        /** 파싱 실패 로그에 남길 content 최대 길이. 모델이 만든 임의 길이 텍스트를 통째로 남기지 않는다. */
+        private const val LOG_CONTENT_LIMIT = 500
 
         private val RESPONSE_FORMAT =
             mapOf(

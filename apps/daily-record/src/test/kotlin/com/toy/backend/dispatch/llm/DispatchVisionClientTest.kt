@@ -146,10 +146,16 @@ class DispatchVisionClientTest :
         }
 
         Given("content가 빈 응답") {
-            val (client, _) = clientWith("""{"choices":[{"finish_reason":"length","message":{"content":""}}]}""")
+            val (client, calls) = clientWith("""{"choices":[{"finish_reason":"length","message":{"content":""}}]}""")
+            val result = client.read(slice, "홍길동", null)
 
             Then("null을 준다") {
-                client.read(slice, "홍길동", null) shouldBe null
+                result shouldBe null
+            }
+
+            Then("재시도하지 않는다") {
+                // max_tokens에 걸려 잘린 응답은 다시 불러도 똑같다. 재시도는 비용만 두 배로 든다.
+                calls.get() shouldBe 1
             }
         }
     })
