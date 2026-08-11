@@ -1,10 +1,8 @@
 package com.toy.backend.dispatch
 
-import com.toy.backend.common.exception.CustomException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.time.LocalDate
-import java.time.temporal.ChronoUnit
+import java.time.YearMonth
 
 /**
  * 아빠·엄마를 **같은 모양으로 합쳐** 내보낸다. 읽는 쪽은 데이터가 사진에서 왔는지
@@ -20,16 +18,14 @@ class DispatchQueryService(
     private val motherPattern: MotherPatternProperties,
 ) {
     /**
-     * **무인증으로 들어오는 파라미터라 기간을 먼저 막는다.** 엄마 몫은 저장 여부와 무관하게
-     * 하루씩 만들어 내므로 `from`·`to`를 그대로 믿으면 요청 한 번이 수백만 건을 만든다.
+     * **기간이 아니라 연월 하나를 받는다.** 이 조회는 무인증으로 열려 있고 엄마 몫은 저장
+     * 여부와 무관하게 하루씩 만들어 내므로, 임의의 `from`·`to`를 받으면 요청 한 번이
+     * 수백만 건을 만들어 라즈베리파이 힙을 터뜨린다. 달력은 어차피 월 단위로만 보므로
+     * 범위를 **구조적으로 한 달로 못 박는다** — 상한 검사도 `from > to` 검사도 필요 없어진다.
      */
-    fun findRange(
-        from: LocalDate,
-        to: LocalDate,
-    ): ShiftRangeResponse {
-        if (from.isAfter(to) || ChronoUnit.DAYS.between(from, to) >= MAX_RANGE_DAYS) {
-            throw CustomException(DispatchErrorCode.INVALID_RANGE, MAX_RANGE_DAYS)
-        }
+    fun findMonth(yearMonth: YearMonth): ShiftRangeResponse {
+        val from = yearMonth.atDay(1)
+        val to = yearMonth.atEndOfMonth()
 
         val stored = shiftRepository.findByWorkDateBetween(from, to)
         val storedByKey = stored.associateBy { it.role to it.workDate }
@@ -65,9 +61,4 @@ class DispatchQueryService(
             slot = slot,
             note = note,
         )
-
-    companion object {
-        /** 달력은 한 번에 한 달치를 부른다. 400일이면 넉넉하다. */
-        private const val MAX_RANGE_DAYS = 400L
-    }
 }

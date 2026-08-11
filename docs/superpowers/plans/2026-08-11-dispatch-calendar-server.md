@@ -2792,7 +2792,8 @@ dispatch_pattern 테이블은 ddl-auto가 지우지 않아 남지만 쓰이지 �
 - [ ] 응답 어디에도 실명·차량번호가 없는지 확인한다.
 - [ ] 잘린 변경분 사진으로 다시 호출해 `matchedBy`가 `ROW_INDEX`인지 확인한다.
 - [ ] 사진과 다른 달(`yearMonth=2026-09`)로 호출해 `YEAR_MONTH_MISMATCH` 경고가 붙는지 확인한다.
-- [ ] 로그아웃 상태(토큰 없이)로 `GET /dispatch/shifts?from=2026-08-01&to=2026-08-31`이 200을 주는지 확인한다.
+- [ ] 로그아웃 상태(토큰 없이)로 `GET /dispatch/shifts?yearMonth=2026-08`이 200을 주는지 확인한다.
+- [ ] `GET /dispatch/shifts?yearMonth=abc`가 500이 아니라 400인지 확인한다.
 - [ ] 그 응답에서 엄마 휴무가 `2, 5, 8, 11, 14, 17, 20, 23, 26, 29`인지 확인한다 —
       **아무것도 등록하지 않은 상태에서** 나와야 한다.
 - [ ] 토큰 없이 `POST /dispatch/shifts`가 401인지 확인한다.

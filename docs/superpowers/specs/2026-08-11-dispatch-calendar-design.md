@@ -243,7 +243,7 @@ working = offset in workingOffsets
 |---|---|---|
 | `POST /dispatch/recognitions?yearMonth=` | 필요 | 배차표 사진 인식(아빠). **저장하지 않고** 결과만 반환 |
 | `POST /dispatch/shifts` | 필요 | 검수 확정분 upsert. **보낸 날짜만** 갱신 |
-| `GET /dispatch/shifts?from=&to=` | **불필요** | 웹 달력 조회. **아빠·엄마를 합쳐** 반환 |
+| `GET /dispatch/shifts?yearMonth=` | **불필요** | 웹 달력 조회. **아빠·엄마를 합쳐** 반환. 무인증이라 기간이 아닌 **연월 하나**를 받아 범위를 한 달로 못 박는다 |
 
 `GET`만 `SecurityConfig`에서 `permitAll`로 연다. 무인증 조회는 **읽기 전용이고 이 한
 엔드포인트뿐**이며, 응답에 실명·차량번호가 없다(`role`만 나간다).
