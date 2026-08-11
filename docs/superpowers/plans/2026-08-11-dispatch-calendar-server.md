@@ -2255,6 +2255,11 @@ class DispatchCommandServiceTest :
         val patternRepository = mockk<DispatchPatternRepository>(relaxed = true)
         val service = DispatchCommandService(shiftRepository, patternRepository)
 
+        // relaxed 목은 JpaRepository.save()의 제네릭 반환 타입을 풀지 못해 ClassCastException을
+        // 던진다. 이 저장소의 다른 리포지토리 목 테스트들도 같은 스텁을 둔다.
+        every { shiftRepository.save(any()) } answers { firstArg() }
+        every { patternRepository.save(any()) } answers { firstArg() }
+
         Given("새 날짜를 저장할 때") {
             every { shiftRepository.findByRoleAndWorkDate(any(), any()) } returns null
 
