@@ -2,7 +2,6 @@ package com.toy.backend.dispatch
 
 import com.toy.backend.common.exception.CustomException
 import com.toy.backend.dispatch.image.DispatchImageSlicer
-import com.toy.backend.dispatch.image.ImageSlice
 import com.toy.backend.dispatch.llm.DispatchVisionClient
 import com.toy.backend.dispatch.llm.DispatchVisionProperties
 import com.toy.backend.dispatch.llm.RecognizedSlice
@@ -25,59 +24,71 @@ class DispatchRecognitionService(
     private val properties: DispatchVisionProperties,
     private val slicer: DispatchImageSlicer,
 ) {
+    /**
+     * **연·월을 인자로 받는다.** 사진에서 읽은 값으로 정하면 「사진을 읽기 전에는 어느 달
+     * 기준을 조회할지 모른다」는 순환에 빠지고, 현재 달로 대신하면 8월 말에 9월 배차표를
+     * 미리 올릴 때 엉뚱한 달의 기준을 본다. 앱은 어느 달 배차표인지 알고 있다.
+     */
     @Transactional
-    fun recognize(bytes: ByteArray): RecognitionResponse {
+    fun recognize(
+        bytes: ByteArray,
+        yearMonth: YearMonth,
+    ): RecognitionResponse {
         val targetName =
             properties.fatherName.takeIf { it.isNotBlank() }
                 // 이름 없이 부른 프롬프트는 아무 행이나 읽어 온다.
                 ?: throw CustomException(DispatchErrorCode.TARGET_NAME_NOT_CONFIGURED)
 
         val slices = slicer.slice(bytes)
+        val roster = rosterRepository.findByYearMonth(yearMonth.toString())
 
-        // 사진은 항상 이번 달 배차표다. 이번 달 행 위치를 이미 알고 있으면 성명 없이 위치로만
-        // 읽는다 — 이름 검색보다 싸고, 모델이 이름을 못 찾는 위험도 없다. 그래서 어떤 조각을
-        // 부르기도 전에, 이번 달 기준이 있는지부터 확인한다.
-        val knownRoster = rosterRepository.findByYearMonth(YearMonth.now().toString())
+        // 첫 조각을 이름으로 물어 「성명 컬럼이 보이는가」를 판별한다. 왼쪽 조각에 성명 컬럼이 있다.
+        val probe =
+            visionClient.read(slices.first(), targetName, null)
+                ?: throw CustomException(DispatchErrorCode.VISION_UNAVAILABLE)
 
-        fun readSlice(slice: ImageSlice): RecognizedSlice? =
-            if (knownRoster != null) {
-                visionClient.read(slice, null, knownRoster.rowIndex)
-            } else {
-                visionClient.read(slice, targetName, null)
-            }
-
-        // 첫 조각으로 연·월과 「성명 컬럼이 보이는가」를 확정한다.
-        val first = readSlice(slices.first()) ?: throw CustomException(DispatchErrorCode.VISION_UNAVAILABLE)
-
-        val yearMonth = YearMonth.of(first.year, first.month)
-        val matchedBy = if (first.hasNameColumn) MatchedBy.NAME else MatchedBy.ROW_INDEX
+        val matchedBy = if (probe.hasNameColumn) MatchedBy.NAME else MatchedBy.ROW_INDEX
         val rowIndex =
             when {
-                first.hasNameColumn -> first.rowIndex
+                probe.hasNameColumn -> probe.rowIndex
 
-                knownRoster != null -> knownRoster.rowIndex
+                roster != null -> roster.rowIndex
 
                 // 성명 컬럼도 없고 기준도 없으면 어느 줄이 대상인지 알 방법이 없다.
                 else -> throw CustomException(DispatchErrorCode.ROSTER_NOT_FOUND, yearMonth.toString())
             }
 
-        val rest = slices.drop(1).mapNotNull { readSlice(it) }
-        val results = listOf(first) + rest
+        // 성명 컬럼이 없으면 **첫 조각도 행 위치로 다시 읽는다.** 이름으로 물은 답은
+        // 어느 행을 읽었는지 알 수 없어 믿을 수 없다. 잘린 사진일 때만 드는 추가 호출이다.
+        val results =
+            if (probe.hasNameColumn) {
+                listOf(probe) + slices.drop(1).mapNotNull { visionClient.read(it, targetName, null) }
+            } else {
+                slices.mapNotNull { visionClient.read(it, null, rowIndex) }
+            }
+        if (results.isEmpty()) throw CustomException(DispatchErrorCode.VISION_UNAVAILABLE)
 
+        val rowCount = results.first().rowCount
         val warnings = mutableListOf<String>()
         // 인원이 바뀌면 행 순서가 밀려 엉뚱한 기사의 근무가 들어온다.
-        if (knownRoster != null && knownRoster.rowCount != first.rowCount) {
+        if (roster != null && roster.rowCount != rowCount) {
             warnings += "ROW_COUNT_CHANGED"
         }
+        // 사진의 달과 요청한 달이 다르면 엉뚱한 달에 저장된다.
+        if (probe.year != 0 && probe.month != 0 &&
+            YearMonth.of(probe.year, probe.month) != yearMonth
+        ) {
+            warnings += "YEAR_MONTH_MISMATCH"
+        }
 
-        upsertRoster(yearMonth.toString(), rowIndex, first.rowCount, knownRoster)
+        upsertRoster(yearMonth.toString(), rowIndex, rowCount, roster)
 
         return RecognitionResponse(
             yearMonth = yearMonth.toString(),
-            hasNameColumn = first.hasNameColumn,
+            hasNameColumn = probe.hasNameColumn,
             matchedBy = matchedBy,
             rowIndex = rowIndex,
-            rowCount = first.rowCount,
+            rowCount = rowCount,
             warnings = warnings,
             days = merge(results, yearMonth),
         )

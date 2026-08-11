@@ -12,6 +12,7 @@ import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import java.time.YearMonth
 
 /**
  * 조각 둘을 하나로 합친다. **겹친 구간이 공짜 교차검증**이 된다 — 두 조각의 답이
@@ -62,7 +63,7 @@ class DispatchRecognitionServiceTest :
             every { visionClient.read(match { it.index == 1 }, "홍길동", null) } returns
                 sliceResult(true, listOf(4 to "2", 5 to ""))
 
-            val result = serviceWith().recognize(ByteArray(1))
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
 
             Then("이름으로 매칭했다고 알린다") {
                 result.matchedBy shouldBe MatchedBy.NAME
@@ -97,13 +98,21 @@ class DispatchRecognitionServiceTest :
         Given("성명 컬럼이 없는 사진과 저장된 기준") {
             every { rosterRepository.findByYearMonth("2026-08") } returns
                 DispatchRoster(yearMonth = "2026-08", rowIndex = 2, rowCount = 13)
+            // 첫 조각은 이름으로 물어본다. 모델이 「성명 컬럼이 없다」고 답하면
+            // 저장된 행 위치로 **그 조각까지 다시** 읽는다.
+            every { visionClient.read(any(), "홍길동", null) } returns
+                sliceResult(false, emptyList())
             every { visionClient.read(any(), null, 2) } returns
                 sliceResult(false, listOf(10 to "2", 11 to ""))
 
-            val result = serviceWith().recognize(ByteArray(1))
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
 
             Then("행 위치로 매칭했다고 알린다") {
                 result.matchedBy shouldBe MatchedBy.ROW_INDEX
+            }
+
+            Then("이름 모드로 읽은 빈 결과가 아니라 행 위치로 다시 읽은 값이 나온다") {
+                result.days.first { it.day == 10 }.slot shouldBe 2
             }
         }
 
@@ -113,7 +122,10 @@ class DispatchRecognitionServiceTest :
                 sliceResult(false, listOf(10 to "2"))
 
             Then("거부한다 — 추측해서 저장하지 않는다") {
-                val exception = shouldThrow<CustomException> { serviceWith().recognize(ByteArray(1)) }
+                val exception =
+                    shouldThrow<CustomException> {
+                        serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+                    }
                 exception.errorCode shouldBe DispatchErrorCode.ROSTER_NOT_FOUND
             }
         }
@@ -121,10 +133,12 @@ class DispatchRecognitionServiceTest :
         Given("표 인원이 바뀐 경우") {
             every { rosterRepository.findByYearMonth("2026-08") } returns
                 DispatchRoster(yearMonth = "2026-08", rowIndex = 2, rowCount = 13)
+            every { visionClient.read(any(), "홍길동", null) } returns
+                sliceResult(false, emptyList(), rowCount = 14)
             every { visionClient.read(any(), null, 2) } returns
                 sliceResult(false, listOf(10 to "2"), rowCount = 14)
 
-            val result = serviceWith().recognize(ByteArray(1))
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
 
             Then("경고를 단다 — 행 매칭이 조용히 어긋나는 것을 막는다") {
                 result.warnings shouldBe listOf("ROW_COUNT_CHANGED")
@@ -138,7 +152,7 @@ class DispatchRecognitionServiceTest :
             every { visionClient.read(match { it.index == 1 }, "홍길동", null) } returns
                 sliceResult(true, listOf(6 to "", 7 to "3"))
 
-            val result = serviceWith().recognize(ByteArray(1))
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
 
             Then("왼쪽 조각 값을 쓰되 conflict를 단다") {
                 val day6 = result.days.first { it.day == 6 }
@@ -159,10 +173,27 @@ class DispatchRecognitionServiceTest :
             every { visionClient.read(match { it.index == 1 }, "홍길동", null) } returns
                 sliceResult(true, listOf(4 to "2"))
 
-            val result = serviceWith().recognize(ByteArray(1))
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
 
             Then("범위 밖 칸은 버린다") {
                 result.days.none { it.day == 99 } shouldBe true
+            }
+        }
+
+        Given("요청한 달과 사진의 달이 다른 경우") {
+            every { rosterRepository.findByYearMonth("2026-09") } returns null
+            every { visionClient.read(any(), "홍길동", null) } returns
+                // 사진은 8월인데 9월로 요청했다
+                sliceResult(true, listOf(1 to "1"))
+
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 9))
+
+            Then("경고를 단다 — 엉뚱한 달에 저장되는 것을 막는다") {
+                result.warnings shouldBe listOf("YEAR_MONTH_MISMATCH")
+            }
+
+            Then("요청한 달을 기준으로 삼는다") {
+                result.yearMonth shouldBe "2026-09"
             }
         }
 
@@ -171,14 +202,20 @@ class DispatchRecognitionServiceTest :
             every { visionClient.read(any(), any(), any()) } returns null
 
             Then("인식 실패를 알린다") {
-                val exception = shouldThrow<CustomException> { serviceWith().recognize(ByteArray(1)) }
+                val exception =
+                    shouldThrow<CustomException> {
+                        serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+                    }
                 exception.errorCode shouldBe DispatchErrorCode.VISION_UNAVAILABLE
             }
         }
 
         Given("대상 이름이 설정되지 않은 경우") {
             Then("거부한다 — 이름 없이 부르면 아무 행이나 읽어 온다") {
-                val exception = shouldThrow<CustomException> { serviceWith(name = "").recognize(ByteArray(1)) }
+                val exception =
+                    shouldThrow<CustomException> {
+                        serviceWith(name = "").recognize(ByteArray(1), YearMonth.of(2026, 8))
+                    }
                 exception.errorCode shouldBe DispatchErrorCode.TARGET_NAME_NOT_CONFIGURED
             }
         }
