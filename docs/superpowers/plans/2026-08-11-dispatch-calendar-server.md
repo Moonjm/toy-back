@@ -937,10 +937,13 @@ class DispatchImageSlicerTest :
             val g = image.createGraphics()
             g.color = border
             g.fillRect(0, 0, width, height)
-            // 내용부는 단색이 아니어야 트리밍이 멈춘다 — 줄무늬를 넣는다.
+            // 내용부는 **행 방향으로도 열 방향으로도** 단색이 아니어야 트리밍이 멈춘다.
+            // 세로 줄무늬를 그리면 각 열이 단색이 되어 isUniformColumn이 내용부까지 깎는다.
             for (x in contentX until contentX + contentW) {
-                g.color = if ((x / 10) % 2 == 0) Color.WHITE else Color.BLUE
-                g.fillRect(x, contentY, 1, contentH)
+                for (y in contentY until contentY + contentH) {
+                    g.color = if (((x / 10) + (y / 10)) % 2 == 0) Color.WHITE else Color.BLUE
+                    g.fillRect(x, y, 1, 1)
+                }
             }
             g.dispose()
             return image
