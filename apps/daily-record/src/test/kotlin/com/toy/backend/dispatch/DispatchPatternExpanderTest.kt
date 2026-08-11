@@ -13,7 +13,7 @@ class DispatchPatternExpanderTest :
         val pattern =
             MotherPatternProperties(
                 cycleDays = 3,
-                workingOffsets = "1,2",
+                workingOffsets = listOf(1, 2),
                 anchorDate = LocalDate.of(2026, 8, 8),
             )
 

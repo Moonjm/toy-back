@@ -1,6 +1,5 @@
 package com.toy.backend.dispatch.llm
 
-import com.toy.backend.dispatch.MotherPatternProperties
 import io.netty.channel.ChannelOption
 import io.netty.handler.timeout.ReadTimeoutHandler
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -12,7 +11,7 @@ import reactor.netty.http.client.HttpClient
 import java.util.concurrent.TimeUnit
 
 @Configuration
-@EnableConfigurationProperties(DispatchVisionProperties::class, MotherPatternProperties::class)
+@EnableConfigurationProperties(DispatchVisionProperties::class)
 class DispatchVisionConfig {
     @Bean
     fun dispatchVisionClient(properties: DispatchVisionProperties): DispatchVisionClient {

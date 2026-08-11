@@ -1,9 +1,12 @@
 package com.toy.backend.dispatch
 
+import com.toy.backend.common.exception.CustomException
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import java.time.LocalDate
 
 /**
@@ -18,7 +21,7 @@ class DispatchQueryServiceTest :
         val motherPattern =
             MotherPatternProperties(
                 cycleDays = 3,
-                workingOffsets = "1,2",
+                workingOffsets = listOf(1, 2),
                 anchorDate = LocalDate.of(2026, 8, 8),
             )
         val service = DispatchQueryService(shiftRepository, motherPattern)
@@ -87,6 +90,45 @@ class DispatchQueryServiceTest :
 
             Then("아빠는 확정분이 없으므로 비어 있다") {
                 days.none { it.role == DispatchRole.FATHER } shouldBe true
+            }
+        }
+
+        // 이 엔드포인트는 **무인증**이다. 상한이 없으면 요청 한 번으로 수백만 건을 만들어
+        // 라즈베리파이 단일 인스턴스의 힙이 터진다. 재시도로 반복 가능한 서비스 거부다.
+        Given("시작일이 종료일보다 뒤인 요청") {
+            Then("거부한다") {
+                val exception =
+                    shouldThrow<CustomException> {
+                        service.findRange(LocalDate.of(2026, 8, 3), LocalDate.of(2026, 8, 1))
+                    }
+                exception.errorCode shouldBe DispatchErrorCode.INVALID_RANGE
+            }
+
+            Then("저장소를 건드리지도 않는다") {
+                shouldThrow<CustomException> {
+                    service.findRange(LocalDate.of(2026, 8, 3), LocalDate.of(2026, 8, 1))
+                }
+                verify(exactly = 0) { shiftRepository.findByWorkDateBetween(any(), any()) }
+            }
+        }
+
+        Given("400일을 넘는 기간을 요청") {
+            Then("거부한다") {
+                val exception =
+                    shouldThrow<CustomException> {
+                        service.findRange(LocalDate.of(1, 1, 1), LocalDate.of(9999, 12, 31))
+                    }
+                exception.errorCode shouldBe DispatchErrorCode.INVALID_RANGE
+            }
+        }
+
+        Given("상한에 딱 걸친 400일 기간") {
+            val start = LocalDate.of(2026, 1, 1)
+            val end = start.plusDays(399)
+            every { shiftRepository.findByWorkDateBetween(start, end) } returns emptyList()
+
+            Then("통과한다 — 달력이 부르는 한 달치는 넉넉히 들어온다") {
+                service.findRange(start, end).days.size shouldBe 400
             }
         }
     })

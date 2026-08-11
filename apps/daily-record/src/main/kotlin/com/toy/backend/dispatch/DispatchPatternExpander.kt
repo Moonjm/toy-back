@@ -16,6 +16,6 @@ object DispatchPatternExpander {
     ): Boolean {
         val elapsed = ChronoUnit.DAYS.between(pattern.anchorDate, date)
         val offset = Math.floorMod(elapsed, pattern.cycleDays.toLong()).toInt()
-        return offset in pattern.workingOffsetList
+        return offset in pattern.workingOffsets
     }
 }
