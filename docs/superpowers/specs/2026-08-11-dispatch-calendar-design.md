@@ -237,7 +237,7 @@ working = offset in workingOffsets
 |---|---|---|
 | `POST /dispatch/recognitions?yearMonth=` | 필요 | 배차표 사진 인식(아빠). **저장하지 않고** 결과만 반환 |
 | `POST /dispatch/shifts` | 필요 | 검수 확정분 upsert. **보낸 날짜만** 갱신 |
-| `PUT /dispatch/patterns/{role}` | 필요 | 반복 패턴 등록·수정(엄마) |
+| `PUT /dispatch/patterns/{role}` | 필요 | 반복 패턴 등록·수정(엄마). 응답 바디 없음(204) |
 | `GET /dispatch/shifts?from=&to=` | **불필요** | 웹 달력 조회. **아빠·엄마를 합쳐** 반환 |
 
 `GET`만 `SecurityConfig`에서 `permitAll`로 연다. 무인증 조회는 **읽기 전용이고 이 한

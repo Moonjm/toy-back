@@ -673,13 +673,6 @@ data class PatternSaveRequest(
     @field:NotEmpty val workingOffsets: List<Int>,
     val anchorDate: LocalDate,
 )
-
-data class PatternResponse(
-    val role: DispatchRole,
-    val cycleDays: Int,
-    val workingOffsets: List<Int>,
-    val anchorDate: LocalDate,
-)
 ```
 
 - [ ] **Step 4: 조회 서비스 구현**
@@ -2226,7 +2219,7 @@ git commit -m "feat: 배차표 조각을 합쳐 인식 결과를 만든다
 - Consumes: Task 1의 저장소, Task 3의 DTO, Task 6의 `DispatchRecognitionService`
 - Produces:
   - `DispatchCommandService.saveShifts(request: ShiftSaveRequest)`
-  - `DispatchCommandService.savePattern(role: DispatchRole, request: PatternSaveRequest): PatternResponse`
+  - `DispatchCommandService.savePattern(role: DispatchRole, request: PatternSaveRequest)`
 
 - [ ] **Step 1: 실패하는 테스트 작성**
 
@@ -2307,15 +2300,39 @@ class DispatchCommandServiceTest :
         Given("패턴을 저장할 때") {
             every { patternRepository.findByRole(DispatchRole.MOTHER) } returns null
 
-            val response =
-                service.savePattern(
-                    DispatchRole.MOTHER,
-                    PatternSaveRequest(cycleDays = 3, workingOffsets = listOf(1, 2), anchorDate = LocalDate.of(2026, 8, 8)),
-                )
+            service.savePattern(
+                DispatchRole.MOTHER,
+                // 뒤집어 보내 정렬되는지 본다
+                PatternSaveRequest(cycleDays = 3, workingOffsets = listOf(2, 1), anchorDate = LocalDate.of(2026, 8, 8)),
+            )
 
-            Then("오프셋이 문자열로 저장되고 목록으로 돌아온다") {
-                response.workingOffsets shouldBe listOf(1, 2)
-                response.cycleDays shouldBe 3
+            Then("오프셋이 정렬돼 문자열로 저장된다") {
+                val saved = slot<DispatchPattern>()
+                verify { patternRepository.save(capture(saved)) }
+                saved.captured.workingOffsets shouldBe "1,2"
+                saved.captured.cycleDays shouldBe 3
+                saved.captured.anchorDate shouldBe LocalDate.of(2026, 8, 8)
+            }
+        }
+
+        Given("이미 있는 패턴을 다시 저장할 때") {
+            val existing =
+                DispatchPattern(DispatchRole.MOTHER, cycleDays = 2, workingOffsets = "1", anchorDate = LocalDate.of(2026, 1, 1))
+            every { patternRepository.findByRole(DispatchRole.MOTHER) } returns existing
+
+            service.savePattern(
+                DispatchRole.MOTHER,
+                PatternSaveRequest(cycleDays = 3, workingOffsets = listOf(1, 2), anchorDate = LocalDate.of(2026, 8, 8)),
+            )
+
+            Then("기존 행이 갱신된다") {
+                existing.cycleDays shouldBe 3
+                existing.workingOffsets shouldBe "1,2"
+                existing.anchorDate shouldBe LocalDate.of(2026, 8, 8)
+            }
+
+            Then("새로 만들지 않는다") {
+                verify(exactly = 0) { patternRepository.save(any()) }
             }
         }
 
@@ -2383,10 +2400,11 @@ class DispatchCommandService(
         }
     }
 
+    /** 수정이므로 응답 바디가 없다(204). 저장 결과는 `GET /dispatch/shifts`에 펼쳐져 나온다. */
     fun savePattern(
         role: DispatchRole,
         request: PatternSaveRequest,
-    ): PatternResponse {
+    ) {
         // 주기 밖 오프셋은 영원히 도달하지 않아 조용히 무시된다. 저장 시점에 막는다.
         val invalid = request.workingOffsets.filterNot { it in 0 until request.cycleDays }
         if (invalid.isNotEmpty()) {
@@ -2395,29 +2413,20 @@ class DispatchCommandService(
 
         val offsets = request.workingOffsets.sorted().joinToString(",")
         val pattern = patternRepository.findByRole(role)
-        val saved =
-            if (pattern == null) {
-                patternRepository.save(
-                    DispatchPattern(
-                        role = role,
-                        cycleDays = request.cycleDays,
-                        workingOffsets = offsets,
-                        anchorDate = request.anchorDate,
-                    ),
-                )
-            } else {
-                pattern.cycleDays = request.cycleDays
-                pattern.workingOffsets = offsets
-                pattern.anchorDate = request.anchorDate
-                pattern
-            }
-
-        return PatternResponse(
-            role = saved.role,
-            cycleDays = saved.cycleDays,
-            workingOffsets = saved.workingOffsetList,
-            anchorDate = saved.anchorDate,
-        )
+        if (pattern == null) {
+            patternRepository.save(
+                DispatchPattern(
+                    role = role,
+                    cycleDays = request.cycleDays,
+                    workingOffsets = offsets,
+                    anchorDate = request.anchorDate,
+                ),
+            )
+        } else {
+            pattern.cycleDays = request.cycleDays
+            pattern.workingOffsets = offsets
+            pattern.anchorDate = request.anchorDate
+        }
     }
 }
 ```
@@ -2492,8 +2501,10 @@ class DispatchController(
     fun savePattern(
         @PathVariable role: DispatchRole,
         @Valid @RequestBody request: PatternSaveRequest,
-    ): ResponseEntity<DataResponseBody<PatternResponse>> =
-        ResponseEntity.ok(DataResponseBody(commandService.savePattern(role, request)))
+    ): ResponseEntity<Void> {
+        commandService.savePattern(role, request)
+        return ResponseEntity.noContent().build()
+    }
 }
 ```
 
