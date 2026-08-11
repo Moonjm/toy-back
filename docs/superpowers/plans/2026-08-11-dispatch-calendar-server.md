@@ -1767,7 +1767,7 @@ max_tokens를 30000으로 잡는다. 3.6-flash는 reasoning 토큰을 조각당 
   - `enum class MatchedBy { NAME, ROW_INDEX }`
   - `data class RecognitionDay(day: Int, working: Boolean, slot: Int?, note: String?, conflict: Boolean)`
   - `data class RecognitionResponse(yearMonth: String, hasNameColumn: Boolean, matchedBy: MatchedBy, rowIndex: Int, rowCount: Int, warnings: List<String>, days: List<RecognitionDay>)`
-  - `DispatchRecognitionService.recognize(bytes: ByteArray): RecognitionResponse`
+  - `DispatchRecognitionService.recognize(bytes: ByteArray, yearMonth: YearMonth): RecognitionResponse`
 
 - [ ] **Step 1: DTO 추가**
 
@@ -1816,6 +1816,7 @@ import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import java.time.YearMonth
 
 /**
  * 조각 둘을 하나로 합친다. **겹친 구간이 공짜 교차검증**이 된다 — 두 조각의 답이
@@ -1863,7 +1864,7 @@ class DispatchRecognitionServiceTest :
             every { visionClient.read(match { it.index == 1 }, "홍길동", null) } returns
                 sliceResult(true, listOf(4 to "2", 5 to ""))
 
-            val result = serviceWith().recognize(ByteArray(1))
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
 
             Then("이름으로 매칭했다고 알린다") {
                 result.matchedBy shouldBe MatchedBy.NAME
@@ -1898,13 +1899,21 @@ class DispatchRecognitionServiceTest :
         Given("성명 컬럼이 없는 사진과 저장된 기준") {
             every { rosterRepository.findByYearMonth("2026-08") } returns
                 DispatchRoster(yearMonth = "2026-08", rowIndex = 2, rowCount = 13)
+            // 첫 조각은 이름으로 물어본다. 모델이 「성명 컬럼이 없다」고 답하면
+            // 저장된 행 위치로 **그 조각까지 다시** 읽는다.
+            every { visionClient.read(any(), "홍길동", null) } returns
+                sliceResult(false, emptyList())
             every { visionClient.read(any(), null, 2) } returns
                 sliceResult(false, listOf(10 to "2", 11 to ""))
 
-            val result = serviceWith().recognize(ByteArray(1))
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
 
             Then("행 위치로 매칭했다고 알린다") {
                 result.matchedBy shouldBe MatchedBy.ROW_INDEX
+            }
+
+            Then("이름 모드로 읽은 빈 결과가 아니라 행 위치로 다시 읽은 값이 나온다") {
+                result.days.first { it.day == 10 }.slot shouldBe 2
             }
         }
 
@@ -1914,7 +1923,7 @@ class DispatchRecognitionServiceTest :
                 sliceResult(false, listOf(10 to "2"))
 
             Then("거부한다 — 추측해서 저장하지 않는다") {
-                val exception = shouldThrow<CustomException> { serviceWith().recognize(ByteArray(1)) }
+                val exception = shouldThrow<CustomException> { serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8)) }
                 exception.errorCode shouldBe DispatchErrorCode.ROSTER_NOT_FOUND
             }
         }
@@ -1922,10 +1931,12 @@ class DispatchRecognitionServiceTest :
         Given("표 인원이 바뀐 경우") {
             every { rosterRepository.findByYearMonth("2026-08") } returns
                 DispatchRoster(yearMonth = "2026-08", rowIndex = 2, rowCount = 13)
+            every { visionClient.read(any(), "홍길동", null) } returns
+                sliceResult(false, emptyList(), rowCount = 14)
             every { visionClient.read(any(), null, 2) } returns
                 sliceResult(false, listOf(10 to "2"), rowCount = 14)
 
-            val result = serviceWith().recognize(ByteArray(1))
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
 
             Then("경고를 단다 — 행 매칭이 조용히 어긋나는 것을 막는다") {
                 result.warnings shouldBe listOf("ROW_COUNT_CHANGED")
@@ -1939,7 +1950,7 @@ class DispatchRecognitionServiceTest :
             every { visionClient.read(match { it.index == 1 }, "홍길동", null) } returns
                 sliceResult(true, listOf(6 to "", 7 to "3"))
 
-            val result = serviceWith().recognize(ByteArray(1))
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
 
             Then("왼쪽 조각 값을 쓰되 conflict를 단다") {
                 val day6 = result.days.first { it.day == 6 }
@@ -1960,10 +1971,27 @@ class DispatchRecognitionServiceTest :
             every { visionClient.read(match { it.index == 1 }, "홍길동", null) } returns
                 sliceResult(true, listOf(4 to "2"))
 
-            val result = serviceWith().recognize(ByteArray(1))
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
 
             Then("범위 밖 칸은 버린다") {
                 result.days.none { it.day == 99 } shouldBe true
+            }
+        }
+
+        Given("요청한 달과 사진의 달이 다른 경우") {
+            every { rosterRepository.findByYearMonth("2026-09") } returns null
+            every { visionClient.read(any(), "홍길동", null) } returns
+                // 사진은 8월인데 9월로 요청했다
+                sliceResult(true, listOf(1 to "1"))
+
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 9))
+
+            Then("경고를 단다 — 엉뚱한 달에 저장되는 것을 막는다") {
+                result.warnings shouldBe listOf("YEAR_MONTH_MISMATCH")
+            }
+
+            Then("요청한 달을 기준으로 삼는다") {
+                result.yearMonth shouldBe "2026-09"
             }
         }
 
@@ -1972,14 +2000,14 @@ class DispatchRecognitionServiceTest :
             every { visionClient.read(any(), any(), any()) } returns null
 
             Then("인식 실패를 알린다") {
-                val exception = shouldThrow<CustomException> { serviceWith().recognize(ByteArray(1)) }
+                val exception = shouldThrow<CustomException> { serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8)) }
                 exception.errorCode shouldBe DispatchErrorCode.VISION_UNAVAILABLE
             }
         }
 
         Given("대상 이름이 설정되지 않은 경우") {
             Then("거부한다 — 이름 없이 부르면 아무 행이나 읽어 온다") {
-                val exception = shouldThrow<CustomException> { serviceWith(name = "").recognize(ByteArray(1)) }
+                val exception = shouldThrow<CustomException> { serviceWith(name = "").recognize(ByteArray(1), YearMonth.of(2026, 8)) }
                 exception.errorCode shouldBe DispatchErrorCode.TARGET_NAME_NOT_CONFIGURED
             }
         }
@@ -2024,56 +2052,69 @@ class DispatchRecognitionService(
     private val properties: DispatchVisionProperties,
     private val slicer: DispatchImageSlicer,
 ) {
+    /**
+     * **연·월을 인자로 받는다.** 사진에서 읽은 값으로 정하면 「사진을 읽기 전에는 어느 달
+     * 기준을 조회할지 모른다」는 순환에 빠지고, 현재 달로 대신하면 8월 말에 9월 배차표를
+     * 미리 올릴 때 엉뚱한 달의 기준을 본다. 앱은 어느 달 배차표인지 알고 있다.
+     */
     @Transactional
-    fun recognize(bytes: ByteArray): RecognitionResponse {
+    fun recognize(
+        bytes: ByteArray,
+        yearMonth: YearMonth,
+    ): RecognitionResponse {
         val targetName =
             properties.fatherName.takeIf { it.isNotBlank() }
                 // 이름 없이 부른 프롬프트는 아무 행이나 읽어 온다.
                 ?: throw CustomException(DispatchErrorCode.TARGET_NAME_NOT_CONFIGURED)
 
         val slices = slicer.slice(bytes)
+        val roster = rosterRepository.findByYearMonth(yearMonth.toString())
 
-        // 첫 조각으로 「성명 컬럼이 보이는가」와 연·월을 정한다. 왼쪽 조각에 성명 컬럼이 있다.
-        val first =
+        // 첫 조각을 이름으로 물어 「성명 컬럼이 보이는가」를 판별한다. 왼쪽 조각에 성명 컬럼이 있다.
+        val probe =
             visionClient.read(slices.first(), targetName, null)
                 ?: throw CustomException(DispatchErrorCode.VISION_UNAVAILABLE)
 
-        val yearMonth = YearMonth.of(first.year, first.month)
-        val roster = rosterRepository.findByYearMonth(yearMonth.toString())
-
-        val matchedBy = if (first.hasNameColumn) MatchedBy.NAME else MatchedBy.ROW_INDEX
+        val matchedBy = if (probe.hasNameColumn) MatchedBy.NAME else MatchedBy.ROW_INDEX
         val rowIndex =
             when {
-                first.hasNameColumn -> first.rowIndex
+                probe.hasNameColumn -> probe.rowIndex
                 roster != null -> roster.rowIndex
                 // 성명 컬럼도 없고 기준도 없으면 어느 줄이 대상인지 알 방법이 없다.
                 else -> throw CustomException(DispatchErrorCode.ROSTER_NOT_FOUND, yearMonth.toString())
             }
 
-        val rest =
-            slices.drop(1).mapNotNull { slice ->
-                if (first.hasNameColumn) {
-                    visionClient.read(slice, targetName, null)
-                } else {
-                    visionClient.read(slice, null, rowIndex)
-                }
+        // 성명 컬럼이 없으면 **첫 조각도 행 위치로 다시 읽는다.** 이름으로 물은 답은
+        // 어느 행을 읽었는지 알 수 없어 믿을 수 없다. 잘린 사진일 때만 드는 추가 호출이다.
+        val results =
+            if (probe.hasNameColumn) {
+                listOf(probe) + slices.drop(1).mapNotNull { visionClient.read(it, targetName, null) }
+            } else {
+                slices.mapNotNull { visionClient.read(it, null, rowIndex) }
             }
+        if (results.isEmpty()) throw CustomException(DispatchErrorCode.VISION_UNAVAILABLE)
 
-        val results = listOf(first) + rest
+        val rowCount = results.first().rowCount
         val warnings = mutableListOf<String>()
         // 인원이 바뀌면 행 순서가 밀려 엉뚱한 기사의 근무가 들어온다.
-        if (roster != null && roster.rowCount != first.rowCount) {
+        if (roster != null && roster.rowCount != rowCount) {
             warnings += "ROW_COUNT_CHANGED"
         }
+        // 사진의 달과 요청한 달이 다르면 엉뚱한 달에 저장된다.
+        if (probe.year != 0 && probe.month != 0 &&
+            YearMonth.of(probe.year, probe.month) != yearMonth
+        ) {
+            warnings += "YEAR_MONTH_MISMATCH"
+        }
 
-        upsertRoster(yearMonth.toString(), rowIndex, first.rowCount, roster)
+        upsertRoster(yearMonth.toString(), rowIndex, rowCount, roster)
 
         return RecognitionResponse(
             yearMonth = yearMonth.toString(),
-            hasNameColumn = first.hasNameColumn,
+            hasNameColumn = probe.hasNameColumn,
             matchedBy = matchedBy,
             rowIndex = rowIndex,
-            rowCount = first.rowCount,
+            rowCount = rowCount,
             warnings = warnings,
             days = merge(results, yearMonth),
         )
@@ -2400,6 +2441,7 @@ import org.springframework.web.bind.annotation.RequestPart
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.multipart.MultipartFile
 import java.time.LocalDate
+import java.time.YearMonth
 
 @Tag(name = "근무 달력", description = "배차표 사진 인식 → 검수 → 확정 저장, 그리고 무인증 조회")
 @RestController
@@ -2418,12 +2460,18 @@ class DispatchController(
     ): ResponseEntity<DataResponseBody<ShiftRangeResponse>> =
         ResponseEntity.ok(DataResponseBody(queryService.findRange(from, to)))
 
+    /**
+     * `yearMonth`를 앱이 보낸다. 사진에서 읽은 값으로 정하면 「읽기 전에는 어느 달 기준을
+     * 조회할지 모른다」는 순환에 빠지고, 현재 달로 대신하면 8월 말에 9월 배차표를 미리
+     * 올릴 때 엉뚱한 달의 기준을 본다.
+     */
     @PostMapping("/recognitions")
     @Operation(summary = "배차표 사진 인식 — 저장하지 않고 결과만 준다(검수용)")
     fun recognize(
         @RequestPart("file") file: MultipartFile,
+        @RequestParam yearMonth: String,
     ): ResponseEntity<DataResponseBody<RecognitionResponse>> =
-        ResponseEntity.ok(DataResponseBody(recognitionService.recognize(file.bytes)))
+        ResponseEntity.ok(DataResponseBody(recognitionService.recognize(file.bytes, YearMonth.parse(yearMonth))))
 
     @PostMapping("/shifts")
     @Operation(summary = "검수 확정분 저장 — 보낸 날짜만 갱신한다")
@@ -2475,11 +2523,12 @@ git commit -m "feat: 근무 달력 엔드포인트를 연다
 자동 테스트로는 실제 인식 품질을 알 수 없다. 배포 전에 한 번 돌린다.
 
 - [ ] `DISPATCH_FATHER_NAME`과 `OPENROUTER_API_KEY`를 설정하고 앱을 띄운다.
-- [ ] 실제 배차표 사진(성명 컬럼이 보이는 확대 캡처)으로 `POST /dispatch/recognitions`를 호출한다.
+- [ ] 실제 배차표 사진(성명 컬럼이 보이는 확대 캡처)으로 `POST /dispatch/recognitions?yearMonth=2026-08`을 호출한다.
 - [ ] 응답의 `matchedBy`가 `NAME`인지, `rowIndex`·`rowCount`가 사진과 맞는지 확인한다.
 - [ ] `days`를 사진과 대조한다. **빈 칸이 빈 칸으로 나오는지**가 핵심이다.
 - [ ] 응답 어디에도 실명·차량번호가 없는지 확인한다.
 - [ ] 잘린 변경분 사진으로 다시 호출해 `matchedBy`가 `ROW_INDEX`인지 확인한다.
+- [ ] 사진과 다른 달(`yearMonth=2026-09`)로 호출해 `YEAR_MONTH_MISMATCH` 경고가 붙는지 확인한다.
 - [ ] `PUT /dispatch/patterns/MOTHER`로 `cycleDays=3, workingOffsets=[1,2], anchorDate=2026-08-08`을 저장한다.
 - [ ] 로그아웃 상태(토큰 없이)로 `GET /dispatch/shifts?from=2026-08-01&to=2026-08-31`이 200을 주는지 확인한다.
 - [ ] 그 응답에서 엄마 휴무가 `2, 5, 8, 11, 14, 17, 20, 23, 26, 29`인지 확인한다.
