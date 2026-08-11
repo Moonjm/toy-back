@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class DispatchVisionClientTest :
     BehaviorSpec({
-        val slice = ImageSlice(index = 0, base64 = "AAAA", xFrom = 0, xTo = 100)
+        val slice = ImageSlice(index = 0, base64 = "AAAA")
 
         val validJson =
             """
@@ -54,6 +54,29 @@ class DispatchVisionClientTest :
                     .exchangeFunction(exchange)
                     .build()
             return DispatchVisionClient(properties, webClient) to calls
+        }
+
+        /** 같은 상태 코드를 계속 돌려주는 클라이언트. 호출 횟수만 세면 된다. */
+        fun clientWithStatus(status: HttpStatus): Pair<DispatchVisionClient, AtomicInteger> {
+            val calls = AtomicInteger(0)
+            val exchange =
+                ExchangeFunction {
+                    calls.incrementAndGet()
+                    Mono.just(
+                        ClientResponse
+                            .create(status)
+                            .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                            .body("""{"error":{"message":"nope"}}""")
+                            .build(),
+                    )
+                }
+            val webClient =
+                WebClient
+                    .builder()
+                    .baseUrl("http://localhost")
+                    .exchangeFunction(exchange)
+                    .build()
+            return DispatchVisionClient(DispatchVisionProperties(apiKey = "sk-test"), webClient) to calls
         }
 
         fun wrap(content: String) = """{"choices":[{"finish_reason":"stop","message":{"content":${jsonQuote(content)}}}]}"""
@@ -156,6 +179,53 @@ class DispatchVisionClientTest :
             Then("재시도하지 않는다") {
                 // max_tokens에 걸려 잘린 응답은 다시 불러도 똑같다. 재시도는 비용만 두 배로 든다.
                 calls.get() shouldBe 1
+            }
+        }
+
+        Given("잘렸지만 content가 남아 있는 응답") {
+            // JSON이 완성되지 않아 파싱에 실패한다. 예전에는 이걸 파싱 실패로 보고 재시도했다.
+            val truncated = """{"hasNameColumn":true,"rowIndex":2,"rowCou"""
+            val (client, calls) =
+                clientWith("""{"choices":[{"finish_reason":"length","message":{"content":${jsonQuote(truncated)}}}]}""")
+            val result = client.read(slice, "홍길동", null)
+
+            Then("null을 준다") {
+                result shouldBe null
+            }
+
+            Then("재시도하지 않는다 — 잘림은 결정론적이라 다시 불러도 같다") {
+                calls.get() shouldBe 1
+            }
+        }
+
+        Given("키가 틀려 401이 오는 경우") {
+            val (client, calls) = clientWithStatus(HttpStatus.UNAUTHORIZED)
+            val result = client.read(slice, "홍길동", null)
+
+            Then("null을 준다") {
+                result shouldBe null
+            }
+
+            Then("재시도하지 않는다 — 같은 요청은 같은 4xx를 받는다") {
+                calls.get() shouldBe 1
+            }
+        }
+
+        Given("잔액이 없어 402가 오는 경우") {
+            val (client, calls) = clientWithStatus(HttpStatus.PAYMENT_REQUIRED)
+            client.read(slice, "홍길동", null)
+
+            Then("재시도하지 않는다") {
+                calls.get() shouldBe 1
+            }
+        }
+
+        Given("서버 쪽 5xx가 오는 경우") {
+            val (client, calls) = clientWithStatus(HttpStatus.BAD_GATEWAY)
+            client.read(slice, "홍길동", null)
+
+            Then("일시적 실패로 보고 한 번 재시도한다") {
+                calls.get() shouldBe 2
             }
         }
     })

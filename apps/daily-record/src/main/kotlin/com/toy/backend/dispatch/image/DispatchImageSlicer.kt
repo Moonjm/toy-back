@@ -11,12 +11,15 @@ import java.util.Base64
 import javax.imageio.ImageIO
 import kotlin.math.abs
 
-/** 조각 하나. `xFrom`/`xTo`는 **트리밍된 원본** 기준 픽셀 범위다(겹침 판정에 쓴다). */
+/**
+ * 조각 하나. `index`는 왼쪽부터의 순서다 — 0번이 성명 컬럼을 담은 왼쪽 조각이다.
+ *
+ * **픽셀 범위는 담지 않는다.** 어느 픽셀이 어느 날짜인지 알 방법이 없어 조각 범위와
+ * 날짜를 대응시킬 수 없다. 잘못 센 칸은 `visibleDays` 멤버십으로 칸 단위로 걸러낸다.
+ */
 data class ImageSlice(
     val index: Int,
     val base64: String,
-    val xFrom: Int,
-    val xTo: Int,
 )
 
 /** 가장자리 한 줄이 단색인지 볼 때 허용할 채널 차이. JPEG 압축 노이즈를 흡수한다. */
@@ -56,8 +59,6 @@ class DispatchImageSlicer {
             ImageSlice(
                 index = index,
                 base64 = Base64.getEncoder().encodeToString(toPng(upscale(piece, TARGET_LONG_EDGE))),
-                xFrom = xFrom,
-                xTo = xTo,
             )
         }
     }

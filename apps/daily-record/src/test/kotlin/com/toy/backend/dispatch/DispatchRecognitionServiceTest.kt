@@ -27,11 +27,11 @@ class DispatchRecognitionServiceTest :
         // relaxed 모드는 JpaRepository.save()의 제네릭 반환 타입(<S : T> S save(S))을
         // 못 풀어 ClassCastException을 낸다. 이 저장소의 다른 테스트들과 같은 방식으로 직접 답한다.
         every { rosterRepository.save(any()) } answers { firstArg() }
+        val rosterUpdater = mockk<DispatchRosterUpdater>(relaxed = true)
         val visionClient = mockk<DispatchVisionClient>()
 
         val slicer = mockk<DispatchImageSlicer>()
-        every { slicer.slice(any()) } returns
-            listOf(ImageSlice(0, "A", 0, 100), ImageSlice(1, "B", 90, 200))
+        every { slicer.slice(any()) } returns listOf(ImageSlice(0, "A"), ImageSlice(1, "B"))
 
         fun serviceWith(name: String = "홍길동") =
             DispatchRecognitionService(
@@ -39,6 +39,7 @@ class DispatchRecognitionServiceTest :
                 visionClient,
                 DispatchVisionProperties(apiKey = "sk-test", fatherName = name),
                 slicer,
+                rosterUpdater,
             )
 
         fun sliceResult(
@@ -60,7 +61,9 @@ class DispatchRecognitionServiceTest :
             every { rosterRepository.findByYearMonth("2026-08") } returns null
             every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
                 sliceResult(true, listOf(1 to "1", 2 to "", 3 to "*97"))
-            every { visionClient.read(match { it.index == 1 }, "홍길동", null) } returns
+            // **오른쪽 조각에는 성명 컬럼이 없다**(폭의 45~100%). 이름으로 물으면 모델이
+            // 없는 이름을 찾다 임의의 행을 읽는다. probe로 확정한 행 위치로만 읽어야 한다.
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns
                 sliceResult(true, listOf(4 to "2", 5 to ""))
 
             val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
@@ -91,7 +94,7 @@ class DispatchRecognitionServiceTest :
             }
 
             Then("행 위치를 기억한다") {
-                io.mockk.verify { rosterRepository.save(any()) }
+                io.mockk.verify { rosterUpdater.upsert("2026-08", 2, 13) }
             }
         }
 
@@ -149,7 +152,7 @@ class DispatchRecognitionServiceTest :
             every { rosterRepository.findByYearMonth("2026-08") } returns null
             every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
                 sliceResult(true, listOf(5 to "1", 6 to "2"))
-            every { visionClient.read(match { it.index == 1 }, "홍길동", null) } returns
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns
                 sliceResult(true, listOf(6 to "", 7 to "3"))
 
             val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
@@ -170,7 +173,7 @@ class DispatchRecognitionServiceTest :
             every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
                 // 보이는 날짜는 1~3인데 99일 칸을 냈다 — 집계 컬럼을 날짜로 센 흔적이다.
                 sliceResult(true, listOf(1 to "1", 99 to "4"), visibleDays = listOf(1, 2, 3))
-            every { visionClient.read(match { it.index == 1 }, "홍길동", null) } returns
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns
                 sliceResult(true, listOf(4 to "2"))
 
             val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
@@ -185,6 +188,8 @@ class DispatchRecognitionServiceTest :
             every { visionClient.read(any(), "홍길동", null) } returns
                 // 사진은 8월인데 9월로 요청했다
                 sliceResult(true, listOf(1 to "1"))
+            every { visionClient.read(any(), null, 2) } returns
+                sliceResult(true, listOf(1 to "1"))
 
             val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 9))
 
@@ -194,6 +199,45 @@ class DispatchRecognitionServiceTest :
 
             Then("요청한 달을 기준으로 삼는다") {
                 result.yearMonth shouldBe "2026-09"
+            }
+
+            Then("행 위치를 갱신하지 않는다 — 믿을 수 없다고 판정한 사진이다") {
+                // 갱신해 버리면 검수 화면에서 취소해도 되돌아가지 않고,
+                // 이후 그 달의 잘린 사진이 전부 틀린 행을 읽는다.
+                io.mockk.verify(exactly = 0) { rosterUpdater.upsert(any(), any(), any()) }
+            }
+        }
+
+        Given("표 인원이 바뀌었고 성명 컬럼도 보이는 사진") {
+            every { rosterRepository.findByYearMonth("2026-08") } returns
+                DispatchRoster(yearMonth = "2026-08", rowIndex = 2, rowCount = 13)
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1"), rowCount = 14)
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns
+                sliceResult(true, listOf(2 to "2"), rowCount = 14)
+
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+
+            Then("경고를 단다") {
+                result.warnings shouldBe listOf("ROW_COUNT_CHANGED")
+            }
+
+            Then("경고가 붙었으므로 기준을 덮지 않는다") {
+                // 여기서 rowCount를 덮으면 ROW_COUNT_CHANGED가 한 번만 뜨고 다음 업로드부터 사라진다.
+                io.mockk.verify(exactly = 0) { rosterUpdater.upsert(any(), any(), any()) }
+            }
+        }
+
+        Given("성명 컬럼 없이 기존 기준으로만 읽은 사진") {
+            every { rosterRepository.findByYearMonth("2026-08") } returns
+                DispatchRoster(yearMonth = "2026-08", rowIndex = 2, rowCount = 13)
+            every { visionClient.read(any(), "홍길동", null) } returns sliceResult(false, emptyList())
+            every { visionClient.read(any(), null, 2) } returns sliceResult(false, listOf(10 to "2"))
+
+            serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+
+            Then("기준을 덮지 않는다 — 새로 배운 행 위치가 없다") {
+                io.mockk.verify(exactly = 0) { rosterUpdater.upsert(any(), any(), any()) }
             }
         }
 

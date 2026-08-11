@@ -6,7 +6,6 @@ import com.toy.backend.dispatch.llm.DispatchVisionClient
 import com.toy.backend.dispatch.llm.DispatchVisionProperties
 import com.toy.backend.dispatch.llm.RecognizedSlice
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
 import java.time.YearMonth
 
 /**
@@ -23,13 +22,17 @@ class DispatchRecognitionService(
     private val visionClient: DispatchVisionClient,
     private val properties: DispatchVisionProperties,
     private val slicer: DispatchImageSlicer,
+    private val rosterUpdater: DispatchRosterUpdater,
 ) {
     /**
      * **연·월을 인자로 받는다.** 사진에서 읽은 값으로 정하면 「사진을 읽기 전에는 어느 달
      * 기준을 조회할지 모른다」는 순환에 빠지고, 현재 달로 대신하면 8월 말에 9월 배차표를
      * 미리 올릴 때 엉뚱한 달의 기준을 본다. 앱은 어느 달 배차표인지 알고 있다.
+     *
+     * **트랜잭션으로 감싸지 않는다.** 조각당 최대 2회, 최대 3조각을 `timeoutSeconds = 120`으로
+     * 읽으므로 감싸면 최악의 경우 DB 커넥션을 12분 붙잡는다. DB를 건드리는 것은 기준 조회
+     * 한 번과 `DispatchRosterUpdater` 호출 한 번뿐이고, 각자 자기 트랜잭션에서 돈다.
      */
-    @Transactional
     fun recognize(
         bytes: ByteArray,
         yearMonth: YearMonth,
@@ -58,11 +61,13 @@ class DispatchRecognitionService(
                 else -> throw CustomException(DispatchErrorCode.ROSTER_NOT_FOUND, yearMonth.toString())
             }
 
-        // 성명 컬럼이 없으면 **첫 조각도 행 위치로 다시 읽는다.** 이름으로 물은 답은
-        // 어느 행을 읽었는지 알 수 없어 믿을 수 없다. 잘린 사진일 때만 드는 추가 호출이다.
+        // **probe 뒤로는 언제나 행 위치로 읽는다.** 성명 컬럼은 표 맨 왼쪽에 있어 두 번째
+        // 조각(폭의 45~100%)에는 없다. 없는 이름을 찾으라고 물으면 모델은 임의의 행을 읽고,
+        // 그 값이 왼쪽 조각과 합쳐져 그 달 후반부가 다른 기사의 근무로 채워진다.
+        // 성명 컬럼이 아예 없으면 **첫 조각도 행 위치로 다시 읽는다** — 같은 이유다.
         val results =
             if (probe.hasNameColumn) {
-                listOf(probe) + slices.drop(1).mapNotNull { visionClient.read(it, targetName, null) }
+                listOf(probe) + slices.drop(1).mapNotNull { visionClient.read(it, null, rowIndex) }
             } else {
                 slices.mapNotNull { visionClient.read(it, null, rowIndex) }
             }
@@ -81,7 +86,13 @@ class DispatchRecognitionService(
             warnings += "YEAR_MONTH_MISMATCH"
         }
 
-        upsertRoster(yearMonth.toString(), rowIndex, rowCount, roster)
+        // **새로 배운 것이 있고 의심할 근거가 없을 때만 갱신한다.** 경고가 붙은 사진(9월 사진을
+        // 8월로 올린 경우 등)에서 읽은 값으로 덮으면 검수 화면에서 취소해도 되돌아가지 않고,
+        // 이후 잘린 사진이 전부 틀린 행을 읽는다. `ROW_INDEX` 모드는 기존 기준을 되쓴 것이라
+        // 새로 배운 것이 없다 — 여기서 `rowCount`를 덮으면 경고가 한 번만 뜨고 사라진다.
+        if (matchedBy == MatchedBy.NAME && warnings.isEmpty()) {
+            rosterUpdater.upsert(yearMonth.toString(), rowIndex, rowCount)
+        }
 
         return RecognitionResponse(
             yearMonth = yearMonth.toString(),
@@ -92,20 +103,6 @@ class DispatchRecognitionService(
             warnings = warnings,
             days = merge(results, yearMonth),
         )
-    }
-
-    private fun upsertRoster(
-        yearMonth: String,
-        rowIndex: Int,
-        rowCount: Int,
-        existing: DispatchRoster?,
-    ) {
-        if (existing == null) {
-            rosterRepository.save(DispatchRoster(yearMonth, rowIndex, rowCount))
-        } else {
-            existing.rowIndex = rowIndex
-            existing.rowCount = rowCount
-        }
     }
 
     /**

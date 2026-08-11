@@ -1,7 +1,6 @@
 package com.toy.backend.dispatch.image
 
 import io.kotest.core.spec.style.BehaviorSpec
-import io.kotest.matchers.comparables.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import java.awt.Color
 import java.awt.image.BufferedImage
@@ -84,12 +83,8 @@ class DispatchImageSlicerTest :
                 slices.size shouldBe 2
             }
 
-            Then("경계가 겹친다 — 경계에 걸친 날짜가 유실되지 않도록") {
-                // 조각1은 폭의 55%까지, 조각2는 45%부터. 겹침 폭은 트리밍 폭(300)의 10%.
-                slices[0].xFrom shouldBe 0
-                slices[1].xTo shouldBe 300
-                slices[0].xTo shouldBeGreaterThan slices[1].xFrom
-                (slices[0].xTo - slices[1].xFrom) shouldBe 30
+            Then("왼쪽부터 순서가 매겨진다 — 0번에만 성명 컬럼이 있다") {
+                slices.map { it.index } shouldBe listOf(0, 1)
             }
 
             Then("각 조각이 base64로 나온다") {

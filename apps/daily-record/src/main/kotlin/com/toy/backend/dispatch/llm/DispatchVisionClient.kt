@@ -3,6 +3,7 @@ package com.toy.backend.dispatch.llm
 import com.toy.backend.dispatch.image.ImageSlice
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.web.reactive.function.client.WebClient
+import org.springframework.web.reactive.function.client.WebClientResponseException
 import org.springframework.web.reactive.function.client.bodyToMono
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
@@ -120,7 +121,10 @@ class DispatchVisionClient(
                     .block()
             val choice = response?.path("choices")?.path(0)
             if (choice?.path("finish_reason")?.asString() == "length") {
+                // 잘린 응답은 content가 남아 있어도 JSON이 완성되지 않는다. 결정론적이라
+                // 다시 불러도 똑같으니 파싱 실패 경로로 흘려보내 재시도시키지 않는다.
                 log.error { "배차표 인식이 max_tokens에 걸려 잘렸다 — 한도를 올려야 한다" }
+                return PostOutcome.Empty
             }
             val content =
                 choice
@@ -129,13 +133,18 @@ class DispatchVisionClient(
                     ?.asString()
                     ?.takeIf { it.isNotBlank() }
             if (content != null) PostOutcome.Content(content) else PostOutcome.Empty
+        } catch (e: WebClientResponseException) {
+            log.error(e) { "배차표 인식 호출 실패 (${e.statusCode})" }
+            // 401·402·429는 같은 요청을 바로 다시 보내도 같은 답이 온다. 키가 틀렸거나
+            // 잔액이 없는데 지체 없이 한 번 더 부르면 비용과 대기만 두 배가 된다.
+            if (e.statusCode.is4xxClientError) PostOutcome.Empty else PostOutcome.Retryable
         } catch (e: Exception) {
             log.error(e) { "배차표 인식 호출 실패" }
             PostOutcome.Retryable
         }
 
     private fun parse(content: String): RecognizedSlice {
-        val root = JsonMapper.builder().build().readTree(content)
+        val root = JSON_MAPPER.readTree(content)
         val visible: Iterable<JsonNode> = root.path("visibleDays")
         val cells: Iterable<JsonNode> = root.path("cells")
         return RecognizedSlice(
@@ -202,6 +211,9 @@ class DispatchVisionClient(
 
     companion object {
         private const val MAX_ATTEMPTS = 2
+
+        /** 스레드 안전하고 상태가 없다. 파싱마다 새로 만들 이유가 없다. */
+        private val JSON_MAPPER = JsonMapper.builder().build()
 
         /** 파싱 실패 로그에 남길 content 최대 길이. 모델이 만든 임의 길이 텍스트를 통째로 남기지 않는다. */
         private const val LOG_CONTENT_LIMIT = 500
