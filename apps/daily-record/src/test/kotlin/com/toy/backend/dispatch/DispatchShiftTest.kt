@@ -41,18 +41,4 @@ class DispatchShiftTest :
                 shift.note shouldBe "간담회"
             }
         }
-
-        Given("주기 안에서 일하는 날이 1,2인 패턴") {
-            val pattern =
-                DispatchPattern(
-                    role = DispatchRole.MOTHER,
-                    cycleDays = 3,
-                    workingOffsets = "1,2",
-                    anchorDate = LocalDate.of(2026, 8, 8),
-                )
-
-            Then("오프셋 목록으로 읽힌다") {
-                pattern.workingOffsetList shouldBe listOf(1, 2)
-            }
-        }
     })

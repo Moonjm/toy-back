@@ -1,6 +1,5 @@
 package com.toy.backend.dispatch
 
-import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotEmpty
 import java.time.LocalDate
 
@@ -27,12 +26,6 @@ data class ShiftSaveDay(
     val working: Boolean,
     val slot: Int?,
     val note: String?,
-)
-
-data class PatternSaveRequest(
-    @field:Min(1) val cycleDays: Int,
-    @field:NotEmpty val workingOffsets: List<Int>,
-    val anchorDate: LocalDate,
 )
 
 enum class MatchedBy { NAME, ROW_INDEX }

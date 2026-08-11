@@ -15,8 +15,13 @@ import java.time.LocalDate
 class DispatchQueryServiceTest :
     BehaviorSpec({
         val shiftRepository = mockk<DispatchShiftRepository>()
-        val patternRepository = mockk<DispatchPatternRepository>()
-        val service = DispatchQueryService(shiftRepository, patternRepository)
+        val motherPattern =
+            MotherPatternProperties(
+                cycleDays = 3,
+                workingOffsets = "1,2",
+                anchorDate = LocalDate.of(2026, 8, 8),
+            )
+        val service = DispatchQueryService(shiftRepository, motherPattern)
 
         val from = LocalDate.of(2026, 8, 1)
         val to = LocalDate.of(2026, 8, 3)
@@ -26,8 +31,6 @@ class DispatchQueryServiceTest :
                 listOf(
                     DispatchShift(DispatchRole.FATHER, LocalDate.of(2026, 8, 1), working = true, slot = 1),
                 )
-            every { patternRepository.findByRole(DispatchRole.MOTHER) } returns
-                DispatchPattern(DispatchRole.MOTHER, 3, "1,2", LocalDate.of(2026, 8, 8))
 
             val days = service.findRange(from, to).days
 
@@ -58,8 +61,6 @@ class DispatchQueryServiceTest :
                     // 패턴상 8/1은 근무인데 예외로 휴무를 저장했다
                     DispatchShift(DispatchRole.MOTHER, LocalDate.of(2026, 8, 1), working = false, note = "연차"),
                 )
-            every { patternRepository.findByRole(DispatchRole.MOTHER) } returns
-                DispatchPattern(DispatchRole.MOTHER, 3, "1,2", LocalDate.of(2026, 8, 8))
 
             val days = service.findRange(from, to).days
 
@@ -75,12 +76,17 @@ class DispatchQueryServiceTest :
             }
         }
 
-        Given("패턴이 등록되지 않았을 때") {
+        Given("아무것도 저장되지 않았을 때") {
             every { shiftRepository.findByWorkDateBetween(from, to) } returns emptyList()
-            every { patternRepository.findByRole(DispatchRole.MOTHER) } returns null
 
-            Then("엄마 일정 없이 조회가 성공한다") {
-                service.findRange(from, to).days.none { it.role == DispatchRole.MOTHER } shouldBe true
+            val days = service.findRange(from, to).days
+
+            Then("엄마는 등록 절차 없이 범위 전체가 나온다") {
+                days.filter { it.role == DispatchRole.MOTHER }.size shouldBe 3
+            }
+
+            Then("아빠는 확정분이 없으므로 비어 있다") {
+                days.none { it.role == DispatchRole.FATHER } shouldBe true
             }
         }
     })

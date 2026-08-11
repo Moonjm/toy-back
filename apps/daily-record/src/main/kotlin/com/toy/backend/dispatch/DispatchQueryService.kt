@@ -15,7 +15,7 @@ import java.time.LocalDate
 @Transactional(readOnly = true)
 class DispatchQueryService(
     private val shiftRepository: DispatchShiftRepository,
-    private val patternRepository: DispatchPatternRepository,
+    private val motherPattern: MotherPatternProperties,
 ) {
     fun findRange(
         from: LocalDate,
@@ -29,22 +29,20 @@ class DispatchQueryService(
                 .filter { it.role == DispatchRole.FATHER }
                 .map { it.toResponse() }
 
+        // 엄마는 등록 절차 없이 항상 계산된다. 예외가 저장돼 있으면 그것이 이긴다.
         val motherDays =
-            patternRepository.findByRole(DispatchRole.MOTHER)?.let { pattern ->
-                generateSequence(from) { it.plusDays(1) }
-                    .takeWhile { !it.isAfter(to) }
-                    .map { date ->
-                        // 예외가 있으면 패턴 계산을 덮어쓴다.
-                        storedByKey[DispatchRole.MOTHER to date]?.toResponse()
-                            ?: ShiftDayResponse(
-                                date = date,
-                                role = DispatchRole.MOTHER,
-                                working = DispatchPatternExpander.isWorking(pattern, date),
-                                slot = null,
-                                note = null,
-                            )
-                    }.toList()
-            } ?: emptyList()
+            generateSequence(from) { it.plusDays(1) }
+                .takeWhile { !it.isAfter(to) }
+                .map { date ->
+                    storedByKey[DispatchRole.MOTHER to date]?.toResponse()
+                        ?: ShiftDayResponse(
+                            date = date,
+                            role = DispatchRole.MOTHER,
+                            working = DispatchPatternExpander.isWorking(motherPattern, date),
+                            slot = null,
+                            note = null,
+                        )
+                }.toList()
 
         return ShiftRangeResponse((fatherDays + motherDays).sortedWith(compareBy({ it.date }, { it.role })))
     }

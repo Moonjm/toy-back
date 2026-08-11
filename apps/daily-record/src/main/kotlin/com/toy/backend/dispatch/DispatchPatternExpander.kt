@@ -11,7 +11,7 @@ import java.time.temporal.ChronoUnit
  */
 object DispatchPatternExpander {
     fun isWorking(
-        pattern: DispatchPattern,
+        pattern: MotherPatternProperties,
         date: LocalDate,
     ): Boolean {
         val elapsed = ChronoUnit.DAYS.between(pattern.anchorDate, date)

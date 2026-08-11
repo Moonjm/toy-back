@@ -7,9 +7,7 @@ import jakarta.validation.Valid
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
@@ -54,16 +52,6 @@ class DispatchController(
         @Valid @RequestBody request: ShiftSaveRequest,
     ): ResponseEntity<Void> {
         commandService.saveShifts(request)
-        return ResponseEntity.noContent().build()
-    }
-
-    @PutMapping("/patterns/{role}")
-    @Operation(summary = "반복 근무 패턴 등록·수정")
-    fun savePattern(
-        @PathVariable role: DispatchRole,
-        @Valid @RequestBody request: PatternSaveRequest,
-    ): ResponseEntity<Void> {
-        commandService.savePattern(role, request)
         return ResponseEntity.noContent().build()
     }
 }

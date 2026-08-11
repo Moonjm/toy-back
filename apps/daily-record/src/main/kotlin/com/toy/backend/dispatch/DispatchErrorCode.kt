@@ -12,8 +12,6 @@ enum class DispatchErrorCode(
     TARGET_NAME_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "dispatch.father-name이 설정되지 않았습니다."),
     VISION_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "사진 인식에 실패했습니다. 잠시 후 다시 시도해 주세요."),
     IMAGE_UNREADABLE(HttpStatus.BAD_REQUEST, "이미지를 읽을 수 없습니다."),
-    PATTERN_NOT_FOUND(HttpStatus.NOT_FOUND, "%s 근무 패턴이 없습니다."),
-    INVALID_PATTERN(HttpStatus.BAD_REQUEST, "패턴이 올바르지 않습니다: %s"),
     ;
 
     override fun getHttpStatus(): HttpStatus = httpStatus
