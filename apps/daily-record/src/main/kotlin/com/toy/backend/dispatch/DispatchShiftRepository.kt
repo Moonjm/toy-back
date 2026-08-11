@@ -13,10 +13,4 @@ interface DispatchShiftRepository : JpaRepository<DispatchShift, Long> {
         role: DispatchRole,
         workDate: LocalDate,
     ): DispatchShift?
-
-    fun findByRoleAndWorkDateBetween(
-        role: DispatchRole,
-        from: LocalDate,
-        to: LocalDate,
-    ): List<DispatchShift>
 }

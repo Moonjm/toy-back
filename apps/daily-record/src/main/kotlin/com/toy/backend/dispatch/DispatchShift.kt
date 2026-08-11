@@ -32,6 +32,15 @@ class DispatchShift(
     var working: Boolean,
     @field:Column(name = "slot")
     var slot: Int? = null,
-    @field:Column(name = "note")
+    /**
+     * 사진에서 읽은 원문(`휴`·`간담회` 등)이나 사람이 적은 메모다.
+     * **개인 식별 정보를 넣지 않는다** — `GET /dispatch/shifts`가 무인증이라 그대로 밖으로 나간다.
+     */
+    @field:Column(name = "note", length = NOTE_MAX_LENGTH)
     var note: String? = null,
-) : BaseEntity()
+) : BaseEntity() {
+    companion object {
+        /** 칸 원문 한 줄이면 충분하다. 길이를 열어 두면 무인증 응답이 자유 입력을 통째로 실어 나른다. */
+        const val NOTE_MAX_LENGTH = 100
+    }
+}
