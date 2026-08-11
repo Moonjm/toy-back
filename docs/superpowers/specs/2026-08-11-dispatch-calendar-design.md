@@ -18,7 +18,9 @@
 **바뀐 뒷부분만 잘린 사진**이 다시 올라온다. 잘린 사진에는 **성명 컬럼이 없다.**
 
 **엄마 — 반복 패턴.** 사진이 없다. `하루 휴무 → 이틀 근무`가 3일 주기로 반복된다
-(2026-08-08이 휴무). 매달 입력할 것이 없도록 **규칙을 한 번 저장해 두고 서버가 채운다.**
+(2026-08-08이 휴무). 이 주기는 **설정에 고정되어 등록 절차 없이 항상 계산된다** —
+저장소에 두면 등록하기 전까지 달력에서 엄마가 통째로 비어 보이는데, 그게 「쉬는 날」인지
+「등록을 안 한 것」인지 화면만으로는 구분되지 않는다.
 근무 이틀에 순번 구분이 있긴 하지만 **지금은 넣지 않는다** — 나중에 채우거나, 아빠처럼
 사진 인식으로 발전시킬 여지를 남긴다.
 
@@ -166,13 +168,12 @@ class DispatchRoster(             // 아빠 전용 — 월별 배차표 행 위�
     var rowCount: Int,            // 그 달 표의 전체 데이터 행 수 (함정 3의 경고 근거)
 ) : BaseEntity()
 
-@Entity
-class DispatchPattern(            // 엄마 전용 — 반복 규칙
-    val role: DispatchRole,       // UNIQUE
-    var cycleDays: Int,           // 3
-    var workingOffsets: String,   // "1,2"  — 주기 안에서 일하는 날의 오프셋
-    var anchorDate: LocalDate,    // 2026-08-08 (오프셋 0 = 휴무인 날)
-) : BaseEntity()
+// 엄마 반복 규칙은 엔티티가 아니라 설정이다 (dispatch.mother-pattern)
+data class MotherPatternProperties(
+    val cycleDays: Int = 3,
+    val workingOffsets: String = "1,2",   // 주기 안에서 일하는 날의 오프셋
+    val anchorDate: LocalDate = LocalDate.of(2026, 8, 8),  // 오프셋 0 = 휴무인 날
+)
 ```
 
 ### `working`을 `slot`과 따로 두는 이유
@@ -237,7 +238,6 @@ working = offset in workingOffsets
 |---|---|---|
 | `POST /dispatch/recognitions?yearMonth=` | 필요 | 배차표 사진 인식(아빠). **저장하지 않고** 결과만 반환 |
 | `POST /dispatch/shifts` | 필요 | 검수 확정분 upsert. **보낸 날짜만** 갱신 |
-| `PUT /dispatch/patterns/{role}` | 필요 | 반복 패턴 등록·수정(엄마). 응답 바디 없음(204) |
 | `GET /dispatch/shifts?from=&to=` | **불필요** | 웹 달력 조회. **아빠·엄마를 합쳐** 반환 |
 
 `GET`만 `SecurityConfig`에서 `permitAll`로 연다. 무인증 조회는 **읽기 전용이고 이 한

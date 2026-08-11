@@ -2534,6 +2534,253 @@ git commit -m "feat: 근무 달력 엔드포인트를 연다
 
 ---
 
+### Task 8: 엄마 패턴을 설정 고정값으로 옮긴다
+
+**왜 바꾸는가.** 지금은 `DispatchPattern` 행을 `PUT /dispatch/patterns/MOTHER`로 등록해야
+엄마 일정이 나온다. 등록하지 않으면 달력에 엄마가 **통째로 비어 보이는데, 그게 「쉬는 날」인지
+「등록을 안 한 것」인지 화면만 봐서는 알 수 없다.** 주기는 사람이 바꾸는 값이 아니라 사실상
+고정이므로, 저장소에 둘 이유가 없다.
+
+**→ 설정에 고정한다.** 배포하면 곧바로 계산되고, 주기가 바뀌면 환경변수로 바꾼다.
+예외일과 순번은 지금처럼 `DispatchShift`(`role=MOTHER`)가 덮어쓴다 — 나중에 이미지 인식으로
+순번을 채우는 것도 그 자리다.
+
+**Files:**
+- Create: `apps/daily-record/src/main/kotlin/com/toy/backend/dispatch/MotherPatternProperties.kt`
+- Delete: `apps/daily-record/src/main/kotlin/com/toy/backend/dispatch/DispatchPattern.kt`
+- Delete: `apps/daily-record/src/main/kotlin/com/toy/backend/dispatch/DispatchPatternRepository.kt`
+- Modify: `DispatchPatternExpander.kt`, `DispatchQueryService.kt`, `DispatchCommandService.kt`,
+  `DispatchController.kt`, `DispatchDtos.kt`, `DispatchErrorCode.kt`,
+  `llm/DispatchVisionConfig.kt`, `src/main/resources/application.yml`
+- Test: `DispatchPatternExpanderTest.kt`, `DispatchQueryServiceTest.kt`,
+  `DispatchCommandServiceTest.kt`, `DispatchShiftTest.kt`
+
+**Interfaces:**
+- Consumes: 없음
+- Produces:
+  - `data class MotherPatternProperties(cycleDays: Int, workingOffsets: String, anchorDate: LocalDate)` — `workingOffsetList: List<Int>`
+  - `DispatchPatternExpander.isWorking(pattern: MotherPatternProperties, date: LocalDate): Boolean`
+  - `DispatchQueryService(shiftRepository, motherPattern)` — 생성자에서 `DispatchPatternRepository`가 빠지고 `MotherPatternProperties`가 들어온다
+  - `DispatchCommandService(shiftRepository)` — `savePattern`이 사라진다
+
+- [ ] **Step 1: 설정 클래스를 만들고 전개기 테스트를 그에 맞춘다**
+
+`MotherPatternProperties.kt`
+
+```kotlin
+package com.toy.backend.dispatch
+
+import org.springframework.boot.context.properties.ConfigurationProperties
+import java.time.LocalDate
+
+/**
+ * 엄마 근무 주기. **저장소가 아니라 설정에 둔다** — 등록하지 않으면 달력에서 엄마가 통째로
+ * 비어 보이는데, 그게 「쉬는 날」인지 「등록을 안 한 것」인지 화면만으로는 구분되지 않는다.
+ * 주기는 사람이 자주 바꾸는 값도 아니다.
+ *
+ * `anchorDate`는 **오프셋 0인 날**이고, `workingOffsets`에 없는 오프셋이 휴무다.
+ * 기본값은 `하루 휴무 → 이틀 근무`가 3일 주기로 도는 형태다(2026-08-08이 휴무).
+ */
+@ConfigurationProperties(prefix = "dispatch.mother-pattern")
+data class MotherPatternProperties(
+    val cycleDays: Int = 3,
+    val workingOffsets: String = "1,2",
+    val anchorDate: LocalDate = LocalDate.of(2026, 8, 8),
+) {
+    val workingOffsetList: List<Int>
+        get() = workingOffsets.split(",").mapNotNull { it.trim().toIntOrNull() }
+}
+```
+
+`DispatchPatternExpanderTest.kt`에서 `DispatchPattern(...)` 생성을 바꾼다. **기대값(휴무 날짜
+목록)은 그대로다** — 값이 같으므로 결과도 같아야 한다.
+
+```kotlin
+        val pattern =
+            MotherPatternProperties(
+                cycleDays = 3,
+                workingOffsets = "1,2",
+                anchorDate = LocalDate.of(2026, 8, 8),
+            )
+```
+
+`DispatchRole` import가 더 이상 필요 없으면 지운다.
+
+- [ ] **Step 2: 테스트가 실패하는지 확인**
+
+Run: `./gradlew :daily-record:test --tests "com.toy.backend.dispatch.DispatchPatternExpanderTest"`
+Expected: 컴파일 실패 — `Unresolved reference: MotherPatternProperties` 또는 타입 불일치
+
+- [ ] **Step 3: 전개기 시그니처를 바꾼다**
+
+`DispatchPatternExpander.kt` — `DispatchPattern` 대신 `MotherPatternProperties`를 받는다.
+나머지 계산(`Math.floorMod`)은 그대로다.
+
+```kotlin
+object DispatchPatternExpander {
+    fun isWorking(
+        pattern: MotherPatternProperties,
+        date: LocalDate,
+    ): Boolean {
+        val elapsed = ChronoUnit.DAYS.between(pattern.anchorDate, date)
+        val offset = Math.floorMod(elapsed, pattern.cycleDays.toLong()).toInt()
+        return offset in pattern.workingOffsetList
+    }
+}
+```
+
+- [ ] **Step 4: 조회 서비스가 설정을 쓰게 한다**
+
+`DispatchQueryService.kt` — 생성자에서 `patternRepository`를 빼고 `motherPattern`을 받는다.
+**`?: emptyList()` 갈래가 사라진다** — 패턴은 항상 있다.
+
+```kotlin
+@Service
+@Transactional(readOnly = true)
+class DispatchQueryService(
+    private val shiftRepository: DispatchShiftRepository,
+    private val motherPattern: MotherPatternProperties,
+) {
+    fun findRange(
+        from: LocalDate,
+        to: LocalDate,
+    ): ShiftRangeResponse {
+        val stored = shiftRepository.findByWorkDateBetween(from, to)
+        val storedByKey = stored.associateBy { it.role to it.workDate }
+
+        val fatherDays =
+            stored
+                .filter { it.role == DispatchRole.FATHER }
+                .map { it.toResponse() }
+
+        // 엄마는 등록 절차 없이 항상 계산된다. 예외가 저장돼 있으면 그것이 이긴다.
+        val motherDays =
+            generateSequence(from) { it.plusDays(1) }
+                .takeWhile { !it.isAfter(to) }
+                .map { date ->
+                    storedByKey[DispatchRole.MOTHER to date]?.toResponse()
+                        ?: ShiftDayResponse(
+                            date = date,
+                            role = DispatchRole.MOTHER,
+                            working = DispatchPatternExpander.isWorking(motherPattern, date),
+                            slot = null,
+                            note = null,
+                        )
+                }.toList()
+
+        return ShiftRangeResponse((fatherDays + motherDays).sortedWith(compareBy({ it.date }, { it.role })))
+    }
+
+    private fun DispatchShift.toResponse() =
+        ShiftDayResponse(
+            date = workDate,
+            role = role,
+            working = working,
+            slot = slot,
+            note = note,
+        )
+}
+```
+
+`DispatchQueryServiceTest.kt`에서 `patternRepository` 목과 그 `every` 스텁을 전부 지우고,
+서비스 생성을 바꾼다.
+
+```kotlin
+        val shiftRepository = mockk<DispatchShiftRepository>()
+        val motherPattern =
+            MotherPatternProperties(
+                cycleDays = 3,
+                workingOffsets = "1,2",
+                anchorDate = LocalDate.of(2026, 8, 8),
+            )
+        val service = DispatchQueryService(shiftRepository, motherPattern)
+```
+
+**`Given("패턴이 등록되지 않았을 때")` 시나리오를 지우고** 아래로 바꾼다 — 이것이 이 태스크의
+핵심 동작이다.
+
+```kotlin
+        Given("아무것도 저장되지 않았을 때") {
+            every { shiftRepository.findByWorkDateBetween(from, to) } returns emptyList()
+
+            val days = service.findRange(from, to).days
+
+            Then("엄마는 등록 절차 없이 범위 전체가 나온다") {
+                days.filter { it.role == DispatchRole.MOTHER }.size shouldBe 3
+            }
+
+            Then("아빠는 확정분이 없으므로 비어 있다") {
+                days.none { it.role == DispatchRole.FATHER } shouldBe true
+            }
+        }
+```
+
+나머지 시나리오의 `every { patternRepository... }` 줄만 지우면 된다. **기대값은 바꾸지 마라.**
+
+- [ ] **Step 5: 패턴 저장 경로를 걷어낸다**
+
+- `DispatchCommandService.kt` — `savePattern` 메서드와 `patternRepository` 생성자 인자를 지운다.
+  `saveShifts`만 남는다.
+- `DispatchController.kt` — `PUT /dispatch/patterns/{role}` 매핑과 `PutMapping`·`PathVariable`
+  import 중 안 쓰이게 된 것을 지운다. 나머지 엔드포인트 3개는 그대로다.
+- `DispatchDtos.kt` — `PatternSaveRequest`를 지운다. `Min` import도 안 쓰이면 지운다.
+- `DispatchErrorCode.kt` — `PATTERN_NOT_FOUND`·`INVALID_PATTERN`을 지운다.
+- `DispatchPattern.kt`·`DispatchPatternRepository.kt` 파일을 삭제한다.
+- `DispatchShiftTest.kt` — `DispatchPattern`을 만드는 `Given` 블록을 지운다. 나머지 두 시나리오는 그대로다.
+- `DispatchCommandServiceTest.kt` — 패턴 관련 `Given` 세 개(저장·주기 밖 오프셋·기존 갱신)와
+  `patternRepository` 목을 지운다. shift upsert 시나리오 둘만 남는다.
+
+**DB 테이블은 남는다.** `ddl-auto: update`는 테이블을 지우지 않는다. 쓰이지 않을 뿐이라
+해가 없고, 지우려면 손으로 `DROP TABLE dispatch_pattern` 하면 된다.
+
+- [ ] **Step 6: 설정을 등록한다**
+
+`llm/DispatchVisionConfig.kt`의 `@EnableConfigurationProperties`에 추가한다.
+
+```kotlin
+@EnableConfigurationProperties(DispatchVisionProperties::class, MotherPatternProperties::class)
+```
+
+`MotherPatternProperties`가 `com.toy.backend.dispatch` 패키지이므로 import를 더한다.
+
+`application.yml`의 `dispatch:` 블록 아래에 더한다.
+
+```yaml
+  # 엄마 근무 주기. 등록 절차 없이 항상 계산된다. anchor-date는 오프셋 0인 날(휴무)이고
+  # working-offsets에 없는 오프셋이 휴무다. 기본값은 「하루 휴무 → 이틀 근무」 3일 주기다.
+  mother-pattern:
+    cycle-days: ${DISPATCH_MOTHER_CYCLE_DAYS:3}
+    working-offsets: ${DISPATCH_MOTHER_WORKING_OFFSETS:1,2}
+    anchor-date: ${DISPATCH_MOTHER_ANCHOR_DATE:2026-08-08}
+```
+
+- [ ] **Step 7: 전체 테스트와 빌드 확인**
+
+Run: `./gradlew :daily-record:test`
+Expected: PASS — 지운 테스트를 뺀 나머지가 전부 통과
+
+Run: `./gradlew build`
+Expected: BUILD SUCCESSFUL (ktlint 포함)
+
+- [ ] **Step 8: 커밋**
+
+```bash
+./gradlew spotlessApply
+git add -A apps/daily-record
+git commit -m "refactor: 엄마 근무 주기를 설정 고정값으로 옮긴다
+
+패턴을 저장소에 두면 등록하기 전까지 달력에서 엄마가 통째로 비어 보이는데,
+그게 「쉬는 날」인지 「등록을 안 한 것」인지 화면만으로는 구분되지 않는다.
+주기는 사람이 자주 바꾸는 값도 아니다.
+
+설정으로 옮겨 배포하면 곧바로 계산되게 한다. 예외일과 순번은 지금처럼
+DispatchShift가 덮어쓰므로, 나중에 이미지로 순번을 채우는 자리도 그대로다.
+
+dispatch_pattern 테이블은 ddl-auto가 지우지 않아 남지만 쓰이지 않는다."
+```
+
+---
+
 ## 수동 검증
 
 자동 테스트로는 실제 인식 품질을 알 수 없다. 배포 전에 한 번 돌린다.
@@ -2545,9 +2792,9 @@ git commit -m "feat: 근무 달력 엔드포인트를 연다
 - [ ] 응답 어디에도 실명·차량번호가 없는지 확인한다.
 - [ ] 잘린 변경분 사진으로 다시 호출해 `matchedBy`가 `ROW_INDEX`인지 확인한다.
 - [ ] 사진과 다른 달(`yearMonth=2026-09`)로 호출해 `YEAR_MONTH_MISMATCH` 경고가 붙는지 확인한다.
-- [ ] `PUT /dispatch/patterns/MOTHER`로 `cycleDays=3, workingOffsets=[1,2], anchorDate=2026-08-08`을 저장한다.
 - [ ] 로그아웃 상태(토큰 없이)로 `GET /dispatch/shifts?from=2026-08-01&to=2026-08-31`이 200을 주는지 확인한다.
-- [ ] 그 응답에서 엄마 휴무가 `2, 5, 8, 11, 14, 17, 20, 23, 26, 29`인지 확인한다.
+- [ ] 그 응답에서 엄마 휴무가 `2, 5, 8, 11, 14, 17, 20, 23, 26, 29`인지 확인한다 —
+      **아무것도 등록하지 않은 상태에서** 나와야 한다.
 - [ ] 토큰 없이 `POST /dispatch/shifts`가 401인지 확인한다.
 
 ---
