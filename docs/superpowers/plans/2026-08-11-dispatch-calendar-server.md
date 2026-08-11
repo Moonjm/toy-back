@@ -21,6 +21,7 @@
 - **커밋 전 `./gradlew spotlessApply`를 반드시 돌린다**(ktlint). 안 돌리면 `./gradlew build`가 포맷 검사에서 깨진다.
 - 응답 규칙: 조회는 `DataResponseBody`, 수정·삭제는 **204 No Content**. 액션 결과는 바디가 아니라 상태 코드로 구분한다.
 - 테스트 격리 모드가 `InstancePerLeaf`라 `beforeTest`는 컨테이너 노드에서도 발화한다. 리프에서만 초기화하려면 `beforeContainer`를 쓴다.
+- **non-null `val`에 `@field:NotNull`을 붙이지 않는다.** Kotlin 타입이 이미 보장하고, 이 저장소의 기존 DTO들도 쓰지 않는다. 실제 값 검증(`@NotEmpty`·`@Min`)만 남긴다.
 - 커밋 메시지는 **한국어**로 쓰고 기존 관례를 따른다.
 
 ---
@@ -640,7 +641,6 @@ package com.toy.backend.dispatch
 
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotEmpty
-import jakarta.validation.constraints.NotNull
 import java.time.LocalDate
 
 /** 무인증으로 나가는 응답이다 — **실명·차량번호를 넣지 않는다.** */
@@ -657,13 +657,13 @@ data class ShiftRangeResponse(
 )
 
 data class ShiftSaveRequest(
-    @field:NotNull val role: DispatchRole,
+    val role: DispatchRole,
     @field:NotEmpty val days: List<ShiftSaveDay>,
 )
 
 data class ShiftSaveDay(
-    @field:NotNull val date: LocalDate,
-    @field:NotNull val working: Boolean,
+    val date: LocalDate,
+    val working: Boolean,
     val slot: Int?,
     val note: String?,
 )
@@ -671,7 +671,7 @@ data class ShiftSaveDay(
 data class PatternSaveRequest(
     @field:Min(1) val cycleDays: Int,
     @field:NotEmpty val workingOffsets: List<Int>,
-    @field:NotNull val anchorDate: LocalDate,
+    val anchorDate: LocalDate,
 )
 
 data class PatternResponse(
