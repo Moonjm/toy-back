@@ -38,7 +38,7 @@ class DispatchCommandService(
     fun savePattern(
         role: DispatchRole,
         request: PatternSaveRequest,
-    ): PatternResponse {
+    ) {
         // 주기 밖 오프셋은 영원히 도달하지 않아 조용히 무시된다. 저장 시점에 막는다.
         val invalid = request.workingOffsets.filterNot { it in 0 until request.cycleDays }
         if (invalid.isNotEmpty()) {
@@ -47,28 +47,19 @@ class DispatchCommandService(
 
         val offsets = request.workingOffsets.sorted().joinToString(",")
         val pattern = patternRepository.findByRole(role)
-        val saved =
-            if (pattern == null) {
-                patternRepository.save(
-                    DispatchPattern(
-                        role = role,
-                        cycleDays = request.cycleDays,
-                        workingOffsets = offsets,
-                        anchorDate = request.anchorDate,
-                    ),
-                )
-            } else {
-                pattern.cycleDays = request.cycleDays
-                pattern.workingOffsets = offsets
-                pattern.anchorDate = request.anchorDate
-                pattern
-            }
-
-        return PatternResponse(
-            role = saved.role,
-            cycleDays = saved.cycleDays,
-            workingOffsets = saved.workingOffsetList,
-            anchorDate = saved.anchorDate,
-        )
+        if (pattern == null) {
+            patternRepository.save(
+                DispatchPattern(
+                    role = role,
+                    cycleDays = request.cycleDays,
+                    workingOffsets = offsets,
+                    anchorDate = request.anchorDate,
+                ),
+            )
+        } else {
+            pattern.cycleDays = request.cycleDays
+            pattern.workingOffsets = offsets
+            pattern.anchorDate = request.anchorDate
+        }
     }
 }

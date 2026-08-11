@@ -35,13 +35,6 @@ data class PatternSaveRequest(
     val anchorDate: LocalDate,
 )
 
-data class PatternResponse(
-    val role: DispatchRole,
-    val cycleDays: Int,
-    val workingOffsets: List<Int>,
-    val anchorDate: LocalDate,
-)
-
 enum class MatchedBy { NAME, ROW_INDEX }
 
 data class RecognitionDay(

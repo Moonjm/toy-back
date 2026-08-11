@@ -62,5 +62,8 @@ class DispatchController(
     fun savePattern(
         @PathVariable role: DispatchRole,
         @Valid @RequestBody request: PatternSaveRequest,
-    ): ResponseEntity<DataResponseBody<PatternResponse>> = ResponseEntity.ok(DataResponseBody(commandService.savePattern(role, request)))
+    ): ResponseEntity<Void> {
+        commandService.savePattern(role, request)
+        return ResponseEntity.noContent().build()
+    }
 }
