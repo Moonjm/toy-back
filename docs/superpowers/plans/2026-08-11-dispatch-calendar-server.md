@@ -18,6 +18,9 @@
 - **스키마 마이그레이션 도구가 없다**(`ddl-auto: update`). enum 컬럼은 `columnDefinition`을 명시해 CHECK 제약이 생기지 않게 한다.
 - **동시성 방어를 하지 않는다.** 단일 인스턴스에 사용자 2명이다(`AGENTS.md`).
 - 테스트는 **Kotest `BehaviorSpec`** + mockk. 기존 테스트 파일들과 같은 스타일을 따른다.
+- **커밋 전 `./gradlew spotlessApply`를 반드시 돌린다**(ktlint). 안 돌리면 `./gradlew build`가 포맷 검사에서 깨진다.
+- 응답 규칙: 조회는 `DataResponseBody`, 수정·삭제는 **204 No Content**. 액션 결과는 바디가 아니라 상태 코드로 구분한다.
+- 테스트 격리 모드가 `InstancePerLeaf`라 `beforeTest`는 컨테이너 노드에서도 발화한다. 리프에서만 초기화하려면 `beforeContainer`를 쓴다.
 - 커밋 메시지는 **한국어**로 쓰고 기존 관례를 따른다.
 
 ---
@@ -364,6 +367,7 @@ Expected: PASS
 - [ ] **Step 7: 커밋**
 
 ```bash
+./gradlew spotlessApply
 git add apps/daily-record/src/main/kotlin/com/toy/backend/dispatch \
         apps/daily-record/src/test/kotlin/com/toy/backend/dispatch
 git commit -m "feat: 근무 달력 도메인 엔티티를 만든다
@@ -500,6 +504,7 @@ Expected: PASS (5개 시나리오)
 - [ ] **Step 5: 커밋**
 
 ```bash
+./gradlew spotlessApply
 git add apps/daily-record/src/main/kotlin/com/toy/backend/dispatch/DispatchPatternExpander.kt \
         apps/daily-record/src/test/kotlin/com/toy/backend/dispatch/DispatchPatternExpanderTest.kt
 git commit -m "feat: 반복 패턴을 날짜별 근무 여부로 펼친다
@@ -864,6 +869,7 @@ Expected: PASS — `common-auth` 기존 테스트가 깨지지 않아야 한다(
 - [ ] **Step 9: 커밋**
 
 ```bash
+./gradlew spotlessApply
 git add common/auth/src/main/kotlin/com/toy/backend/auth/security \
         apps/daily-record/src/main/kotlin/com/toy/backend/dispatch \
         apps/daily-record/src/test/kotlin/com/toy/backend/dispatch
@@ -1176,6 +1182,7 @@ Expected: PASS (7개 시나리오)
 - [ ] **Step 5: 커밋**
 
 ```bash
+./gradlew spotlessApply
 git add apps/daily-record/src/main/kotlin/com/toy/backend/dispatch/image \
         apps/daily-record/src/test/kotlin/com/toy/backend/dispatch/image
 git commit -m "feat: 배차표 사진을 인식 전에 잘라 확대한다
@@ -1725,6 +1732,7 @@ Expected: PASS
 - [ ] **Step 7: 커밋**
 
 ```bash
+./gradlew spotlessApply
 git add apps/daily-record/src/main/kotlin/com/toy/backend/dispatch/llm \
         apps/daily-record/src/test/kotlin/com/toy/backend/dispatch/llm \
         apps/daily-record/src/main/resources/application.yml
@@ -2145,6 +2153,7 @@ Expected: PASS (8개 시나리오)
 - [ ] **Step 6: 커밋**
 
 ```bash
+./gradlew spotlessApply
 git add apps/daily-record/src/main/kotlin/com/toy/backend/dispatch \
         apps/daily-record/src/test/kotlin/com/toy/backend/dispatch
 git commit -m "feat: 배차표 조각을 합쳐 인식 결과를 만든다
@@ -2445,6 +2454,7 @@ Expected: BUILD SUCCESSFUL — ktlint 포맷 검사 포함
 - [ ] **Step 7: 커밋**
 
 ```bash
+./gradlew spotlessApply
 git add apps/daily-record/src/main/kotlin/com/toy/backend/dispatch \
         apps/daily-record/src/test/kotlin/com/toy/backend/dispatch
 git commit -m "feat: 근무 달력 엔드포인트를 연다
