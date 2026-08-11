@@ -108,6 +108,17 @@ r5  1:1 2:1 3:2 4:1 5:1 6:1 7:1 8:1 9:1     5/9
 `DispatchRoster`가 없는 달에 잘린 사진만 올라오면 **거부한다.** 추측해서 저장하느니
 "전체본을 먼저 올려 주세요"가 낫다.
 
+**여기에 순환이 하나 숨어 있다.** 어느 달의 `DispatchRoster`를 조회할지 알려면 사진에서
+연·월을 읽어야 하는데, 사진을 읽으려면 어느 행을 읽을지 — 즉 `rowIndex`를 — 알아야 한다.
+현재 달로 대신하면 **8월 말에 9월 배차표를 미리 올릴 때 엉뚱한 달의 기준을 본다.**
+
+**→ 연·월을 요청에서 받는다.** 앱은 어느 달 배차표인지 알고 있다. 사진에서 읽은 달과
+요청한 달이 다르면 `YEAR_MONTH_MISMATCH` 경고를 달아 엉뚱한 달에 저장되는 것을 막는다.
+
+성명 컬럼이 없는 것으로 판별되면 **첫 조각도 행 위치로 다시 읽는다.** 이름으로 물어
+얻은 답은 어느 행을 읽었는지 알 수 없어 믿을 수 없다. 잘린 사진일 때만 드는 추가 호출
+하나($0.017)다.
+
 ### 함정 4 — **집계 컬럼을 날짜로 세면 그 뒤가 전부 밀린다**
 
 표에는 날짜 컬럼 사이사이에 `계`(주간 합계)·`2주 합계`·`합계`·`총근무`가 끼어 있다.
@@ -224,7 +235,7 @@ working = offset in workingOffsets
 
 | 엔드포인트 | 인증 | 하는 일 |
 |---|---|---|
-| `POST /dispatch/recognitions` | 필요 | 배차표 사진 인식(아빠). **저장하지 않고** 결과만 반환 |
+| `POST /dispatch/recognitions?yearMonth=` | 필요 | 배차표 사진 인식(아빠). **저장하지 않고** 결과만 반환 |
 | `POST /dispatch/shifts` | 필요 | 검수 확정분 upsert. **보낸 날짜만** 갱신 |
 | `PUT /dispatch/patterns/{role}` | 필요 | 반복 패턴 등록·수정(엄마) |
 | `GET /dispatch/shifts?from=&to=` | **불필요** | 웹 달력 조회. **아빠·엄마를 합쳐** 반환 |
@@ -258,7 +269,7 @@ working = offset in workingOffsets
   "matchedBy": "NAME",           // NAME | ROW_INDEX
   "rowIndex": 2,
   "rowCount": 13,
-  "warnings": ["ROW_COUNT_CHANGED"],  // 비어 있을 수 있다
+  "warnings": ["ROW_COUNT_CHANGED"],  // ROW_COUNT_CHANGED | YEAR_MONTH_MISMATCH. 비어 있을 수 있다
   "days": [
     { "day": 1, "working": true,  "slot": 1,    "note": null,  "conflict": false },
     { "day": 2, "working": false, "slot": null, "note": null,  "conflict": false },  // 휴무
@@ -360,7 +371,9 @@ dispatch:
 - **전처리** — 여백 트리밍이 검은 여백과 흰 여백을 모두 걷어내는가. 2등분 경계가 겹치는가.
 - **병합** — 잘린 사진이 **보이는 날짜만** 덮어쓰는가. 안 보이는 날짜가 휴무로 덮이지 않는가.
 - **행 매칭** — `DispatchRoster`가 없는 달에 `hasNameColumn == false` 사진이 오면 거부하는가.
-  `rowCount`가 달라지면 `ROW_COUNT_CHANGED` 경고가 붙는가.
+  `rowCount`가 달라지면 `ROW_COUNT_CHANGED` 경고가 붙는가. 요청한 달과 사진의 달이 다르면
+  `YEAR_MONTH_MISMATCH`가 붙는가.
+- **시계 비의존** — 인식 로직과 그 테스트가 「오늘」에 의존하지 않는가. 연·월은 요청에서 온다.
 - **판정** — `note`가 `휴`/`간담회`/`예비군`인 날이 근무로 새지 않는가. **`slot`이 `null`인
   근무일(엄마)이 휴무로 읽히지 않는가** — `working`만 본다.
 - **패턴 전개** — `anchorDate` 이전 날짜(음수 오프셋)가 올바로 계산되는가. 8월이
