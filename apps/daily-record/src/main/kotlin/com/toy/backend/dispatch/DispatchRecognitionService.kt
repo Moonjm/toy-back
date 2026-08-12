@@ -47,7 +47,6 @@ class DispatchRecognitionService(
                 ?: throw CustomException(DispatchErrorCode.TARGET_NAME_NOT_CONFIGURED)
 
         val slices = slicer.slice(bytes)
-        val roster = rosterRepository.findByYearMonth(yearMonth.toString())
 
         // 첫 조각을 이름으로 물어 「성명 컬럼이 보이는가」를 판별한다. 왼쪽 조각에 성명 컬럼이 있다.
         val probe =
@@ -78,6 +77,10 @@ class DispatchRecognitionService(
             log.warn { "인식 결과의 행 위치가 표 범위를 벗어났다: rowIndex=${probe.rowIndex}, rowCount=${probe.rowCount}" }
             throw CustomException(DispatchErrorCode.VISION_UNAVAILABLE)
         }
+
+        // **기준 조회는 사진을 읽은 뒤다.** 연월을 사진에서 읽으려면 이 순서여야 한다
+        // — 반대로 두면 「연월을 알아야 기준을 찾고, 기준을 찾아야 읽는다」가 된다.
+        val roster = rosterRepository.findByYearMonth(yearMonth.toString())
 
         val matchedBy = if (probe.hasNameColumn) MatchedBy.NAME else MatchedBy.ROW_INDEX
         val rowIndex =

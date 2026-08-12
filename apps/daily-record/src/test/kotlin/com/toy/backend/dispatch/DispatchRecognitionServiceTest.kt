@@ -10,8 +10,10 @@ import com.toy.backend.dispatch.llm.RecognizedSlice
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verifyOrder
 import java.time.YearMonth
 
 /**
@@ -500,6 +502,31 @@ class DispatchRecognitionServiceTest :
                         serviceWith(name = "").recognize(ByteArray(1), YearMonth.of(2026, 8))
                     }
                 exception.errorCode shouldBe DispatchErrorCode.TARGET_NAME_NOT_CONFIGURED
+            }
+        }
+
+        Given("사진을 읽기 전에는 기준을 조회할 수 없는 구조") {
+            // 연월을 사진에서 읽으려면 **읽은 뒤에** 그 달의 기준을 찾아야 한다.
+            // 순서가 뒤집혀 있으면 「연월을 알아야 기준을 찾고, 기준을 찾아야 읽는다」는
+            // 순환에 다시 빠진다.
+            //
+            // mock은 spec 전체가 공유하므로 앞선 블록들의 호출 기록이 쌓여 있다.
+            // 지우지 않으면 「앞 블록의 read → 뒤 블록의 조회」가 순서를 만족해 버려
+            // 순서가 뒤집혀 있어도 통과한다.
+            clearMocks(rosterRepository, visionClient, answers = false)
+            every { rosterRepository.findByYearMonth("2026-08") } returns null
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1"))
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns
+                sliceResult(true, listOf(4 to "2"))
+
+            serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+
+            Then("첫 조각을 읽은 뒤에 기준을 조회한다") {
+                verifyOrder {
+                    visionClient.read(match { it.index == 0 }, "홍길동", null)
+                    rosterRepository.findByYearMonth("2026-08")
+                }
             }
         }
     })
