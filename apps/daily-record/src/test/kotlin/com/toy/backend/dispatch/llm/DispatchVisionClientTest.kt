@@ -4,6 +4,7 @@ import com.toy.backend.dispatch.image.ImageSlice
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.web.reactive.function.client.ClientResponse
@@ -117,6 +118,21 @@ class DispatchVisionClientTest :
 
             Then("이름으로 행을 찾으라고 지시한다") {
                 promptOf(body) shouldContain "홍길동"
+            }
+
+            // hasNameColumn은 「보이는가」를 묻는 값이다. 프롬프트가 「보인다」고 단정하면
+            // 잘린 사진에도 모델이 true로 답하고 아무 행이나 읽어, 저장된 행 위치를 쓰는 갈래도
+            // ROSTER_NOT_FOUND 거부도 건너뛴다 — 다른 기사의 근무가 그대로 들어온다.
+            Then("성명 컬럼이 보이는지 먼저 판단하라고 지시한다") {
+                promptOf(body) shouldContain "판단하라"
+            }
+
+            Then("보인다고 단정하지 않는다") {
+                promptOf(body) shouldNotContain "성명 컬럼이 보인다"
+            }
+
+            Then("이름을 못 찾으면 아무 행이나 읽지 말라고 지시한다") {
+                promptOf(body) shouldContain "아무 행이나 읽어서 채우지 마라"
             }
         }
 
