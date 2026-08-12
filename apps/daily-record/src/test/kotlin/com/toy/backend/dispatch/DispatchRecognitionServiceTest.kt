@@ -648,6 +648,30 @@ class DispatchRecognitionServiceTest :
             }
         }
 
+        // 위 블록은 최근 기준과 사진의 인원수가 같아 우연히 통과한다. 다르면 어떻게 되는가가
+        // 진짜 질문이다 — 다른 달의 인원수는 이름으로 찾은 이 사진과 아무 상관이 없다.
+        Given("연월은 미상이고 성명 컬럼이 보이는데 최근 기준의 인원이 다른 경우") {
+            clearMocks(rosterRepository, rosterUpdater, answers = false)
+            every { rosterRepository.findTopByOrderByYearMonthDesc() } returns
+                DispatchRoster(yearMonth = "2026-08", rowIndex = 2, rowCount = 9)
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1"), rowCount = 13, year = 0, month = 0)
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns
+                sliceResult(true, listOf(4 to "2"), rowCount = 13, year = 0, month = 0)
+
+            val result = serviceWith().recognize(ByteArray(1), null)
+
+            Then("인원이 바뀌었다는 경고를 달지 않는다") {
+                // 이름으로 행을 찾았으므로 행이 밀릴 일이 없다. 여기서 경고를 달면
+                // 사람이 경고를 무시하는 법을 배운다 — 경고로 지탱하는 설계가 무너진다.
+                result.warnings shouldBe emptyList()
+            }
+
+            Then("쓰지도 않을 기준을 조회하지 않는다") {
+                verify(exactly = 0) { rosterRepository.findTopByOrderByYearMonthDesc() }
+            }
+        }
+
         Given("연월이 미상이고 저장된 기준도 없는 경우") {
             every { rosterRepository.findTopByOrderByYearMonthDesc() } returns null
             every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns

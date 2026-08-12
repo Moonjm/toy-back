@@ -113,11 +113,16 @@ class DispatchRecognitionService(
         //
         // 연월을 아는데 그 달 기준이 없는 경우는 **빌려 오지 않는다.** 그때는 성명 컬럼이
         // 보이는 사진을 먼저 올리라고 거부하는 편이 맞다(`ROSTER_NOT_FOUND`).
+        //
+        // **이름으로 행을 찾을 수 있으면 빌리지 않는다.** 빌려 두면 쓰지도 않는 다른 달의
+        // `rowCount`가 `ROW_COUNT_CHANGED`로 새어 나온다 — 이름으로 찾은 행은 인원이 바뀌어도
+        // 밀리지 않으므로 근거 없는 경고다. 경고로 지탱하는 설계에서 근거 없는 경고는
+        // 사람이 경고를 무시하는 법을 배우게 한다.
         val roster =
-            if (effectiveYearMonth != null) {
-                rosterRepository.findByYearMonth(effectiveYearMonth.toString())
-            } else {
-                rosterRepository.findTopByOrderByYearMonthDesc()
+            when {
+                effectiveYearMonth != null -> rosterRepository.findByYearMonth(effectiveYearMonth.toString())
+                !probe.hasNameColumn -> rosterRepository.findTopByOrderByYearMonthDesc()
+                else -> null
             }
 
         val matchedBy = if (probe.hasNameColumn) MatchedBy.NAME else MatchedBy.ROW_INDEX
