@@ -15,7 +15,6 @@ import java.time.YearMonth
 @Transactional(readOnly = true)
 class DispatchQueryService(
     private val shiftRepository: DispatchShiftRepository,
-    private val motherPattern: MotherPatternProperties,
 ) {
     /**
      * **기간이 아니라 연월 하나를 받는다.** 이 조회는 무인증으로 열려 있고 엄마 몫은 저장
@@ -44,7 +43,7 @@ class DispatchQueryService(
                         ?: ShiftDayResponse(
                             date = date,
                             role = DispatchRole.MOTHER,
-                            working = DispatchPatternExpander.isWorking(motherPattern, date),
+                            working = DispatchPatternExpander.isWorking(date),
                             slot = null,
                             note = null,
                         )

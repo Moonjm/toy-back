@@ -20,13 +20,7 @@ import java.time.YearMonth
 class DispatchQueryServiceTest :
     BehaviorSpec({
         val shiftRepository = mockk<DispatchShiftRepository>()
-        val motherPattern =
-            MotherPatternProperties(
-                cycleDays = 3,
-                workingOffsets = listOf(1, 2),
-                anchorDate = LocalDate.of(2026, 8, 8),
-            )
-        val service = DispatchQueryService(shiftRepository, motherPattern)
+        val service = DispatchQueryService(shiftRepository)
 
         val yearMonth = YearMonth.of(2026, 8)
         val from = yearMonth.atDay(1)

@@ -81,12 +81,6 @@ dispatch:
   timeout-seconds: 120
   # 전체본에서 행을 찾을 때만 쓴다. DB에도 API 응답에도 저장하지 않는다.
   father-name: ${DISPATCH_FATHER_NAME:}
-  # 엄마 근무 주기. 등록 절차 없이 항상 계산된다. anchor-date는 오프셋 0인 날(휴무)이고
-  # working-offsets에 없는 오프셋이 휴무다. 기본값은 「하루 휴무 → 이틀 근무」 3일 주기다.
-  mother-pattern:
-    cycle-days: ${DISPATCH_MOTHER_CYCLE_DAYS:3}
-    working-offsets: ${DISPATCH_MOTHER_WORKING_OFFSETS:1,2}
-    anchor-date: ${DISPATCH_MOTHER_ANCHOR_DATE:2026-08-08}
 
 holiday:
   api:
