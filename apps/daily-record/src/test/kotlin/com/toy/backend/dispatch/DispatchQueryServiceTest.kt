@@ -45,19 +45,18 @@ class DispatchQueryServiceTest :
             Then("엄마는 달 전체가 패턴으로 채워진다") {
                 val mother = days.filter { it.role == DispatchRole.MOTHER }.sortedBy { it.date }
                 mother.size shouldBe 31
-                mother[0].working shouldBe true // 8/1
-                mother[1].working shouldBe false // 8/2
+                mother[0].working shouldBe false // 8/1
+                mother[1].working shouldBe true // 8/2
                 mother[2].working shouldBe true // 8/3
             }
 
-            Then("엄마 휴무는 2·5·8·11·14·17·20·23·26·29 열흘이다") {
-                // 기준일 8/8이 오프셋 0(휴무)이고 3일 주기다. 기준일 **이전** 날짜가 실제 흐름이라
-                // Kotlin `%`(음수 나머지)가 아니라 Math.floorMod를 써야 이 열흘이 나온다.
+            Then("엄마 휴무는 1·4·7·10·13·16·19·22·25·28·31 열하루다") {
+                // 기준일 8/1이 오프셋 0(휴무)이고 3일 주기다.
                 val off =
                     days
                         .filter { it.role == DispatchRole.MOTHER && !it.working }
                         .map { it.date.dayOfMonth }
-                off shouldBe listOf(2, 5, 8, 11, 14, 17, 20, 23, 26, 29)
+                off shouldBe listOf(1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31)
             }
 
             Then("엄마는 순번이 아직 없어 slot이 비어 있다") {
@@ -68,14 +67,15 @@ class DispatchQueryServiceTest :
         Given("엄마 예외가 저장돼 있을 때") {
             every { shiftRepository.findByWorkDateBetween(from, to) } returns
                 listOf(
-                    // 패턴상 8/1은 근무인데 예외로 휴무를 저장했다
-                    DispatchShift(DispatchRole.MOTHER, LocalDate.of(2026, 8, 1), working = false, note = "연차"),
+                    // 패턴상 8/2는 근무인데 예외로 휴무를 저장했다. **패턴이 휴무라고 하는 날을
+                    // 고르면 예외가 없어도 같은 답이 나와** 덮어쓰기가 되는지 알 수 없다.
+                    DispatchShift(DispatchRole.MOTHER, LocalDate.of(2026, 8, 2), working = false, note = "연차"),
                 )
 
             val days = service.findMonth(yearMonth).days
 
             Then("예외가 패턴 계산을 덮어쓴다") {
-                val day = days.first { it.role == DispatchRole.MOTHER && it.date == LocalDate.of(2026, 8, 1) }
+                val day = days.first { it.role == DispatchRole.MOTHER && it.date == LocalDate.of(2026, 8, 2) }
                 day.working shouldBe false
                 day.note shouldBe "연차"
             }
