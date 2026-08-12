@@ -47,12 +47,17 @@ class DispatchRecognitionServiceTest :
             cells: List<Pair<Int, String>>,
             rowCount: Int = 13,
             visibleDays: List<Int> = cells.map { it.first },
+            // 대부분의 시나리오는 「대상을 찾았다」가 전제다. 못 찾은 경우만 명시적으로 끈다.
+            targetFound: Boolean = true,
+            year: Int = 2026,
+            month: Int = 8,
         ) = RecognizedSlice(
             hasNameColumn = hasName,
+            targetFound = targetFound,
             rowIndex = 2,
             rowCount = rowCount,
-            year = 2026,
-            month = 8,
+            year = year,
+            month = month,
             visibleDays = visibleDays,
             cells = cells.map { RecognizedCell(it.first, it.second) },
         )
@@ -133,6 +138,58 @@ class DispatchRecognitionServiceTest :
             }
         }
 
+        // **「컬럼이 보이는가」와 「그 안에서 대상을 찾았는가」는 다른 질문이다.** 그 달 표에서
+        // 빠졌거나 이름이 흐려 못 읽으면 모델은 정수를 요구하는 rowIndex에 아무 값이나 채운다.
+        // 걸러내지 않으면 NAME 모드로 통과해 그 행 번호가 기준으로 저장되고, 이후 잘린 사진이
+        // 전부 다른 기사의 근무를 읽어 온다.
+        Given("성명 컬럼은 보이는데 대상 이름을 찾지 못한 경우") {
+            every { rosterRepository.findByYearMonth("2026-08") } returns
+                DispatchRoster(yearMonth = "2026-08", rowIndex = 2, rowCount = 13)
+            every { visionClient.read(any(), "홍길동", null) } returns
+                sliceResult(true, emptyList(), targetFound = false)
+
+            Then("거부한다 — 저장된 기준으로 폴백하지 않는다") {
+                // 폴백하면 그 사람이 이번 달 표에서 빠진 경우 다른 기사의 근무가 들어온다.
+                val exception =
+                    shouldThrow<CustomException> {
+                        serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+                    }
+                exception.errorCode shouldBe DispatchErrorCode.TARGET_NOT_FOUND
+            }
+
+            Then("기준을 갱신하지 않는다") {
+                shouldThrow<CustomException> {
+                    serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+                }
+                io.mockk.verify(exactly = 0) { rosterUpdater.upsert(any(), any(), any()) }
+            }
+
+            Then("나머지 조각을 읽지도 않는다 — 행 위치가 확정되지 않았다") {
+                shouldThrow<CustomException> {
+                    serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+                }
+                io.mockk.verify(exactly = 0) { visionClient.read(any(), null, any()) }
+            }
+        }
+
+        // 성명 컬럼이 아예 안 보이는 경우는 targetFound가 false여도 기존 갈래(저장된 기준 사용)
+        // 그대로다 — 애초에 이름으로 찾는 모드가 아니다.
+        Given("성명 컬럼이 없고 targetFound도 false인 사진") {
+            every { rosterRepository.findByYearMonth("2026-08") } returns
+                DispatchRoster(yearMonth = "2026-08", rowIndex = 2, rowCount = 13)
+            every { visionClient.read(any(), "홍길동", null) } returns
+                sliceResult(false, emptyList(), targetFound = false)
+            every { visionClient.read(any(), null, 2) } returns
+                sliceResult(false, listOf(10 to "2"), targetFound = false)
+
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+
+            Then("TARGET_NOT_FOUND가 아니라 저장된 기준으로 읽는다") {
+                result.matchedBy shouldBe MatchedBy.ROW_INDEX
+                result.days.first { it.day == 10 }.slot shouldBe 2
+            }
+        }
+
         Given("표 인원이 바뀐 경우") {
             every { rosterRepository.findByYearMonth("2026-08") } returns
                 DispatchRoster(yearMonth = "2026-08", rowIndex = 2, rowCount = 13)
@@ -180,6 +237,65 @@ class DispatchRecognitionServiceTest :
 
             Then("범위 밖 칸은 버린다") {
                 result.days.none { it.day == 99 } shouldBe true
+            }
+        }
+
+        // strict 스키마는 year·month가 **정수라는 것만** 보장한다. month=13이면 YearMonth.of가
+        // DateTimeException을 던지는데, 이는 DispatchVisionClient의 실패 처리 바깥이라 그대로
+        // 500이 됐다. 사진 제목을 잘못 읽은 것뿐인데 서버 결함처럼 보인다.
+        // 연월은 요청 값이 기준이고 사진 제목은 교차 확인용이라, 못 읽으면 검사만 건너뛴다.
+        Given("모델이 13월을 준 경우") {
+            every { rosterRepository.findByYearMonth("2026-08") } returns null
+            every { visionClient.read(any(), "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1"), month = 13)
+            every { visionClient.read(any(), null, 2) } returns
+                sliceResult(true, listOf(2 to "2"), month = 13)
+
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+
+            Then("500이 아니라 정상 응답이 나온다") {
+                result.yearMonth shouldBe "2026-08"
+                result.days.first { it.day == 1 }.slot shouldBe 1
+            }
+
+            Then("YEAR_MONTH_MISMATCH를 달지 않는다 — 못 읽은 것이지 어긋난 것이 아니다") {
+                result.warnings shouldBe emptyList()
+            }
+        }
+
+        // 연도는 month와 달리 YearMonth.of가 받아 준다(99999도 유효한 연도다). 그래서 500이
+        // 아니라 **엉뚱한 경고**가 문제였다 — 99999-08 != 2026-08이라 YEAR_MONTH_MISMATCH가
+        // 붙고, 그 경고 때문에 멀쩡한 사진인데도 행 위치 갱신이 통째로 막혔다.
+        Given("모델이 말도 안 되는 연도를 준 경우") {
+            every { rosterRepository.findByYearMonth("2026-08") } returns null
+            every { visionClient.read(any(), "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1"), year = 99999)
+            every { visionClient.read(any(), null, 2) } returns
+                sliceResult(true, listOf(2 to "2"), year = 99999)
+
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+
+            Then("제목을 못 읽은 것으로 보고 엉뚱한 경고를 달지 않는다") {
+                result.yearMonth shouldBe "2026-08"
+                result.warnings shouldBe emptyList()
+            }
+
+            Then("경고가 없으므로 행 위치는 정상적으로 갱신된다") {
+                io.mockk.verify { rosterUpdater.upsert("2026-08", 2, 13) }
+            }
+        }
+
+        Given("모델이 연월을 아예 못 읽어 0을 준 경우") {
+            every { rosterRepository.findByYearMonth("2026-08") } returns null
+            every { visionClient.read(any(), "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1"), year = 0, month = 0)
+            every { visionClient.read(any(), null, 2) } returns
+                sliceResult(true, listOf(2 to "2"), year = 0, month = 0)
+
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+
+            Then("기존대로 검사를 건너뛴다") {
+                result.warnings shouldBe emptyList()
             }
         }
 

@@ -6,8 +6,11 @@ import com.toy.backend.dispatch.image.ImageSlice
 import com.toy.backend.dispatch.llm.DispatchVisionClient
 import com.toy.backend.dispatch.llm.DispatchVisionProperties
 import com.toy.backend.dispatch.llm.RecognizedSlice
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.stereotype.Service
 import java.time.YearMonth
+
+private val log = KotlinLogging.logger {}
 
 /**
  * 사진 한 장을 조각으로 나눠 읽고 하나로 합친다. **아무것도 저장하지 않는다** —
@@ -51,6 +54,19 @@ class DispatchRecognitionService(
             visionClient.read(slices.first(), targetName, null)
                 ?: throw CustomException(DispatchErrorCode.VISION_UNAVAILABLE)
 
+        // **「컬럼이 보이는가」와 「그 안에서 대상을 찾았는가」는 다른 질문이다.** 성명 컬럼은
+        // 멀쩡히 보이는데 그 달 표에 그 사람이 없거나(배차표에서 빠졌거나) 이름이 흐려 판독이
+        // 안 되는 경우가 있다. 그때 모델은 스키마가 정수를 요구하는 `rowIndex`에 아무 값이나
+        // 채우므로, 이것을 걸러내지 않으면 NAME 모드로 통과해 그 행 번호가 `DispatchRoster`에
+        // 저장까지 되고 이후 잘린 사진이 전부 다른 기사의 근무를 읽어 온다.
+        //
+        // **저장된 기준으로 폴백하지 않는다.** 이름이 표에 없다는 것은 그 사람이 그 달 표에서
+        // 빠졌거나 판독이 실패했다는 뜻이고, 어느 쪽이든 저장된 행 위치를 쓰면 다른 사람 데이터가
+        // 들어온다. 「추측해서 저장하느니 거부한다」는 이 기능의 원칙 그대로 거부한다.
+        if (probe.hasNameColumn && !probe.targetFound) {
+            throw CustomException(DispatchErrorCode.TARGET_NOT_FOUND, yearMonth.toString())
+        }
+
         val matchedBy = if (probe.hasNameColumn) MatchedBy.NAME else MatchedBy.ROW_INDEX
         val rowIndex =
             when {
@@ -89,9 +105,21 @@ class DispatchRecognitionService(
             warnings += "ROW_COUNT_CHANGED"
         }
         // 사진의 달과 요청한 달이 다르면 엉뚱한 달에 저장된다.
-        if (probe.year != 0 && probe.month != 0 &&
-            YearMonth.of(probe.year, probe.month) != yearMonth
-        ) {
+        // **`YearMonth.of`에 넣기 전에 범위를 확인한다.** strict 스키마는 정수라는 것만 보장하므로
+        // `month = 13` 같은 값이 오면 `DateTimeException`이 나는데, 이는 `DispatchVisionClient`의
+        // 실패 처리 바깥이라 그대로 500이 된다. 사진 제목을 잘못 읽은 것뿐인데 서버 결함처럼 보인다.
+        // 연·월은 **요청에서 받은 값이 기준**이고 사진 제목은 교차 확인용 부가 정보라, 못 읽었으면
+        // 검사만 건너뛴다(경고를 달지 않는다). 다만 프롬프트·모델 이상 신호일 수 있어 로그로 남긴다.
+        val photoYearMonth =
+            if (probe.month in 1..12 && probe.year in PLAUSIBLE_YEARS) {
+                YearMonth.of(probe.year, probe.month)
+            } else {
+                if (probe.year != 0 || probe.month != 0) {
+                    log.warn { "배차표 제목의 연월을 해석할 수 없다: year=${probe.year}, month=${probe.month}" }
+                }
+                null
+            }
+        if (photoYearMonth != null && photoYearMonth != yearMonth) {
             warnings += "YEAR_MONTH_MISMATCH"
         }
 
@@ -167,5 +195,10 @@ class DispatchRecognitionService(
             note = value.takeIf { it.isNotEmpty() && slot == null },
             conflict = false,
         )
+    }
+
+    companion object {
+        /** 배차표 제목에서 읽은 연도로 납득할 수 있는 범위. 밖이면 제목을 잘못 읽은 것이다. */
+        private val PLAUSIBLE_YEARS = 2000..2100
     }
 }

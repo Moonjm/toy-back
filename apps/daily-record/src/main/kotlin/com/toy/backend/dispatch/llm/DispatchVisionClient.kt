@@ -33,6 +33,12 @@ data class RecognizedCell(
 
 data class RecognizedSlice(
     val hasNameColumn: Boolean,
+    /**
+     * 성명 컬럼 안에서 **대상 기사를 실제로 찾았는가.** `hasNameColumn`과 다른 질문이다 —
+     * 컬럼은 멀쩡히 보이는데 그 달 표에 그 사람이 없거나 이름이 흐려 못 읽는 경우가 있다.
+     * 이 값이 없으면 스키마상 `rowIndex`가 정수를 요구하므로 모델이 아무 행 번호나 채운다.
+     */
+    val targetFound: Boolean,
     val rowIndex: Int,
     val rowCount: Int,
     val year: Int,
@@ -149,6 +155,7 @@ class DispatchVisionClient(
         val cells: Iterable<JsonNode> = root.path("cells")
         return RecognizedSlice(
             hasNameColumn = root.path("hasNameColumn").asBoolean(),
+            targetFound = root.path("targetFound").asBoolean(),
             rowIndex = root.path("rowIndex").asInt(),
             rowCount = root.path("rowCount").asInt(),
             year = root.path("year").asInt(),
@@ -173,16 +180,23 @@ class DispatchVisionClient(
                 표 왼쪽에 사람 이름이 적힌 컬럼이 있으면 보이는 것이고, 표의 오른쪽 일부만
                 잘라낸 사진이라 이름이 하나도 없으면 보이지 않는 것이다.
 
-                - 보이면: hasNameColumn을 true로 하고, '$targetName' 기사의 행을 찾아 그 행을 읽어라.
-                  rowIndex에는 그 행이 데이터 행 중 위에서 몇 번째인지 넣어라(맨 위 데이터 행이 0).
-                - 보이지 않으면: hasNameColumn을 false로 하고 rowIndex는 0, cells는 빈 배열로 두어라.
-                  **이름을 못 찾았는데 아무 행이나 읽어서 채우지 마라.** 어느 행이 그 기사인지
-                  모르는 채로 읽은 값은 쓸 수 없고, 그 경우는 다시 물어볼 것이다.
+                - 보이면: hasNameColumn을 true로 하라. 그리고 그 컬럼에서 '$targetName' 기사를 찾아라.
+                  - **실제로 찾았으면**: targetFound를 true로 하고, rowIndex에 그 행이 데이터 행 중
+                    위에서 몇 번째인지 넣어라(맨 위 데이터 행이 0). 그 행을 읽어라.
+                  - **성명 컬럼은 보이는데 '$targetName'이라는 이름이 없거나, 글자가 흐려서
+                    못 읽겠으면**: targetFound를 false로 하고 rowIndex는 0, cells는 빈 배열로 두어라.
+                    **비슷한 다른 이름을 대신 고르지 마라.** 그 사람이 이번 달 표에서 빠졌을 수도 있다.
+                - 보이지 않으면: hasNameColumn과 targetFound를 모두 false로 하고 rowIndex는 0,
+                  cells는 빈 배열로 두어라.
+
+                **이름을 못 찾았는데 아무 행이나 읽어서 채우지 마라.** 어느 행이 그 기사인지
+                모르는 채로 읽은 값은 쓸 수 없고, 그 경우는 다시 물어볼 것이다.
                 """.trimIndent()
             } else {
                 """
                 이 사진은 표의 오른쪽 일부만 잘라낸 것이라 성명 컬럼이 보이지 않는다.
                 hasNameColumn을 false로, rowIndex에는 ${knownRowIndex ?: 0}을 넣어라.
+                이 모드에서는 이름으로 찾지 않으므로 targetFound도 false로 두어라.
                 데이터 행 중 위에서 ${(knownRowIndex ?: 0) + 1}번째 행을 읽어라.
                 """.trimIndent()
             }
@@ -241,6 +255,7 @@ class DispatchVisionClient(
                                 "properties" to
                                     mapOf(
                                         "hasNameColumn" to mapOf("type" to "boolean"),
+                                        "targetFound" to mapOf("type" to "boolean"),
                                         "rowIndex" to mapOf("type" to "integer"),
                                         "rowCount" to mapOf("type" to "integer"),
                                         "year" to mapOf("type" to "integer"),
@@ -270,6 +285,7 @@ class DispatchVisionClient(
                                 "required" to
                                     listOf(
                                         "hasNameColumn",
+                                        "targetFound",
                                         "rowIndex",
                                         "rowCount",
                                         "year",

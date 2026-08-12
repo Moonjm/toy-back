@@ -27,7 +27,7 @@ class DispatchVisionClientTest :
 
         val validJson =
             """
-            {"hasNameColumn":true,"rowIndex":2,"rowCount":13,"year":2026,"month":8,
+            {"hasNameColumn":true,"targetFound":true,"rowIndex":2,"rowCount":13,"year":2026,"month":8,
              "visibleDays":[1,2,3],
              "cells":[{"day":1,"value":"1"},{"day":2,"value":""},{"day":3,"value":"*97"}]}
             """.trimIndent()
@@ -100,6 +100,14 @@ class DispatchVisionClientTest :
                 ((format["json_schema"] as Map<*, *>)["strict"]) shouldBe true
             }
 
+            Then("targetFound가 properties와 required에 모두 들어간다") {
+                // strict: true라 properties에 있는 키가 required에 없으면 호출 자체가 거부된다.
+                val schema =
+                    ((body["response_format"] as Map<*, *>)["json_schema"] as Map<*, *>)["schema"] as Map<*, *>
+                (schema["properties"] as Map<*, *>).containsKey("targetFound") shouldBe true
+                (schema["required"] as List<*>).contains("targetFound") shouldBe true
+            }
+
             Then("집계 컬럼을 제외하라고 지시한다") {
                 // 이걸 빼면 '계'를 날짜로 세어 그 뒤가 전부 밀린다.
                 promptOf(body) shouldContain "계"
@@ -134,6 +142,17 @@ class DispatchVisionClientTest :
             Then("이름을 못 찾으면 아무 행이나 읽지 말라고 지시한다") {
                 promptOf(body) shouldContain "아무 행이나 읽어서 채우지 마라"
             }
+
+            // 「컬럼이 보이는가」와 「그 안에서 찾았는가」는 다른 질문이다. 못 찾았다는 것을
+            // 표현할 자리가 없으면 모델은 rowIndex에 아무 값이나 채우고, 그 값이 기준으로
+            // 저장돼 이후 잘린 사진이 전부 다른 기사의 근무를 읽는다.
+            Then("찾았는지를 targetFound로 따로 답하라고 지시한다") {
+                promptOf(body) shouldContain "targetFound"
+            }
+
+            Then("비슷한 다른 이름을 대신 고르지 말라고 지시한다") {
+                promptOf(body) shouldContain "비슷한 다른 이름을 대신 고르지 마라"
+            }
         }
 
         Given("이름 없이 행 위치만 준 경우") {
@@ -152,6 +171,7 @@ class DispatchVisionClientTest :
             val result = client.read(slice, "홍길동", null)
 
             Then("파싱된다") {
+                result?.targetFound shouldBe true
                 result?.rowIndex shouldBe 2
                 result?.rowCount shouldBe 13
                 result?.visibleDays shouldBe listOf(1, 2, 3)
