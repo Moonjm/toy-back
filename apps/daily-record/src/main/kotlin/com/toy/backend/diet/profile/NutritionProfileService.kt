@@ -50,6 +50,24 @@ class NutritionProfileService(
         profile.applyTargets(calculateTargets(user, profile))
     }
 
+    /**
+     * 인적사항이 바뀌었을 때 저장된 목표치를 다시 계산한다. 목표치는 `gender`·`birthDate`로
+     * 계산되는데 예전에는 `save`·`updateWeight`에서만 다시 계산돼, 성별을 잘못 넣었다가
+     * 고쳐도 목표치가 그대로였다. 그 낡은 값이 끼니 확정 시 `Meal`에 **영구 스냅샷**되어
+     * 나중에 고쳐도 되돌아가지 않았다.
+     *
+     * **아무것도 못 해도 조용히 넘어간다.** 인적사항 수정은 영양 프로필과 독립적인 기능이라
+     * 여기서 던지면 프로필이 없는 사용자의 이름 변경까지 실패한다. 특히 `User.updateProfile`은
+     * `gender`·`birthDate`를 **받은 값으로 그대로 덮으므로**(null이면 지운다) 이름만 보내는
+     * 요청이 성별을 비울 수 있다 — 그때는 계산식을 세울 수 없으니 기존 목표치를 남겨 둔다.
+     */
+    @Transactional
+    fun recalculateTargets(user: User) {
+        val profile = repository.findByUser(user) ?: return
+        if (user.gender == null || user.birthDate == null) return
+        profile.applyTargets(calculateTargets(user, profile))
+    }
+
     fun requireProfile(user: User): NutritionProfile =
         repository.findByUser(user)
             ?: throw CustomException(DietErrorCode.PROFILE_NOT_FOUND)

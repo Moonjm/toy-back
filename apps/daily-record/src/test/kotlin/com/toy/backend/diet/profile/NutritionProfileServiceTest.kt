@@ -6,6 +6,7 @@ import com.toy.backend.common.exception.CustomException
 import com.toy.backend.diet.DietErrorCode
 import com.toy.backend.diet.dietUser
 import com.toy.backend.diet.dummyProfile
+import com.toy.backend.user.Gender
 import com.toy.backend.user.UserRepository
 import com.toy.backend.user.entity.dummyUser
 import io.kotest.assertions.throwables.shouldThrow
@@ -117,6 +118,50 @@ class NutritionProfileServiceTest :
                 Then("계산된 목표를 함께 반환") {
                     response.targetKcal shouldBe 2509
                     response.targetCarbsG shouldBe 345
+                }
+            }
+        }
+
+        // 목표치는 gender·birthDate로 계산되는데 예전에는 save·updateWeight에서만 다시
+        // 계산됐다. 성별을 잘못 넣었다가 고쳐도 목표치가 그대로였고, 그 낡은 값이 끼니 확정
+        // 시 Meal에 **영구 스냅샷**돼 나중에 고쳐도 되돌아가지 않았다.
+        Given("인적사항 변경에 따른 목표 재계산") {
+            When("성별이 여성으로 바뀌면") {
+                val female = dietUser(gender = Gender.FEMALE)
+                val profile = dummyProfile(user = female)
+                every { repository.findByUser(female) } returns profile
+
+                service.recalculateTargets(female)
+
+                Then("저장된 목표치가 따라 바뀐다") {
+                    // Mifflin-St Jeor은 여성 상수가 더 작다(-161 vs +5). 같은 키·몸무게라면
+                    // 남성 기준으로 계산된 기존 값보다 반드시 작아진다 — 나이와 무관한 관계다.
+                    profile.targetKcal shouldBeLessThan 2509
+                    profile.targetCarbsG shouldBeLessThan 345
+                }
+            }
+
+            When("프로필이 아직 없는 사용자면") {
+                every { repository.findByUser(user) } returns null
+
+                Then("아무 일도 일어나지 않는다 — 인적사항 수정이 실패하면 안 된다") {
+                    // 인적사항 수정은 영양 프로필과 독립적인 기능이다. 여기서 던지면
+                    // 프로필이 없는 사용자의 이름 변경까지 통째로 실패한다.
+                    service.recalculateTargets(user)
+                }
+            }
+
+            When("성별이 비워진 사용자면") {
+                // User.updateProfile은 gender·birthDate를 받은 값으로 **그대로 덮는다**
+                // (null이면 지운다). 그래서 이름만 보낸 요청이 성별을 비울 수 있다.
+                val noGender = dummyUser(username = "nogender", id = 9L)
+                val profile = dummyProfile(user = noGender)
+                every { repository.findByUser(noGender) } returns profile
+
+                service.recalculateTargets(noGender)
+
+                Then("예외 없이 기존 목표치를 남겨 둔다 — 계산식을 세울 수 없다") {
+                    profile.targetKcal shouldBe 2509
                 }
             }
         }

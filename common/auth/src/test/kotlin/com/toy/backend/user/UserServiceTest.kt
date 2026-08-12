@@ -9,6 +9,8 @@ import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.security.crypto.password.PasswordEncoder
 import java.time.LocalDate
 
@@ -16,7 +18,8 @@ class UserServiceTest :
     BehaviorSpec({
         val userRepository = mockk<UserRepository>()
         val passwordEncoder = mockk<PasswordEncoder>()
-        val userService = UserService(userRepository, passwordEncoder)
+        val eventPublisher = mockk<ApplicationEventPublisher>(relaxed = true)
+        val userService = UserService(userRepository, passwordEncoder, eventPublisher)
 
         Given("me 조회 시") {
             When("존재하는 유저") {
@@ -66,6 +69,12 @@ class UserServiceTest :
                     user.name shouldBe "새이름"
                     user.gender shouldBe Gender.FEMALE
                     user.birthDate shouldBe LocalDate.of(1995, 6, 20)
+                }
+
+                // 나이·성별로 계산되는 값(영양 목표치)이 따라오게 하는 신호다. common-auth는
+                // daily-record를 몰라야 해서 직접 부르지 않고 이벤트만 발행한다.
+                Then("인적사항 변경 이벤트를 발행한다") {
+                    verify { eventPublisher.publishEvent(UserProfileChangedEvent(user)) }
                 }
             }
 
