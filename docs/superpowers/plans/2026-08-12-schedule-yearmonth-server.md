@@ -44,7 +44,7 @@
 - Consumes: 없음
 - Produces: `recognize`의 본문 순서가 `probe → roster 조회 → 나머지 조각`이 된다. Task 2가 이 사이에 연월 확정을 끼워 넣는다.
 
-- [ ] **Step 1: 순서를 고정하는 테스트를 쓴다**
+- [x] **Step 1: 순서를 고정하는 테스트를 쓴다**
 
 `DispatchRecognitionServiceTest.kt`의 마지막 `Given` 블록 뒤에 추가한다.
 
@@ -72,12 +72,12 @@
 
 import에 `io.mockk.verifyOrder`를 더한다.
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 Run: `./gradlew :daily-record:test --tests "*DispatchRecognitionServiceTest*"`
 Expected: FAIL — `Verification failed: calls are not in order`
 
-- [ ] **Step 3: 조회를 아래로 옮긴다**
+- [x] **Step 3: 조회를 아래로 옮긴다**
 
 `recognize` 안에서 이 줄을 지운다(현재 probe 위에 있다).
 
@@ -93,12 +93,12 @@ Expected: FAIL — `Verification failed: calls are not in order`
         val roster = rosterRepository.findByYearMonth(yearMonth.toString())
 ```
 
-- [ ] **Step 4: 통과를 확인한다**
+- [x] **Step 4: 통과를 확인한다**
 
 Run: `./gradlew :daily-record:test --tests "*DispatchRecognitionServiceTest*"`
 Expected: PASS — 기존 테스트도 전부 통과해야 한다. 하나라도 깨지면 순서 이동이 동작을 바꾼 것이므로 되돌리고 원인을 찾는다.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 ./gradlew spotlessApply
@@ -132,7 +132,7 @@ git commit -m "refactor: 저장된 줄 위치를 사진을 읽은 뒤에 조회�
   - `RecognitionResponse.yearMonth: String?`
   - 컨트롤러 `POST /dispatch/recognitions`의 `yearMonth`가 선택 파라미터
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다**
+- [x] **Step 1: 실패하는 테스트를 쓴다**
 
 ```kotlin
         Given("연월 없이 올린 사진") {
@@ -210,12 +210,12 @@ import에 `io.mockk.verify`를 더한다.
 
 **주의:** `rosterUpdater`는 `relaxed = true` mock이고 다른 `Given` 블록에서도 호출된다. `verify(exactly = 0)`는 그 호출까지 세어 실패할 수 있다. 이 `Given` 블록 첫 줄에 `clearMocks(rosterUpdater, answers = false)`를 넣어 호출 기록만 지운다. import는 `io.mockk.clearMocks`.
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 Run: `./gradlew :daily-record:test --tests "*DispatchRecognitionServiceTest*"`
 Expected: 컴파일 실패 — `recognize`가 `YearMonth?`를 받지 않는다
 
-- [ ] **Step 3: 응답 DTO를 nullable로 바꾼다**
+- [x] **Step 3: 응답 DTO를 nullable로 바꾼다**
 
 `DispatchDtos.kt`의 `RecognitionResponse`:
 
@@ -233,7 +233,7 @@ data class RecognitionResponse(
 )
 ```
 
-- [ ] **Step 4: 컨트롤러의 파라미터를 선택으로 바꾼다**
+- [x] **Step 4: 컨트롤러의 파라미터를 선택으로 바꾼다**
 
 `DispatchController.kt`의 `recognize`:
 
@@ -255,7 +255,7 @@ data class RecognitionResponse(
         ResponseEntity.ok(DataResponseBody(recognitionService.recognize(file.bytes, yearMonth)))
 ```
 
-- [ ] **Step 5: 서비스에서 기준 연월을 정한다**
+- [x] **Step 5: 서비스에서 기준 연월을 정한다**
 
 `recognize`의 시그니처를 바꾸고 KDoc의 첫 문단을 교체한다.
 
@@ -372,12 +372,12 @@ probe의 두 검증 **아래**(Task 1에서 roster 조회를 넣은 자리 바�
                 if (cell.day !in 1..lastDay) return@forEach
 ```
 
-- [ ] **Step 6: 통과를 확인한다**
+- [x] **Step 6: 통과를 확인한다**
 
 Run: `./gradlew :daily-record:test --tests "*DispatchRecognitionServiceTest*"`
 Expected: PASS — 기존 테스트도 전부 통과한다. 기존 테스트는 모두 연월을 넘기므로 동작이 바뀌지 않는다.
 
-- [ ] **Step 7: 응답까지 갔는지 확인한다**
+- [x] **Step 7: 응답까지 갔는지 확인한다**
 
 ```bash
 grep -rln "yearMonth" --include='*.kt' apps/daily-record/src/main/kotlin/com/toy/backend/dispatch
@@ -385,7 +385,7 @@ grep -rln "yearMonth" --include='*.kt' apps/daily-record/src/main/kotlin/com/toy
 
 목록에 `DispatchDtos.kt`가 있어야 한다. 없으면 값이 앱까지 가지 않는다.
 
-- [ ] **Step 8: 커밋**
+- [x] **Step 8: 커밋**
 
 ```bash
 ./gradlew spotlessApply
@@ -409,7 +409,7 @@ git commit -m "feat: 배차표 사진에서 읽은 연월을 기준으로 쓴다
 - Consumes: Task 2의 `effectiveYearMonth`, `yearMonthLabel`
 - Produces: 경고 코드 `ROSTER_FROM_OTHER_MONTH` — 앱의 검수 화면이 이 문자열로 분기한다
 
-- [ ] **Step 1: 실패하는 테스트를 쓴다**
+- [x] **Step 1: 실패하는 테스트를 쓴다**
 
 ```kotlin
         Given("연월도 성명 컬럼도 없는 잘린 사진") {
@@ -472,12 +472,12 @@ git commit -m "feat: 배차표 사진에서 읽은 연월을 기준으로 쓴다
         }
 ```
 
-- [ ] **Step 2: 실패를 확인한다**
+- [x] **Step 2: 실패를 확인한다**
 
 Run: `./gradlew :daily-record:test --tests "*DispatchRecognitionServiceTest*"`
 Expected: 컴파일 실패 — `findTopByOrderByYearMonthDesc`가 없다
 
-- [ ] **Step 3: 리포지토리에 조회를 더한다**
+- [x] **Step 3: 리포지토리에 조회를 더한다**
 
 ```kotlin
 package com.toy.backend.dispatch
@@ -498,7 +498,7 @@ interface DispatchRosterRepository : JpaRepository<DispatchRoster, Long> {
 }
 ```
 
-- [ ] **Step 4: 서비스에서 폴백과 경고를 더한다**
+- [x] **Step 4: 서비스에서 폴백과 경고를 더한다**
 
 Task 2에서 만든 `roster` 줄을 바꾼다.
 
@@ -527,12 +527,12 @@ Task 2에서 만든 `roster` 줄을 바꾼다.
         }
 ```
 
-- [ ] **Step 5: 통과를 확인한다**
+- [x] **Step 5: 통과를 확인한다**
 
 Run: `./gradlew :daily-record:test`
 Expected: PASS — 전체 통과
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 ./gradlew spotlessApply
