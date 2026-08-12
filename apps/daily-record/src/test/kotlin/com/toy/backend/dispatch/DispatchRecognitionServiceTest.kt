@@ -51,10 +51,11 @@ class DispatchRecognitionServiceTest :
             targetFound: Boolean = true,
             year: Int = 2026,
             month: Int = 8,
+            rowIndex: Int = 2,
         ) = RecognizedSlice(
             hasNameColumn = hasName,
             targetFound = targetFound,
-            rowIndex = 2,
+            rowIndex = rowIndex,
             rowCount = rowCount,
             year = year,
             month = month,
@@ -169,6 +170,103 @@ class DispatchRecognitionServiceTest :
                     serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
                 }
                 io.mockk.verify(exactly = 0) { visionClient.read(any(), null, any()) }
+            }
+        }
+
+        // **「찾았다」고 답하면서 이상한 숫자를 주는 경우.** 스키마는 정수라는 것만 보장하므로
+        // rowIndex=99, rowCount=13 같은 앞뒤가 안 맞는 답이 통과할 수 있었다. 그러면 존재하지
+        // 않는 행 번호가 기준으로 저장되고 이후 잘린 사진이 전부 없는 행을 읽는다.
+        Given("대상을 찾았다면서 rowIndex가 rowCount 이상인 경우") {
+            every { rosterRepository.findByYearMonth("2026-08") } returns null
+            every { visionClient.read(any(), "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1"), rowCount = 13, rowIndex = 99)
+
+            Then("인식 실패로 거부한다 — 존재하지 않는 행이다") {
+                val exception =
+                    shouldThrow<CustomException> {
+                        serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+                    }
+                exception.errorCode shouldBe DispatchErrorCode.VISION_UNAVAILABLE
+            }
+
+            Then("기준을 저장하지 않는다") {
+                shouldThrow<CustomException> {
+                    serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+                }
+                io.mockk.verify(exactly = 0) { rosterUpdater.upsert(any(), any(), any()) }
+            }
+
+            Then("나머지 조각을 읽지도 않는다 — 틀린 행 위치를 넘기지 않는다") {
+                // rowIndex는 나머지 조각에 knownRowIndex로 실려 나간다. 뒤에서 걸러 봐야
+                // 이미 조각당 $0.017을 쓴 뒤다.
+                shouldThrow<CustomException> {
+                    serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+                }
+                io.mockk.verify(exactly = 0) { visionClient.read(any(), null, any()) }
+            }
+        }
+
+        Given("rowCount를 0으로 준 경우") {
+            every { rosterRepository.findByYearMonth("2026-08") } returns null
+            every { visionClient.read(any(), "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1"), rowCount = 0, rowIndex = 0)
+
+            Then("인식 실패로 거부한다 — 표를 못 읽은 것이다") {
+                val exception =
+                    shouldThrow<CustomException> {
+                        serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+                    }
+                exception.errorCode shouldBe DispatchErrorCode.VISION_UNAVAILABLE
+            }
+        }
+
+        Given("rowIndex를 음수로 준 경우") {
+            every { rosterRepository.findByYearMonth("2026-08") } returns null
+            every { visionClient.read(any(), "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1"), rowCount = 13, rowIndex = -1)
+
+            Then("인식 실패로 거부한다") {
+                val exception =
+                    shouldThrow<CustomException> {
+                        serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+                    }
+                exception.errorCode shouldBe DispatchErrorCode.VISION_UNAVAILABLE
+            }
+        }
+
+        Given("경계값 — rowIndex가 rowCount - 1인 경우") {
+            every { rosterRepository.findByYearMonth("2026-08") } returns null
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1"), rowCount = 13, rowIndex = 12)
+            every { visionClient.read(match { it.index == 1 }, null, 12) } returns
+                sliceResult(true, listOf(2 to "2"), rowCount = 13, rowIndex = 12)
+
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+
+            Then("정상 범위이므로 통과한다 — 마지막 행도 유효하다") {
+                result.rowIndex shouldBe 12
+                result.days.first { it.day == 1 }.slot shouldBe 1
+            }
+        }
+
+        // **저장된 행 위치가 지금 표에 없는 경우.** 인원이 줄어 그 행이 사라지면 모델은 「없는
+        // 행을 읽으라」는 지시를 받은 것이라 무엇을 돌려주든 지어낸 값이다. ROW_COUNT_CHANGED
+        // 경고로는 부족하다 — 그 경고는 「행이 밀렸을 수 있으니 검수하라」는 뜻이고 값 자체는
+        // 볼 만하다는 전제인데, 여기서는 볼 값이 아예 없다.
+        Given("성명 컬럼이 없고 저장된 행이 줄어든 표 밖인 경우") {
+            every { rosterRepository.findByYearMonth("2026-08") } returns
+                DispatchRoster(yearMonth = "2026-08", rowIndex = 12, rowCount = 13)
+            every { visionClient.read(any(), "홍길동", null) } returns
+                sliceResult(false, emptyList(), rowCount = 5)
+            every { visionClient.read(any(), null, 12) } returns
+                sliceResult(false, listOf(10 to "2"), rowCount = 5)
+
+            Then("경고가 아니라 거부한다 — 지어낸 값을 검수 화면에 띄우지 않는다") {
+                val exception =
+                    shouldThrow<CustomException> {
+                        serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+                    }
+                exception.errorCode shouldBe DispatchErrorCode.VISION_UNAVAILABLE
             }
         }
 

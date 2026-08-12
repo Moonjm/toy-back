@@ -67,6 +67,18 @@ class DispatchRecognitionService(
             throw CustomException(DispatchErrorCode.TARGET_NOT_FOUND, yearMonth.toString())
         }
 
+        // **「찾았다」고 답하면서 이상한 숫자를 주는 경우가 남는다.** 스키마는 `rowIndex`·`rowCount`가
+        // 정수라는 것만 보장하므로 `rowIndex = 99, rowCount = 13` 같은 앞뒤가 안 맞는 답이 그대로
+        // 통과할 수 있다. 그러면 존재하지 않는 행 번호가 `DispatchRoster`에 저장되고, 이후 잘린
+        // 사진이 전부 없는 행을 읽는다 — 한 번 저장되면 사람이 눈치채기 전까지 계속 틀린다.
+        //
+        // **다른 조각을 읽기 전에** 막는다. `rowIndex`는 나머지 조각에 `knownRowIndex`로 실려
+        // 나가므로, 뒤에서 걸러 봐야 이미 조각당 $0.017을 쓴 뒤다.
+        if (probe.hasNameColumn && !isRowWithinTable(probe.rowIndex, probe.rowCount)) {
+            log.warn { "인식 결과의 행 위치가 표 범위를 벗어났다: rowIndex=${probe.rowIndex}, rowCount=${probe.rowCount}" }
+            throw CustomException(DispatchErrorCode.VISION_UNAVAILABLE)
+        }
+
         val matchedBy = if (probe.hasNameColumn) MatchedBy.NAME else MatchedBy.ROW_INDEX
         val rowIndex =
             when {
@@ -99,6 +111,19 @@ class DispatchRecognitionService(
             }
 
         val rowCount = results.first().rowCount
+
+        // **행 위치 모드는 여기서야 검증할 수 있다** — 저장된 `rowIndex`가 지금 표에 있는지는
+        // 이번에 읽은 `rowCount`를 알아야 판단된다. 인원이 줄어 그 행이 사라졌다면 모델은
+        // 「없는 행을 읽으라」는 지시를 받은 것이라 무엇을 돌려주든 지어낸 값이다.
+        //
+        // **경고가 아니라 거부다.** `ROW_COUNT_CHANGED`는 「인원이 바뀌어 행이 밀렸을 수 있으니
+        // 검수하라」는 신호이고 값 자체는 볼 만하다. 반면 행이 아예 없으면 볼 값이 없다 —
+        // 검수 화면에 지어낸 값을 띄우면 사람이 그것을 확정해 버릴 수 있다.
+        if (matchedBy == MatchedBy.ROW_INDEX && !isRowWithinTable(rowIndex, rowCount)) {
+            log.warn { "저장된 행 위치가 지금 표에 없다: rowIndex=$rowIndex, rowCount=$rowCount" }
+            throw CustomException(DispatchErrorCode.VISION_UNAVAILABLE)
+        }
+
         val warnings = mutableListOf<String>()
         // 인원이 바뀌면 행 순서가 밀려 엉뚱한 기사의 근무가 들어온다.
         if (roster != null && roster.rowCount != rowCount) {
@@ -196,6 +221,15 @@ class DispatchRecognitionService(
             conflict = false,
         )
     }
+
+    /**
+     * 행 위치가 그 표 안에 실제로 있는가. `rowCount`가 0 이하면 표를 못 읽은 것이고,
+     * `rowIndex`가 그 밖이면 존재하지 않는 행을 가리킨다 — 어느 쪽도 저장하면 안 된다.
+     */
+    private fun isRowWithinTable(
+        rowIndex: Int,
+        rowCount: Int,
+    ): Boolean = rowCount > 0 && rowIndex in 0 until rowCount
 
     companion object {
         /** 배차표 제목에서 읽은 연도로 납득할 수 있는 범위. 밖이면 제목을 잘못 읽은 것이다. */
