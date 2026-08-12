@@ -621,7 +621,7 @@ class DispatchRecognitionServiceTest :
                 result.rowIndex shouldBe 2
             }
 
-            Then("다른 달 기준을 빌려 썼다고 경고한다") {
+            Then("다른 달 기준을 대신 썼다고 경고한다") {
                 // 인원이 그 사이 바뀌었으면 순번이 밀린다. 사람이 사진과 대조해야 한다.
                 result.warnings shouldBe listOf("ROSTER_FROM_OTHER_MONTH")
             }
@@ -642,7 +642,7 @@ class DispatchRecognitionServiceTest :
 
             val result = serviceWith().recognize(ByteArray(1), null)
 
-            Then("빌려 썼다는 경고가 붙지 않는다") {
+            Then("다른 달 기준을 대신 썼다는 경고가 붙지 않는다") {
                 // 이름으로 행을 찾았으므로 저장된 기준을 쓰지 않았다. 경고할 것이 없다.
                 result.warnings shouldBe emptyList()
             }
