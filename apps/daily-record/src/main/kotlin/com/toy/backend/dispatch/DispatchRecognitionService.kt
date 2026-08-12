@@ -102,7 +102,19 @@ class DispatchRecognitionService(
 
         // **기준 조회는 사진을 읽은 뒤다.** 연월을 사진에서 읽으려면 이 순서여야 한다
         // — 반대로 두면 「연월을 알아야 기준을 찾고, 기준을 찾아야 읽는다」가 된다.
-        val roster = effectiveYearMonth?.let { rosterRepository.findByYearMonth(it.toString()) }
+        //
+        // **연월을 모르는 사진이 곧 기준이 가장 필요한 사진이다** — 시간표만 잘라 찍으면
+        // 제목과 성명 컬럼이 함께 잘린다. 연월로는 찾을 수 없으니 가장 최근 기준을 빌려 쓴다.
+        // 잘린 변경분은 같은 달 배차표의 일부이므로 직전 기준이 맞다.
+        //
+        // 연월을 아는데 그 달 기준이 없는 경우는 **빌려 오지 않는다.** 그때는 성명 컬럼이
+        // 보이는 사진을 먼저 올리라고 거부하는 편이 맞다(`ROSTER_NOT_FOUND`).
+        val roster =
+            if (effectiveYearMonth != null) {
+                rosterRepository.findByYearMonth(effectiveYearMonth.toString())
+            } else {
+                rosterRepository.findTopByOrderByYearMonthDesc()
+            }
 
         val matchedBy = if (probe.hasNameColumn) MatchedBy.NAME else MatchedBy.ROW_INDEX
         val rowIndex =
@@ -153,6 +165,11 @@ class DispatchRecognitionService(
         // 인원이 바뀌면 행 순서가 밀려 엉뚱한 기사의 근무가 들어온다.
         if (roster != null && roster.rowCount != rowCount) {
             warnings += "ROW_COUNT_CHANGED"
+        }
+        // **빌려 쓴 기준으로 읽었을 때만 경고한다.** 이름으로 행을 찾았으면 저장된 기준을
+        // 쓰지 않았으므로 경고할 것이 없다.
+        if (effectiveYearMonth == null && matchedBy == MatchedBy.ROW_INDEX) {
+            warnings += "ROSTER_FROM_OTHER_MONTH"
         }
         // 사진의 달과 요청한 달이 다르면 엉뚱한 달에 저장된다. 요청값이 없으면 비교할 것이
         // 없다 — 사진값이 곧 기준이므로 어긋날 수가 없다. 사진 제목을 못 읽었을 때도 마찬가지로

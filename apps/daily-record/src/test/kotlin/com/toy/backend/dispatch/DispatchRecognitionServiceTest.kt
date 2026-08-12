@@ -601,4 +601,63 @@ class DispatchRecognitionServiceTest :
                 verify(exactly = 0) { rosterUpdater.upsert(any(), any(), any()) }
             }
         }
+
+        Given("연월도 성명 컬럼도 없는 잘린 사진") {
+            // 중간에 바뀐 부분만 잘라 온 사진. 제목도 성명 컬럼도 없다.
+            clearMocks(rosterUpdater, answers = false)
+            every { rosterRepository.findTopByOrderByYearMonthDesc() } returns
+                DispatchRoster(yearMonth = "2026-08", rowIndex = 2, rowCount = 13)
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(false, listOf(20 to "1"), year = 0, month = 0)
+            every { visionClient.read(match { it.index == 0 }, null, 2) } returns
+                sliceResult(false, listOf(20 to "1"), year = 0, month = 0)
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns
+                sliceResult(false, listOf(21 to "2"), year = 0, month = 0)
+
+            val result = serviceWith().recognize(ByteArray(1), null)
+
+            Then("최근 기준의 행 위치로 읽는다") {
+                result.matchedBy shouldBe MatchedBy.ROW_INDEX
+                result.rowIndex shouldBe 2
+            }
+
+            Then("다른 달 기준을 빌려 썼다고 경고한다") {
+                // 인원이 그 사이 바뀌었으면 순번이 밀린다. 사람이 사진과 대조해야 한다.
+                result.warnings shouldBe listOf("ROSTER_FROM_OTHER_MONTH")
+            }
+
+            Then("줄 위치를 갱신하지 않는다") {
+                verify(exactly = 0) { rosterUpdater.upsert(any(), any(), any()) }
+            }
+        }
+
+        Given("연월은 미상이지만 성명 컬럼이 보이는 사진") {
+            clearMocks(rosterUpdater, answers = false)
+            every { rosterRepository.findTopByOrderByYearMonthDesc() } returns
+                DispatchRoster(yearMonth = "2026-08", rowIndex = 2, rowCount = 13)
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1"), year = 0, month = 0)
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns
+                sliceResult(true, listOf(4 to "2"), year = 0, month = 0)
+
+            val result = serviceWith().recognize(ByteArray(1), null)
+
+            Then("빌려 썼다는 경고가 붙지 않는다") {
+                // 이름으로 행을 찾았으므로 저장된 기준을 쓰지 않았다. 경고할 것이 없다.
+                result.warnings shouldBe emptyList()
+            }
+        }
+
+        Given("연월이 미상이고 저장된 기준도 없는 경우") {
+            every { rosterRepository.findTopByOrderByYearMonthDesc() } returns null
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(false, listOf(20 to "1"), year = 0, month = 0)
+
+            Then("거부한다") {
+                // 어느 줄이 대상인지 알 방법이 없다. 추측해서 저장하느니 거부한다.
+                shouldThrow<CustomException> {
+                    serviceWith().recognize(ByteArray(1), null)
+                }
+            }
+        }
     })
