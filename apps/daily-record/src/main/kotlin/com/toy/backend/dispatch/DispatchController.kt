@@ -37,9 +37,9 @@ class DispatchController(
     ): ResponseEntity<DataResponseBody<ShiftRangeResponse>> = ResponseEntity.ok(DataResponseBody(queryService.findMonth(yearMonth)))
 
     /**
-     * `yearMonth`를 앱이 보낸다. 사진에서 읽은 값으로 정하면 「읽기 전에는 어느 달 기준을
-     * 조회할지 모른다」는 순환에 빠지고, 현재 달로 대신하면 8월 말에 9월 배차표를 미리
-     * 올릴 때 엉뚱한 달의 기준을 본다.
+     * **`yearMonth`는 선택이다.** 배차표 사진 위에 연월이 적혀 있고 모델이 그것을 읽으므로,
+     * 앱은 보내지 않는다. 자리를 남겨 두는 것은 웹처럼 어느 달인지 이미 아는 호출자를 위해서다.
+     * 보내면 그 값이 기준이 되고 사진 제목은 교차 확인용으로만 쓰인다.
      *
      * **`YearMonth`로 받아 Spring이 변환하게 둔다.** 본문에서 `YearMonth.parse`를 부르면
      * 오타 하나에 `DateTimeParseException`이 공통 핸들러의 500으로 떨어져 서버 결함처럼 보인다.
@@ -48,7 +48,7 @@ class DispatchController(
     @Operation(summary = "배차표 사진 인식 — 저장하지 않고 결과만 준다(검수용)")
     fun recognize(
         @RequestPart("file") file: MultipartFile,
-        @RequestParam yearMonth: YearMonth,
+        @RequestParam(required = false) yearMonth: YearMonth?,
     ): ResponseEntity<DataResponseBody<RecognitionResponse>> =
         ResponseEntity.ok(DataResponseBody(recognitionService.recognize(file.bytes, yearMonth)))
 

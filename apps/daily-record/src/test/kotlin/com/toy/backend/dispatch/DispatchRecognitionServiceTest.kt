@@ -13,6 +13,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import io.mockk.verifyOrder
 import java.time.YearMonth
 
@@ -527,6 +528,77 @@ class DispatchRecognitionServiceTest :
                     visionClient.read(match { it.index == 0 }, "홍길동", null)
                     rosterRepository.findByYearMonth("2026-08")
                 }
+            }
+        }
+
+        Given("연월 없이 올린 사진") {
+            every { rosterRepository.findByYearMonth("2026-09") } returns null
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1"), year = 2026, month = 9)
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns
+                sliceResult(true, listOf(4 to "2"), year = 2026, month = 9)
+
+            val result = serviceWith().recognize(ByteArray(1), null)
+
+            Then("사진에서 읽은 연월이 기준이 된다") {
+                result.yearMonth shouldBe "2026-09"
+            }
+
+            Then("그 달의 기준을 조회한다") {
+                verify { rosterRepository.findByYearMonth("2026-09") }
+            }
+
+            Then("연월이 어긋났다는 경고는 붙지 않는다") {
+                // 비교할 요청값이 없다. 사진값이 곧 기준이다.
+                result.warnings shouldBe emptyList()
+            }
+        }
+
+        Given("요청 연월과 사진 연월이 둘 다 있고 서로 다른 경우") {
+            every { rosterRepository.findByYearMonth("2026-08") } returns null
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1"), year = 2026, month = 9)
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns
+                sliceResult(true, listOf(4 to "2"), year = 2026, month = 9)
+
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+
+            Then("요청값이 기준이다") {
+                // 앱이 명시했으면 그 뜻을 따른다. 사진 제목은 교차 확인용이다.
+                result.yearMonth shouldBe "2026-08"
+            }
+
+            Then("어긋났다고 경고한다") {
+                result.warnings shouldBe listOf("YEAR_MONTH_MISMATCH")
+            }
+        }
+
+        Given("연월도 없고 사진에서도 못 읽은 경우") {
+            clearMocks(rosterUpdater, answers = false)
+            every { rosterRepository.findByYearMonth(any()) } returns null
+            // 제목이 잘린 사진. 모델이 0을 돌려준다.
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1", 31 to "2"), year = 0, month = 0)
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns
+                sliceResult(true, listOf(4 to "2"), year = 0, month = 0)
+
+            val result = serviceWith().recognize(ByteArray(1), null)
+
+            Then("응답 연월이 비어 있다") {
+                // 앱의 검수 화면이 채운다. 채우기 전에는 저장이 잠긴다.
+                result.yearMonth shouldBe null
+            }
+
+            Then("31일도 살아남는다") {
+                // 그 달의 마지막 날을 알 수 없으므로 1..31로 둔다. 좁게 잡으면
+                // 31일이 있는 달의 마지막 날이 조용히 사라진다.
+                result.days.map { it.day } shouldBe listOf(1, 4, 31)
+            }
+
+            Then("줄 위치를 갱신하지 않는다") {
+                // 어느 달의 기준인지 적을 수 없다. 미상인 채로 저장하면 이후 사진이
+                // 전부 그 값을 되쓴다.
+                verify(exactly = 0) { rosterUpdater.upsert(any(), any(), any()) }
             }
         }
     })

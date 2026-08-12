@@ -48,7 +48,8 @@ data class RecognitionDay(
 
 /** **실명·차량번호를 싣지 않는다.** 모델이 읽더라도 버린다 — 앱 로그·캐시에 남는다. */
 data class RecognitionResponse(
-    val yearMonth: String,
+    /** 사진에서도 읽지 못하고 요청에도 없으면 `null`이다. 앱의 검수 화면이 채운다. */
+    val yearMonth: String?,
     val hasNameColumn: Boolean,
     val matchedBy: MatchedBy,
     val rowIndex: Int,
