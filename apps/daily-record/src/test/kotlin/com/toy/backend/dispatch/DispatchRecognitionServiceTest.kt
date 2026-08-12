@@ -10,8 +10,11 @@ import com.toy.backend.dispatch.llm.RecognizedSlice
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
+import io.mockk.verifyOrder
 import java.time.YearMonth
 
 /**
@@ -500,6 +503,185 @@ class DispatchRecognitionServiceTest :
                         serviceWith(name = "").recognize(ByteArray(1), YearMonth.of(2026, 8))
                     }
                 exception.errorCode shouldBe DispatchErrorCode.TARGET_NAME_NOT_CONFIGURED
+            }
+        }
+
+        Given("사진을 읽기 전에는 기준을 조회할 수 없는 구조") {
+            // 연월을 사진에서 읽으려면 **읽은 뒤에** 그 달의 기준을 찾아야 한다.
+            // 순서가 뒤집혀 있으면 「연월을 알아야 기준을 찾고, 기준을 찾아야 읽는다」는
+            // 순환에 다시 빠진다.
+            //
+            // mock은 spec 전체가 공유하므로 앞선 블록들의 호출 기록이 쌓여 있다.
+            // 지우지 않으면 「앞 블록의 read → 뒤 블록의 조회」가 순서를 만족해 버려
+            // 순서가 뒤집혀 있어도 통과한다.
+            clearMocks(rosterRepository, visionClient, answers = false)
+            every { rosterRepository.findByYearMonth("2026-08") } returns null
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1"))
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns
+                sliceResult(true, listOf(4 to "2"))
+
+            serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+
+            Then("첫 조각을 읽은 뒤에 기준을 조회한다") {
+                verifyOrder {
+                    visionClient.read(match { it.index == 0 }, "홍길동", null)
+                    rosterRepository.findByYearMonth("2026-08")
+                }
+            }
+        }
+
+        Given("연월 없이 올린 사진") {
+            every { rosterRepository.findByYearMonth("2026-09") } returns null
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1"), year = 2026, month = 9)
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns
+                sliceResult(true, listOf(4 to "2"), year = 2026, month = 9)
+
+            val result = serviceWith().recognize(ByteArray(1), null)
+
+            Then("사진에서 읽은 연월이 기준이 된다") {
+                result.yearMonth shouldBe "2026-09"
+            }
+
+            Then("그 달의 기준을 조회한다") {
+                verify { rosterRepository.findByYearMonth("2026-09") }
+            }
+
+            Then("연월이 어긋났다는 경고는 붙지 않는다") {
+                // 비교할 요청값이 없다. 사진값이 곧 기준이다.
+                result.warnings shouldBe emptyList()
+            }
+        }
+
+        Given("요청 연월과 사진 연월이 둘 다 있고 서로 다른 경우") {
+            every { rosterRepository.findByYearMonth("2026-08") } returns null
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1"), year = 2026, month = 9)
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns
+                sliceResult(true, listOf(4 to "2"), year = 2026, month = 9)
+
+            val result = serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+
+            Then("요청값이 기준이다") {
+                // 앱이 명시했으면 그 뜻을 따른다. 사진 제목은 교차 확인용이다.
+                result.yearMonth shouldBe "2026-08"
+            }
+
+            Then("어긋났다고 경고한다") {
+                result.warnings shouldBe listOf("YEAR_MONTH_MISMATCH")
+            }
+        }
+
+        Given("연월도 없고 사진에서도 못 읽은 경우") {
+            clearMocks(rosterUpdater, answers = false)
+            every { rosterRepository.findByYearMonth(any()) } returns null
+            // 제목이 잘린 사진. 모델이 0을 돌려준다.
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1", 31 to "2"), year = 0, month = 0)
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns
+                sliceResult(true, listOf(4 to "2"), year = 0, month = 0)
+
+            val result = serviceWith().recognize(ByteArray(1), null)
+
+            Then("응답 연월이 비어 있다") {
+                // 앱의 검수 화면이 채운다. 채우기 전에는 저장이 잠긴다.
+                result.yearMonth shouldBe null
+            }
+
+            Then("31일도 살아남는다") {
+                // 그 달의 마지막 날을 알 수 없으므로 1..31로 둔다. 좁게 잡으면
+                // 31일이 있는 달의 마지막 날이 조용히 사라진다.
+                result.days.map { it.day } shouldBe listOf(1, 4, 31)
+            }
+
+            Then("줄 위치를 갱신하지 않는다") {
+                // 어느 달의 기준인지 적을 수 없다. 미상인 채로 저장하면 이후 사진이
+                // 전부 그 값을 되쓴다.
+                verify(exactly = 0) { rosterUpdater.upsert(any(), any(), any()) }
+            }
+        }
+
+        Given("연월도 성명 컬럼도 없는 잘린 사진") {
+            // 중간에 바뀐 부분만 잘라 온 사진. 제목도 성명 컬럼도 없다.
+            clearMocks(rosterUpdater, answers = false)
+            every { rosterRepository.findTopByOrderByYearMonthDesc() } returns
+                DispatchRoster(yearMonth = "2026-08", rowIndex = 2, rowCount = 13)
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(false, listOf(20 to "1"), year = 0, month = 0)
+            every { visionClient.read(match { it.index == 0 }, null, 2) } returns
+                sliceResult(false, listOf(20 to "1"), year = 0, month = 0)
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns
+                sliceResult(false, listOf(21 to "2"), year = 0, month = 0)
+
+            val result = serviceWith().recognize(ByteArray(1), null)
+
+            Then("최근 기준의 행 위치로 읽는다") {
+                result.matchedBy shouldBe MatchedBy.ROW_INDEX
+                result.rowIndex shouldBe 2
+            }
+
+            Then("다른 달 기준을 대신 썼다고 경고한다") {
+                // 인원이 그 사이 바뀌었으면 순번이 밀린다. 사람이 사진과 대조해야 한다.
+                result.warnings shouldBe listOf("ROSTER_FROM_OTHER_MONTH")
+            }
+
+            Then("줄 위치를 갱신하지 않는다") {
+                verify(exactly = 0) { rosterUpdater.upsert(any(), any(), any()) }
+            }
+        }
+
+        Given("연월은 미상이지만 성명 컬럼이 보이는 사진") {
+            clearMocks(rosterUpdater, answers = false)
+            every { rosterRepository.findTopByOrderByYearMonthDesc() } returns
+                DispatchRoster(yearMonth = "2026-08", rowIndex = 2, rowCount = 13)
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1"), year = 0, month = 0)
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns
+                sliceResult(true, listOf(4 to "2"), year = 0, month = 0)
+
+            val result = serviceWith().recognize(ByteArray(1), null)
+
+            Then("다른 달 기준을 대신 썼다는 경고가 붙지 않는다") {
+                // 이름으로 행을 찾았으므로 저장된 기준을 쓰지 않았다. 경고할 것이 없다.
+                result.warnings shouldBe emptyList()
+            }
+        }
+
+        // 위 블록은 최근 기준과 사진의 인원수가 같아 우연히 통과한다. 다르면 어떻게 되는가가
+        // 진짜 질문이다 — 다른 달의 인원수는 이름으로 찾은 이 사진과 아무 상관이 없다.
+        Given("연월은 미상이고 성명 컬럼이 보이는데 최근 기준의 인원이 다른 경우") {
+            clearMocks(rosterRepository, rosterUpdater, answers = false)
+            every { rosterRepository.findTopByOrderByYearMonthDesc() } returns
+                DispatchRoster(yearMonth = "2026-08", rowIndex = 2, rowCount = 9)
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1"), rowCount = 13, year = 0, month = 0)
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns
+                sliceResult(true, listOf(4 to "2"), rowCount = 13, year = 0, month = 0)
+
+            val result = serviceWith().recognize(ByteArray(1), null)
+
+            Then("인원이 바뀌었다는 경고를 달지 않는다") {
+                // 이름으로 행을 찾았으므로 행이 밀릴 일이 없다. 여기서 경고를 달면
+                // 사람이 경고를 무시하는 법을 배운다 — 경고로 지탱하는 설계가 무너진다.
+                result.warnings shouldBe emptyList()
+            }
+
+            Then("쓰지도 않을 기준을 조회하지 않는다") {
+                verify(exactly = 0) { rosterRepository.findTopByOrderByYearMonthDesc() }
+            }
+        }
+
+        Given("연월이 미상이고 저장된 기준도 없는 경우") {
+            every { rosterRepository.findTopByOrderByYearMonthDesc() } returns null
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(false, listOf(20 to "1"), year = 0, month = 0)
+
+            Then("거부한다") {
+                // 어느 줄이 대상인지 알 방법이 없다. 추측해서 저장하느니 거부한다.
+                shouldThrow<CustomException> {
+                    serviceWith().recognize(ByteArray(1), null)
+                }
             }
         }
     })

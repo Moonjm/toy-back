@@ -53,6 +53,17 @@ apps/daily-record, apps/family-tree   각 앱 (전용 DB 사용)
   `common/file`·`common-auth`·두 앱을 함께 고쳐야 하는 별건이라 식단 브랜치 범위 밖으로 뒀다.
   **배포 전에 별도 브랜치에서 처리한다.** 그때까지 이 계열 지적은 이 항목을 가리키면 된다.
 
+- **배차 행 위치 장부가 검수를 안 거친 연월로 적힌다** — `DispatchRecognitionService.recognize`가
+  `DispatchRoster`를 인식 시점에 바로 쓴다(근무 값은 검수 뒤 `POST /dispatch/shifts`로 따로
+  저장된다 — 장부만 예외다). 앱이 `yearMonth`를 보내지 않게 되면서 그 딱지는 이제 사진 제목에서
+  읽은 값이라, 모델이 9월을 8월로 잘못 읽으면 9월의 행 위치가 8월 장부를 덮는다. 그 뒤 8월의
+  잘린 사진이 다른 기사의 행을 읽는다.
+
+  고치려면 장부 갱신을 확정 시점(`POST /dispatch/shifts`)으로 옮겨야 하는데, 그러려면 앱이
+  `rowIndex`·`rowCount`를 되돌려줘야 한다. **앱에 서버 내부 장부를 알리지 않기로 해서 그대로
+  뒀다.** 저장되는 행 위치 자체는 이름으로 읽은 값이라 그 사진에 대해서는 맞고, 틀리는 것은
+  어느 달 것으로 적혔는가뿐이다.
+
 ## 코드 관례
 
 - Kotlin + Spring Boot. 버전은 `gradle/libs.versions.toml`에서 관리
