@@ -2,6 +2,7 @@ package com.toy.backend.dispatch
 
 import com.toy.backend.common.exception.CustomException
 import com.toy.backend.dispatch.image.DispatchImageSlicer
+import com.toy.backend.dispatch.image.ImageSlice
 import com.toy.backend.dispatch.llm.DispatchVisionClient
 import com.toy.backend.dispatch.llm.DispatchVisionProperties
 import com.toy.backend.dispatch.llm.RecognizedSlice
@@ -61,17 +62,25 @@ class DispatchRecognitionService(
                 else -> throw CustomException(DispatchErrorCode.ROSTER_NOT_FOUND, yearMonth.toString())
             }
 
+        // **조각 하나라도 실패하면 거부한다.** 실패한 조각을 조용히 버리면 그 달 후반부가
+        // 통째로 빠진 결과가 경고 없이 성공으로 나가고, 검수 화면에서는 「잘린 사진이라
+        // 원래 일부만 나온 것」과 구분되지 않는다. 조각이 둘뿐이라 하나 실패하면 절반이
+        // 날아가는데, 절반짜리를 검수하느니 다시 올리는 편이 빠르다. 결정론적 실패
+        // (4xx·잘림)는 재시도 없이 이미 걸러지므로 남은 실패는 대개 재시도로 풀린다.
+        fun readOrFail(slice: ImageSlice) =
+            visionClient.read(slice, null, rowIndex)
+                ?: throw CustomException(DispatchErrorCode.VISION_UNAVAILABLE)
+
         // **probe 뒤로는 언제나 행 위치로 읽는다.** 성명 컬럼은 표 맨 왼쪽에 있어 두 번째
         // 조각(폭의 45~100%)에는 없다. 없는 이름을 찾으라고 물으면 모델은 임의의 행을 읽고,
         // 그 값이 왼쪽 조각과 합쳐져 그 달 후반부가 다른 기사의 근무로 채워진다.
         // 성명 컬럼이 아예 없으면 **첫 조각도 행 위치로 다시 읽는다** — 같은 이유다.
         val results =
             if (probe.hasNameColumn) {
-                listOf(probe) + slices.drop(1).mapNotNull { visionClient.read(it, null, rowIndex) }
+                listOf(probe) + slices.drop(1).map(::readOrFail)
             } else {
-                slices.mapNotNull { visionClient.read(it, null, rowIndex) }
+                slices.map(::readOrFail)
             }
-        if (results.isEmpty()) throw CustomException(DispatchErrorCode.VISION_UNAVAILABLE)
 
         val rowCount = results.first().rowCount
         val warnings = mutableListOf<String>()

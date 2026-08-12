@@ -1,5 +1,8 @@
 package com.toy.backend.dispatch.image
 
+import com.toy.backend.common.exception.CustomException
+import com.toy.backend.dispatch.DispatchErrorCode
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
 import java.awt.Color
@@ -89,6 +92,33 @@ class DispatchImageSlicerTest :
 
             Then("각 조각이 base64로 나온다") {
                 slices.all { it.base64.isNotBlank() } shouldBe true
+            }
+        }
+
+        // **같은 「잘못된 입력」이 400과 500으로 갈리면 안 된다.** `ImageIO.read`는 리더가
+        // 없으면 null을 주지만 바이트가 손상·절단됐으면 IIOException을 던진다. 공통 핸들러에
+        // IOException 전용 처리가 없어 예외 경로는 500 「서버 내부 오류」로 나갔다.
+        // 어느 경로로 가든 같은 코드로 수렴하는지를 본다.
+        Given("이미지가 아닌 바이트") {
+            Then("IMAGE_UNREADABLE로 거부한다") {
+                val exception =
+                    shouldThrow<CustomException> {
+                        DispatchImageSlicer().slice("not an image".toByteArray())
+                    }
+                exception.errorCode shouldBe DispatchErrorCode.IMAGE_UNREADABLE
+            }
+        }
+
+        Given("헤더만 맞고 중간이 잘린 PNG") {
+            // 정상 PNG를 만든 뒤 뒤쪽을 잘라낸다. 리더는 잡히지만 디코딩 중에 터진다.
+            val truncated = toBytes(imageWithBorder(Color.BLACK)).copyOfRange(0, 40)
+
+            Then("500이 아니라 같은 IMAGE_UNREADABLE로 수렴한다") {
+                val exception =
+                    shouldThrow<CustomException> {
+                        DispatchImageSlicer().slice(truncated)
+                    }
+                exception.errorCode shouldBe DispatchErrorCode.IMAGE_UNREADABLE
             }
         }
 

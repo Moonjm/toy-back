@@ -2,14 +2,18 @@ package com.toy.backend.dispatch.image
 
 import com.toy.backend.common.exception.CustomException
 import com.toy.backend.dispatch.DispatchErrorCode
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.stereotype.Component
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.util.Base64
 import javax.imageio.ImageIO
 import kotlin.math.abs
+
+private val log = KotlinLogging.logger {}
 
 /**
  * 조각 하나. `index`는 왼쪽부터의 순서다 — 0번이 성명 컬럼을 담은 왼쪽 조각이다.
@@ -41,9 +45,19 @@ private const val TARGET_LONG_EDGE = 1600
 @Component
 class DispatchImageSlicer {
     fun slice(bytes: ByteArray): List<ImageSlice> {
+        // `ImageIO.read`의 null은 **그 포맷을 읽을 리더가 없을 때**뿐이다. 바이트가 손상되거나
+        // 중간에 잘리면 IIOException(IOException 하위)을 **던지고**, 공통 핸들러에 IOException
+        // 전용 처리가 없어 500 「서버 내부 오류」로 나간다. 같은 「잘못된 입력」이 하나는 400,
+        // 하나는 500이 되지 않도록 두 경로를 같은 코드로 모은다.
         val source =
-            ImageIO.read(ByteArrayInputStream(bytes))
-                ?: throw CustomException(DispatchErrorCode.IMAGE_UNREADABLE)
+            try {
+                ImageIO.read(ByteArrayInputStream(bytes))
+            } catch (e: IOException) {
+                // CustomException은 cause를 받지 않는다(vararg가 메시지 포맷 인자다). 원인을
+                // 통째로 잃지 않도록 여기서 남긴다.
+                log.warn(e) { "배차표 사진 디코딩 실패 — 손상됐거나 잘린 바이트다" }
+                throw CustomException(DispatchErrorCode.IMAGE_UNREADABLE)
+            } ?: throw CustomException(DispatchErrorCode.IMAGE_UNREADABLE)
         val trimmed = trim(source)
 
         val width = trimmed.width

@@ -254,6 +254,31 @@ class DispatchRecognitionServiceTest :
             }
         }
 
+        // **일부만 성공한 것을 성공으로 내보내면 안 된다.** 실패한 조각을 조용히 버리면 그 달
+        // 후반부가 통째로 빠진 결과가 경고 하나 없이 나가고, 검수 화면에서는 「잘린 사진이라
+        // 원래 일부만 나온 것」과 구분되지 않는다. 실측에서 파싱 실패가 5회 중 1회 났다.
+        Given("첫 조각은 성공했지만 둘째 조각이 실패한 경우") {
+            every { rosterRepository.findByYearMonth("2026-08") } returns null
+            every { visionClient.read(match { it.index == 0 }, "홍길동", null) } returns
+                sliceResult(true, listOf(1 to "1", 2 to ""))
+            every { visionClient.read(match { it.index == 1 }, null, 2) } returns null
+
+            Then("절반짜리를 성공으로 내보내지 않고 거부한다") {
+                val exception =
+                    shouldThrow<CustomException> {
+                        serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+                    }
+                exception.errorCode shouldBe DispatchErrorCode.VISION_UNAVAILABLE
+            }
+
+            Then("행 위치도 갱신하지 않는다") {
+                shouldThrow<CustomException> {
+                    serviceWith().recognize(ByteArray(1), YearMonth.of(2026, 8))
+                }
+                io.mockk.verify(exactly = 0) { rosterUpdater.upsert(any(), any(), any()) }
+            }
+        }
+
         Given("대상 이름이 설정되지 않은 경우") {
             Then("거부한다 — 이름 없이 부르면 아무 행이나 읽어 온다") {
                 val exception =
