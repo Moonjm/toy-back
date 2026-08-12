@@ -14,7 +14,7 @@
 
 - 날짜 하나의 두 역할을 한 요청·한 트랜잭션으로 upsert한다.
 - 엄마 순번을 `slotCode`로 담고 조회 응답에 실어 보낸다.
-- 응답으로 **그 날짜의 최종 상태**를 돌려준다. 호출자가 달 전체를 다시 조회하지 않게 한다.
+- 성공하면 `204`다. 호출자가 달 전체를 다시 조회하지 않게 한다.
 
 ## 비목표
 
@@ -91,20 +91,11 @@ data class RoleEditRequest(
 
 기존 `saveShifts`는 `existing.note = day.note`로 덮는다. 그쪽은 사진이 그 날짜의 원본이므로 맞는 동작이고, 하루 편집과 규칙이 다른 것이 정상이다.
 
-### 응답
+### 응답은 `204 No Content`다
 
-그 날짜의 최종 상태를 조회와 같은 모양으로 돌려준다.
+**호출자는 자기가 보낸 값을 이미 알고 있다.** 안 보낸 역할은 서버도 건드리지 않으므로 그 칸은 화면에 그려진 그대로다. 그러니 응답 바디를 실어 보내도 방금 보낸 값과 안 바뀐 값뿐이고, 저장소 관례(`AGENTS.md`: "수정·삭제는 204 No Content")와도 이쪽이 맞는다. 성공하면 앱이 보낸 값으로 그 칸을 바로 갈아 끼운다 — 달 전체 재조회도, 하루치 재조회도 없다.
 
-```json
-{ "data": { "days": [
-  { "date": "2026-08-15", "role": "FATHER", "working": true, "slot": 3, "slotCode": null, "note": "*97" },
-  { "date": "2026-08-15", "role": "MOTHER", "working": true, "slot": null, "slotCode": "A", "note": null }
-] } }
-```
-
-`204 No Content`로 두면 호출자가 달 전체를 다시 조회해야 한다. 달력 화면에서 그 왕복은 칸 하나를 고치자고 한 달치를 다시 받는 것이고, 그 사이 화면이 잠깐 비었다 채워진다.
-
-**요청에 없던 역할도 응답에는 담는다.** 그 날짜의 상태를 묻는 자리이므로, 아빠만 보냈어도 엄마의 그날(패턴 계산값이든 저장된 예외든)이 함께 나가야 호출자가 칸을 온전히 다시 그릴 수 있다. `DispatchQueryService`의 조회 규칙을 그대로 쓴다 — **아빠는 레코드가 없으면 응답에서 빠지고, 엄마는 늘 한 줄 나온다.**
+서버가 값을 **변형**하는 자리는 하나뿐이다: `working: false`인데 순번이 오면 `null`로 눕힌다. 그때만 「보낸 값 = 저장된 값」이 깨지는데, 그 칸은 이미 휴무로 그려져 순번이 보이지 않으므로 화면과 어긋나지 않는다. 앱은 휴무를 고르면 순번을 비워 보내면 된다.
 
 ### 인증
 
@@ -131,7 +122,7 @@ var slotCode: String? = null
 
 ```kotlin
 @Transactional
-fun editDay(date: LocalDate, request: DayEditRequest): ShiftRangeResponse
+fun editDay(date: LocalDate, request: DayEditRequest)
 ```
 
 `DispatchCommandService`에 넣는다. 이미 `@Transactional`이라 **두 역할이 한 트랜잭션에 든다** — 한쪽만 저장된 상태를 만들지 않는다.
@@ -159,8 +150,8 @@ fun editDay(date: LocalDate, request: DayEditRequest): ShiftRangeResponse
 | `DispatchShift.kt` | `slotCode` 컬럼, `SLOT_CODE_MAX_LENGTH` |
 | `DispatchDtos.kt` | `ShiftDayResponse.slotCode`. `DayEditRequest`·`RoleEditRequest` 추가 |
 | `DispatchController.kt` | `PUT /dispatch/shifts/{date}` |
-| `DispatchCommandService.kt` | `editDay(date, request)` — 검증, 두 역할 upsert, 응답 조립 |
-| `DispatchQueryService.kt` | `toResponse`에 `slotCode`. 하루 조회를 `editDay` 응답에 재사용할 수 있게 꺼내 쓴다 |
+| `DispatchCommandService.kt` | `editDay(date, request)` — 검증, 두 역할 upsert |
+| `DispatchQueryService.kt` | `toResponse`에 `slotCode` |
 
 `DispatchShiftRepository`, `DispatchPublicEndpoints`, 마이그레이션은 손대지 않는다.
 
@@ -186,8 +177,7 @@ fun editDay(date: LocalDate, request: DayEditRequest): ShiftRangeResponse
 - `working: false`면 `slot`·`slotCode`가 와도 `null`로 저장된다
 - 기존 `note`가 하루 편집 뒤에도 남는다
 - `mother.slot`이면 400, `father.slotCode`면 400, `slotCode`가 `D`면 400, 둘 다 없으면 400
-- 저장 도중 실패하면 두 역할 모두 롤백된다
-- 응답이 그 날짜의 아빠·엄마 최종 상태를 담고, **아빠 레코드가 없으면 엄마 한 줄만 나온다**
+- 검증에 걸리면 **아무것도 저장되지 않는다** — 아빠가 멀쩡해도 엄마가 틀리면 둘 다 안 들어간다
 
 `DispatchQueryServiceTest`에 더한다.
 

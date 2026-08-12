@@ -62,6 +62,29 @@ class DispatchQueryServiceTest :
             Then("엄마는 순번이 아직 없어 slot이 비어 있다") {
                 days.filter { it.role == DispatchRole.MOTHER }.all { it.slot == null } shouldBe true
             }
+
+            Then("패턴에서 만들어진 엄마 기본값은 slotCode가 비어 있다") {
+                days.filter { it.role == DispatchRole.MOTHER }.all { it.slotCode == null } shouldBe true
+            }
+        }
+
+        Given("엄마 근무조가 저장돼 있을 때") {
+            every { shiftRepository.findByWorkDateBetween(from, to) } returns
+                listOf(
+                    DispatchShift(
+                        DispatchRole.MOTHER,
+                        LocalDate.of(2026, 8, 2),
+                        working = true,
+                        slotCode = "A",
+                    ),
+                )
+
+            val days = service.findMonth(yearMonth).days
+
+            Then("저장된 근무조가 응답에 실린다") {
+                val day = days.first { it.role == DispatchRole.MOTHER && it.date == LocalDate.of(2026, 8, 2) }
+                day.slotCode shouldBe "A"
+            }
         }
 
         Given("엄마 예외가 저장돼 있을 때") {

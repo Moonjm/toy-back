@@ -45,6 +45,7 @@ class DispatchQueryService(
                             role = DispatchRole.MOTHER,
                             working = DispatchPatternExpander.isWorking(date),
                             slot = null,
+                            slotCode = null,
                             note = null,
                         )
                 }.toList()
@@ -58,6 +59,7 @@ class DispatchQueryService(
             role = role,
             working = working,
             slot = slot,
+            slotCode = slotCode,
             note = note,
         )
 }
