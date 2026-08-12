@@ -30,6 +30,10 @@ class DispatchCommandService(
             } else {
                 existing.working = day.working
                 existing.slot = day.slot
+                // 사진이 그 날짜의 원본이다 — 사진에 없는 값은 남기지 않는다. 하루 편집으로
+                // 들어간 근무조가 남으면 휴무인데 근무조가 붙은 행이 조회로 나간다.
+                // **엄마 배차표 인식이 붙으면 `= day.slotCode`로 바꾸는 자리다.**
+                existing.slotCode = null
                 existing.note = day.note
             }
         }

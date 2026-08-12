@@ -66,6 +66,28 @@ class DispatchCommandServiceTest :
             }
         }
 
+        // 사진이 그 날짜의 원본이므로 사진에 없는 값은 남기지 않는다. 하루 편집으로 넣은
+        // 근무조가 남으면 휴무인데 근무조가 붙은 행이 무인증 조회로 나간다.
+        Given("하루 편집으로 근무조가 들어간 날을 사진으로 다시 확정할 때") {
+            val existing =
+                DispatchShift(DispatchRole.MOTHER, LocalDate.of(2026, 8, 1), working = true, slotCode = "A")
+            every {
+                shiftRepository.findByRoleAndWorkDate(DispatchRole.MOTHER, LocalDate.of(2026, 8, 1))
+            } returns existing
+
+            service.saveShifts(
+                ShiftSaveRequest(
+                    role = DispatchRole.MOTHER,
+                    days = listOf(ShiftSaveDay(LocalDate.of(2026, 8, 1), working = false, slot = null, note = "휴")),
+                ),
+            )
+
+            Then("사진에 없는 근무조는 지워진다") {
+                existing.working shouldBe false
+                existing.slotCode shouldBe null
+            }
+        }
+
         val date = LocalDate.of(2026, 8, 15)
 
         Given("하루 편집으로 아빠만 보낼 때") {
