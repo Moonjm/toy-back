@@ -59,6 +59,10 @@ class DispatchRecognitionService(
         // **`YearMonth.of`에 넣기 전에 범위를 확인한다.** strict 스키마는 정수라는 것만 보장하므로
         // `month = 13` 같은 값이 오면 `DateTimeException`이 나는데, 이는 `DispatchVisionClient`의
         // 실패 처리 바깥이라 그대로 500이 된다. 사진 제목을 잘못 읽은 것뿐인데 서버 결함처럼 보인다.
+        //
+        // **`0`은 「제목을 못 읽었다」는 약속이다** — `DispatchVisionClient`의 프롬프트가 그렇게
+        // 지시한다. 스키마가 `year`·`month`를 required 정수로 두어 모델은 무엇이든 채워야 하므로,
+        // 저쪽 지시가 빠지면 지어낸 연월이 그대로 기준이 되어 다른 달의 줄 위치를 불러온다.
         val photoYearMonth =
             if (probe.month in 1..12 && probe.year in PLAUSIBLE_YEARS) {
                 YearMonth.of(probe.year, probe.month)

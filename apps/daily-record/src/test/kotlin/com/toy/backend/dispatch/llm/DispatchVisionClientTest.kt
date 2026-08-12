@@ -117,6 +117,14 @@ class DispatchVisionClientTest :
             Then("빈 칸을 지어내지 말라고 지시한다") {
                 promptOf(body) shouldContain "빈"
             }
+
+            // 스키마가 year·month를 required 정수로 두므로 모델은 **무엇이든 채워야 한다.**
+            // 무엇을 채울지 정해 주지 않으면 제목이 잘린 사진에서 그럴싸한 연월을 지어내고,
+            // 그 값이 곧 기준 연월이 되어 「최근 줄 위치를 빌려 쓰고 경고한다」는 갈래를
+            // 통째로 건너뛴다 — 다른 달의 행 위치로 다른 기사의 근무를 읽는다.
+            Then("연월을 못 읽으면 0을 넣으라고 지시한다") {
+                promptOf(body) shouldContain "읽을 수 없으면 year와 month에 0을 넣어라"
+            }
         }
 
         Given("이름을 준 경우") {
