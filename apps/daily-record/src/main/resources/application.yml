@@ -7,6 +7,19 @@ server:
 spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
+  # 톰캣 요청·@Async·@Scheduled가 가상 스레드로 돈다.
+  #
+  # **@Async의 동시 실행 상한이 사라진다.** 실행기가 ThreadPoolTaskExecutor(core 8, 큐 무제한)에서
+  # SimpleAsyncTaskExecutor로 바뀌는데 기본 한도가 없다. 사용자 둘이 순차로 쓰는 규모라 닿을 일이
+  # 없어 그대로 둔다 — `spring.task.execution.simple.concurrency-limit`으로 걸 수는 있지만,
+  # 그 한도는 큐가 아니라 **제출하는 스레드를 막는** 것이라 요청 스레드가 대기하게 된다
+  # (`reject-tasks-when-limit-reached`를 함께 켜지 않으면). 없던 블로킹이 생기는 쪽이 더 나쁘다.
+  #
+  # 핀닝은 걱정하지 않아도 된다 — 앱 코드에 synchronized·ThreadLocal이 없고, JDBC 드라이버의
+  # synchronized도 JEP 491(JDK 24)로 해소됐다. 배포 이미지가 temurin 25다.
+  threads:
+    virtual:
+      enabled: true
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/daily-record
     username: ${DB_USERNAME:toy}
@@ -44,6 +57,30 @@ s3:
   access-key: ${S3_ACCESS_KEY:pluxity}
   secret-key: ${S3_SECRET_KEY:pluxity0304}
   bucket: ${S3_BUCKET:daily}
+
+openrouter:
+  api-key: ${OPENROUTER_API_KEY:}
+  base-url: https://openrouter.ai/api/v1
+  vision-model: ${OPENROUTER_VISION_MODEL:google/gemini-2.5-flash}
+  text-model: ${OPENROUTER_TEXT_MODEL:google/gemini-2.5-flash-lite}
+  # 안 보내면 OpenRouter가 모델 최대 출력(65,535토큰)만큼 잔액을 선점해, 잔액이 남았는데도
+  # 402가 난다(vision 모델 기준 한 번에 $0.16). 자세한 근거는 OpenRouterProperties 주석.
+  vision-max-tokens: ${OPENROUTER_VISION_MAX_TOKENS:4000}
+  text-max-tokens: ${OPENROUTER_TEXT_MAX_TOKENS:2000}
+  timeout-seconds: 60
+
+dispatch:
+  api-key: ${OPENROUTER_API_KEY:}
+  base-url: https://openrouter.ai/api/v1
+  # 표 판독은 식단 인식과 요구가 다르다. gemini-2.5-flash는 같은 사진도 호출마다
+  # 답이 달라져(실측 5회에 5/9~9/9) 쓸 수 없다. 3.6-flash만 6회 연속 정답과 일치했다.
+  vision-model: ${DISPATCH_VISION_MODEL:google/gemini-3.6-flash}
+  # reasoning 토큰이 이 한도에 함께 잡힌다(조각당 1,300~3,000). 식단용 4,000으로 두면
+  # content가 빈 채로 온다.
+  vision-max-tokens: ${DISPATCH_VISION_MAX_TOKENS:30000}
+  timeout-seconds: 120
+  # 전체본에서 행을 찾을 때만 쓴다. DB에도 API 응답에도 저장하지 않는다.
+  father-name: ${DISPATCH_FATHER_NAME:}
 
 holiday:
   api:

@@ -1,5 +1,6 @@
 package com.toy.backend.file
 
+import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.entity.withId
 import com.toy.backend.common.exception.CustomException
 import io.kotest.assertions.throwables.shouldThrow
@@ -14,11 +15,15 @@ import io.mockk.slot
 import io.mockk.verify
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.mock.web.MockMultipartFile
+import org.springframework.transaction.support.TransactionSynchronization
 import org.springframework.transaction.support.TransactionSynchronizationManager
+import software.amazon.awssdk.core.ResponseBytes
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.CopyObjectRequest
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
+import software.amazon.awssdk.services.s3.model.GetObjectRequest
+import software.amazon.awssdk.services.s3.model.GetObjectResponse
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.services.s3.presigner.S3Presigner
 
@@ -99,8 +104,33 @@ class FileServiceTest :
                 val synchronizations = TransactionSynchronizationManager.getSynchronizations()
 
                 Then("temp 원본을 지운다") {
-                    synchronizations.forEach { it.afterCommit() }
+                    synchronizations.forEach { it.afterCompletion(TransactionSynchronization.STATUS_COMMITTED) }
                     verify(exactly = 1) {
+                        s3Client.deleteObject(
+                            match<DeleteObjectRequest> { it.key() == "temp/abcd1234.png" },
+                        )
+                    }
+                }
+            }
+
+            // S3 복사는 트랜잭션 밖이라 롤백해도 되돌아가지 않는다. DB 행은 temp 경로로 돌아가므로
+            // 사본을 가리키는 레코드가 사라지고, 정리 배치는 TEMP 행의 temp 키만 지운다 — 영구 고아다.
+            When("롤백되면") {
+                TransactionSynchronizationManager.initSynchronization()
+                service.attachFile(3L, "trees/1/")
+                val synchronizations = TransactionSynchronizationManager.getSynchronizations()
+
+                Then("복사해 둔 사본을 지운다 — 저장에 실패한 사진이 남으면 안 된다") {
+                    synchronizations.forEach { it.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK) }
+                    verify(exactly = 1) {
+                        s3Client.deleteObject(
+                            match<DeleteObjectRequest> { it.key() == "trees/1/abcd1234.png" },
+                        )
+                    }
+                }
+
+                Then("temp 원본은 건드리지 않는다 — 롤백된 레코드가 그 경로를 가리킨 채 남는다") {
+                    verify(exactly = 0) {
                         s3Client.deleteObject(
                             match<DeleteObjectRequest> { it.key() == "temp/abcd1234.png" },
                         )
@@ -144,6 +174,31 @@ class FileServiceTest :
                     attached.status shouldBe FileStatus.TEMP
                     other.status shouldBe FileStatus.TEMP
                     verify(exactly = 0) { s3Client.deleteObject(any<DeleteObjectRequest>()) }
+                }
+            }
+        }
+
+        Given("파일 내용 다운로드") {
+            When("저장된 파일이면") {
+                val entity = FileEntity("a.jpg", "temp/a.jpg", "image/jpeg", 3L, "daily").withId(30L)
+                every { repository.findByIdOrNull(30L) } returns entity
+                every { s3Client.getObjectAsBytes(any<GetObjectRequest>()) } returns
+                    ResponseBytes.fromByteArray(GetObjectResponse.builder().build(), byteArrayOf(1, 2, 3))
+
+                val content = service.download(30L)
+
+                Then("바이트와 contentType을 함께 준다") {
+                    content.bytes.size shouldBe 3
+                    content.contentType shouldBe "image/jpeg"
+                }
+            }
+
+            When("없는 파일이면") {
+                every { repository.findByIdOrNull(99L) } returns null
+
+                Then("RESOURCE_NOT_FOUND") {
+                    val e = shouldThrow<CustomException> { service.download(99L) }
+                    e.errorCode shouldBe ErrorCode.RESOURCE_NOT_FOUND
                 }
             }
         }
