@@ -86,3 +86,14 @@ holiday:
   api:
     service-key: ${HOLIDAY_API_SERVICE_KEY:}
     base-url: https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService
+
+# TeslaMate 전용 보조 DataSource. **읽기 + charging_processes.cost 쓰기만 한다.**
+# 이 DataSource에는 EntityManagerFactory가 없으므로 ddl-auto가 TeslaMate 스키마에 닿지 않는다.
+teslamate:
+  datasource:
+    url: jdbc:postgresql://${TESLAMATE_DB_HOST:localhost}:${TESLAMATE_DB_PORT:5432}/teslamate
+    username: ${TESLAMATE_DB_USERNAME:teslamate}
+    password: ${TESLAMATE_DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 2
