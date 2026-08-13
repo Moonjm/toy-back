@@ -27,6 +27,13 @@ data class ChargeListItem(
     /** 지오펜스 이름이 있으면 그것, 없으면 주소. 둘 다 없으면 null. */
     val locationName: String?,
     val energyAddedKwh: BigDecimal?,
+    /**
+     * 벽에서 뽑아쓴 양. 구버전 데이터에서 null일 수 있다.
+     *
+     * 상세에만 두지 않는 이유는 **kWh당 단가를 목록에서도 내기 때문이다.** 단가의 분모는
+     * 차에 들어간 양이 아니라 요금을 매기는 쪽인 벽에서 뽑아쓴 양이다.
+     */
+    val energyUsedKwh: BigDecimal?,
     val startBatteryLevel: Int?,
     val endBatteryLevel: Int?,
     val cost: BigDecimal?,

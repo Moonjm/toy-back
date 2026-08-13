@@ -117,9 +117,13 @@ GET /tesla/charges?from=2026-06-01&to=2026-08-13
     { "id": 3312,
       "startedAt": "2026-08-11T22:14:00", "endedAt": "2026-08-12T02:31:00",
       "durationMin": 257, "locationName": "집",
-      "energyAddedKwh": 48.2, "startBatteryLevel": 18, "endBatteryLevel": 90,
+      "energyAddedKwh": 48.2, "energyUsedKwh": 51.8,
+      "startBatteryLevel": 18, "endBatteryLevel": 90,
       "cost": 14100 } ] }
 ```
+
+`energyUsedKwh`는 상세에만 두려다 목록에도 넣었다. **kWh당 단가를 목록에서도 내기 때문이다** —
+단가의 분모는 차에 들어간 양이 아니라 요금을 매기는 쪽인 벽에서 뽑아쓴 양이다. 나눗셈은 여전히 앱이 한다.
 
 **`yearMonth`와 `from`/`to`를 둘 다 받고, 하나도 없으면 400이다.** `LedgerEntryController.list`와 같은 모양이다 — 그쪽은 `yearMonth`나 `keyword` 중 하나를 요구하고, 없으면 `INVALID_REQUEST`를 던진다. 기본을 「이번 달」로 채우지 않는 이유는 저장소 관례와 어긋나서이기도 하지만, 조회 범위가 응답에 안 실리므로 서버가 몰래 고른 범위를 앱이 모른 채 화면에 그리게 되기 때문이다.
 
