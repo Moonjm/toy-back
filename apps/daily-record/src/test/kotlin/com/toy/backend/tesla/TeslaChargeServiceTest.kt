@@ -156,6 +156,7 @@ class TeslaChargeServiceTest :
                 detail.maxPowerKw shouldBe 11
                 detail.avgPowerKw shouldBe BigDecimal("10.4")
                 detail.fastCharger shouldBe false
+                detail.fastChargerType shouldBe null
             }
         }
 
@@ -188,6 +189,7 @@ class TeslaChargeServiceTest :
                 detail.avgPowerKw shouldBe null
                 detail.fastCharger shouldBe null
                 detail.fastChargerBrand shouldBe null
+                detail.fastChargerType shouldBe null
             }
         }
 
@@ -196,6 +198,48 @@ class TeslaChargeServiceTest :
 
             Then("404다") {
                 shouldThrow<CustomException> { service.detail(404L) }
+            }
+        }
+
+        // 브랜드·타입에 서로 다른 값을 준다 — 둘이 뒤바뀌어 매핑돼도 통과하는 것을 막는다.
+        Given("급속 충전 세션의 상세를 조회할 때") {
+            every { repository.findDetail(7L) } returns
+                ChargeDetailRow(
+                    id = 7,
+                    startDateUtc = LocalDateTime.of(2026, 8, 1, 3, 0),
+                    endDateUtc = LocalDateTime.of(2026, 8, 1, 3, 40),
+                    durationMin = 40,
+                    energyAddedKwh = BigDecimal("52.0"),
+                    energyUsedKwh = BigDecimal("54.1"),
+                    startBatteryLevel = 12,
+                    endBatteryLevel = 80,
+                    startRatedRangeKm = BigDecimal("48.0"),
+                    endRatedRangeKm = BigDecimal("321.0"),
+                    outsideTempAvg = BigDecimal("30.1"),
+                    geofenceName = null,
+                    address = "경기도 용인시 …",
+                    cost = BigDecimal("22000"),
+                )
+            every { repository.findChargeStats(7L) } returns
+                ChargeStatsRow(
+                    maxPowerKw = 168,
+                    avgPowerKw = BigDecimal("121.3"),
+                    fastCharger = true,
+                    fastChargerBrand = "Tesla",
+                    fastChargerType = "Supercharger",
+                )
+
+            val detail = service.detail(7L)
+
+            Then("브랜드와 타입이 각자 제자리로 간다") {
+                detail.fastCharger shouldBe true
+                detail.fastChargerBrand shouldBe "Tesla"
+                detail.fastChargerType shouldBe "Supercharger"
+            }
+
+            Then("지오펜스가 없으면 주소만 실린다") {
+                detail.geofenceName shouldBe null
+                detail.address shouldBe "경기도 용인시 …"
             }
         }
     })
