@@ -59,6 +59,21 @@ class TeslaChargeService(
     }
 
     /**
+     * 영향 행 수로 404를 판정한다 — SELECT로 존재를 확인하고 UPDATE 하는 것보다 왕복이 하나 적고
+     * 결과도 같다. 진행 중인 충전은 리포지토리 SQL의 `end_date IS NOT NULL`에 걸려 0이 된다.
+     * 그것을 허용하면 TeslaMate가 세션을 마감하며 지오펜스 요금으로 cost를 덮어써 값이 조용히 사라진다.
+     */
+    fun updateCost(
+        id: Long,
+        request: ChargeCostRequest,
+    ) {
+        val cost = request.cost ?: throw CustomException(ErrorCode.INVALID_REQUEST, "cost는 필수입니다")
+        if (repository.updateCost(id, cost) == 0) {
+            throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
+        }
+    }
+
+    /**
      * KST 경계를 UTC로 번역한다. `to`는 **포함**이라 그 다음 날 자정이 상한이 된다.
      * 기본값을 「이번 달」로 채우지 않는다 — 조회 범위가 응답에 실리지 않으므로 서버가 몰래 고른
      * 범위를 호출자가 모른 채 화면에 그리게 된다.

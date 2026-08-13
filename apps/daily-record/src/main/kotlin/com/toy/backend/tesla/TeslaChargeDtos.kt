@@ -1,5 +1,8 @@
 package com.toy.backend.tesla
 
+import jakarta.validation.constraints.DecimalMin
+import jakarta.validation.constraints.Digits
+import jakarta.validation.constraints.NotNull
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
@@ -58,4 +61,17 @@ data class TeslaChargeDetailResponse(
     val fastCharger: Boolean?,
     val fastChargerBrand: String?,
     val fastChargerType: String?,
+)
+
+/**
+ * `@NotNull`이라 금액을 비울 수 없다 — 되돌리기를 두지 않기로 한 결정의 표현이다.
+ *
+ * `@Digits(integer = 8)`은 `charging_processes.cost`의 `numeric(10,2)` 상한(99,999,999.99)이다.
+ * DB 오류가 아니라 400으로 돌려주려는 것이다.
+ */
+data class ChargeCostRequest(
+    @field:NotNull
+    @field:DecimalMin("0")
+    @field:Digits(integer = 8, fraction = 2)
+    val cost: BigDecimal?,
 )

@@ -242,4 +242,23 @@ class TeslaChargeServiceTest :
                 detail.address shouldBe "경기도 용인시 …"
             }
         }
+
+        Given("금액을 수정할 때") {
+            every { repository.updateCost(3312L, BigDecimal("15000")) } returns 1
+
+            Then("예외 없이 끝난다") {
+                service.updateCost(3312L, ChargeCostRequest(BigDecimal("15000")))
+            }
+        }
+
+        // 없는 id, 그리고 진행 중이라 UPDATE 필터에 걸린 행이 모두 영향 행 0으로 온다.
+        Given("영향 행이 0일 때") {
+            every { repository.updateCost(404L, any()) } returns 0
+
+            Then("404다") {
+                shouldThrow<CustomException> {
+                    service.updateCost(404L, ChargeCostRequest(BigDecimal("15000")))
+                }
+            }
+        }
     })

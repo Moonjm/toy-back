@@ -23,6 +23,15 @@ interface TeslaChargeRepository {
 
     /** 샘플이 하나도 없어도 행은 온다 — 모든 필드가 null인 행이다. */
     fun findChargeStats(id: Long): ChargeStatsRow
+
+    /**
+     * TeslaMate DB에 쓰는 **유일한** 자리다. 영향 행 수를 돌려준다 —
+     * 없는 id와 진행 중인 행이 모두 0이 된다.
+     */
+    fun updateCost(
+        id: Long,
+        cost: BigDecimal,
+    ): Int
 }
 
 data class ChargeRow(
