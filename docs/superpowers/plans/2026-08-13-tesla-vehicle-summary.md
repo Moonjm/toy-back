@@ -1278,11 +1278,11 @@ git commit -m "feat: 차량 현재 상태를 낸다"
 - Consumes: Task 2~5의 서비스·인터페이스 전부
 - Produces: `GET /tesla/summary`, `GET /tesla/status`, `GET /tesla/charges/missing-cost`
 
-- [ ] **Step 1: 충전 컨트롤러에서 월 목록을 걷어내고 미등록 목록을 낸다**
+- [ ] **Step 1: 충전 컨트롤러에 미등록 목록 엔드포인트를 낸다**
 
-`TeslaChargeController.kt`에서 `list(...)` 메서드 전체를 **지운다**. 쓰이지 않게 된 import(`org.springframework.format.annotation.DateTimeFormat`, `java.time.LocalDate`, `java.time.YearMonth`, `io.swagger.v3.oas.annotations.Parameter`, `org.springframework.web.bind.annotation.RequestParam`)를 정리한다 — 아래 새 메서드가 `Parameter`와 `RequestParam`을 다시 쓰므로 그 둘은 남긴다.
+`list(...)` 메서드는 **Task 2가 이미 지웠다** — 지우는 것과 그것을 부르는 곳을 한 커밋에 두기 위해서다. 지금 `TeslaChargeController`에는 `detail`과 `updateCost` 둘만 있다.
 
-`detail` **위에** 넣는다:
+`detail` **위에** 넣는다. `Parameter`·`RequestParam` import가 필요한데 Task 2가 지웠을 수 있으니, 없으면 알파벳 순 제자리에 다시 더한다:
 
 ```kotlin
     @GetMapping("/missing-cost")
@@ -1343,67 +1343,20 @@ class TeslaVehicleController(
 }
 ```
 
-- [ ] **Step 3: 충전 리포지토리에 미등록 조회를 구현한다**
+- [ ] **Step 3: 충전 리포지토리의 미등록 조회를 대조한다 — 구현은 이미 끝났다**
 
-`JdbcTeslaChargeRepository.kt`에 더한다:
+`findMissingCost`·`countMissingCost`의 SQL은 **Task 2가 이미 넣었다.** 인터페이스에 메서드를 더하면 `JdbcTeslaChargeRepository`가 즉시 그것을 구현해야 빌드가 살기 때문이다 — 컨트롤러의 `list`와 같은 이유다.
 
-```kotlin
-    override fun findMissingCost(limit: Int): List<ChargeRow> =
-        teslaMateJdbcClient
-            .sql(MISSING_COST_SQL)
-            .param("limit", limit)
-            .query { rs, _ ->
-                ChargeRow(
-                    id = rs.getLong("id"),
-                    startDateUtc = rs.getObject("start_date", LocalDateTime::class.java),
-                    endDateUtc = rs.getObject("end_date", LocalDateTime::class.java),
-                    durationMin = rs.nullableInt("duration_min"),
-                    locationName = rs.getString("location_name"),
-                    energyAddedKwh = rs.getBigDecimal("charge_energy_added"),
-                    energyUsedKwh = rs.getBigDecimal("charge_energy_used"),
-                    startBatteryLevel = rs.nullableInt("start_battery_level"),
-                    endBatteryLevel = rs.nullableInt("end_battery_level"),
-                    cost = rs.getBigDecimal("cost"),
-                )
-            }.list()
+**새로 쓰지 마라. 같은 이름의 `override`를 또 넣으면 컴파일이 깨진다.** 대신 이미 있는 것이 아래와 맞는지 눈으로 대조하고, 어긋난 곳만 고친다.
 
-    override fun countMissingCost(): Int =
-        teslaMateJdbcClient
-            .sql(MISSING_COST_COUNT_SQL)
-            .query { rs, _ -> rs.getInt("row_count") }
-            .single()
-```
+- `MISSING_COST_SQL`의 `WHERE`가 `cp.end_date IS NOT NULL AND cp.cost IS NULL`인가
+- `ORDER BY cp.start_date DESC`, `LIMIT :limit`인가
+- `LEFT JOIN geofences` / `LEFT JOIN addresses`와 `COALESCE(g.name, a.name, a.display_name) AS location_name`이 있는가
+- RowMapper가 `ChargeRow`의 열 필드를 모두 채우는가(`charge_energy_used` 포함)
+- 개수 쿼리가 `limit` 없이 같은 `WHERE`로 전체를 세는가
 
-companion object에:
+맞으면 이 단계는 아무것도 바꾸지 않고 넘어간다.
 
-```kotlin
-        private const val MISSING_COST_SQL = """
-            SELECT cp.id,
-                   cp.start_date,
-                   cp.end_date,
-                   cp.duration_min,
-                   COALESCE(g.name, a.name, a.display_name) AS location_name,
-                   cp.charge_energy_added,
-                   cp.charge_energy_used,
-                   cp.start_battery_level,
-                   cp.end_battery_level,
-                   cp.cost
-              FROM charging_processes cp
-              LEFT JOIN geofences g ON g.id = cp.geofence_id
-              LEFT JOIN addresses a ON a.id = cp.address_id
-             WHERE cp.end_date IS NOT NULL
-               AND cp.cost IS NULL
-             ORDER BY cp.start_date DESC
-             LIMIT :limit
-        """
-
-        private const val MISSING_COST_COUNT_SQL = """
-            SELECT COUNT(*) AS row_count
-              FROM charging_processes cp
-             WHERE cp.end_date IS NOT NULL
-               AND cp.cost IS NULL
-        """
-```
 
 - [ ] **Step 4: 차량 리포지토리를 구현한다**
 
