@@ -110,14 +110,47 @@ KST 경계로 변환하는 규칙은 충전 설계와 같다(`2026-08` → `2026
 **`asOf`는 그 위치 행의 시각이다(KST).** 주차 중에는 `positions`가 뜸하게 쌓여서 몇 시간 전
 값일 수 있다. 그래서 값과 시각을 **항상 함께** 낸다 — 시각 없이 배터리 %만 보면 지금 값으로 읽힌다.
 
-`state`는 `states.state`를 그대로(`online`·`asleep`·`offline`·`driving`·`charging`) 낸다.
-**우리 이름으로 번역하지 않는다.** 상류가 값을 늘리면 매핑이 조용히 틀리는 쪽보다, 모르는 값이
-그대로 올라와 앱이 원문을 보여주는 쪽이 낫다.
+#### `state`는 테이블 값 위에 두 개를 얹는다
+
+**`states` 테이블에는 세 값뿐이다.** v4.0.1의 마이그레이션이 PostgreSQL enum으로 못 박아 두었다.
+
+```sql
+CREATE TYPE states_status AS ENUM ('online', 'offline', 'asleep')
+```
+
+TeslaMate는 `driving`·`charging`을 **저장하지 않는다** — 열린 `drives`·`charging_processes` 행에서
+파생시켜 Grafana에 보여줄 뿐이다. 그래서 테이블 값만 내면 **충전 중에도 `online`으로만 나온다.**
+「지금 차가 어떤 상태인가」를 묻는 화면에서 그것은 답이 아니다.
+
+우리도 같은 방식으로 파생시킨다. 우선순위가 있다.
+
+| 조건 | `state` |
+|---|---|
+| `charging_processes`에 `end_date IS NULL`인 행이 있다 | `charging` |
+| 아니고, `drives`에 `end_date IS NULL`인 행이 있다 | `driving` |
+| 둘 다 아니다 | `states`의 열린 행의 값 그대로 (`online`·`offline`·`asleep`) |
+
+충전을 먼저 보는 이유는, TeslaMate가 죽었다 살아나면 **끝나지 않은 주행 행이 남을 수 있어서**다.
+그 상태로 충전을 시작하면 두 조건이 동시에 참이 되는데, 그때 사실에 가까운 쪽은 충전이다.
+
+**원문은 여전히 번역하지 않는다.** 테이블 값은 그대로 통과시키고 그 위에 두 값을 얹을 뿐이다 —
+상류가 `states_status`에 값을 늘리면 모르는 값이 그대로 올라와 앱이 원문을 보여준다.
+
+두 파생 조건은 `EXISTS` 서브쿼리 둘로 상태 쿼리에 함께 넣는다. 왕복을 늘리지 않는다.
 
 위치는 `positions.latitude/longitude`가 아니라, TeslaMate가 그 위치에 붙여 둔 지오펜스 이름을 쓴다.
 `positions`에는 지오펜스 참조가 없으므로 **좌표로 지오펜스를 찾는다** —
 `geofences`는 `latitude`·`longitude`·`radius`를 가지고 있어, 반경 안에 드는 것 중 가장 가까운 하나다.
 없으면 null이다(주소는 내지 않는다 — `positions`에 주소 참조가 없고, 역지오코딩을 새로 붙이지 않는다).
+
+**판정은 서버에서 한다.** TeslaMate가 `cube`·`earthdistance` 확장을 깔아 두므로
+(`20240929084639_recreate_geo_extensions`가 `public` 스키마에 만들고
+`20250407155134_upgrade_earthdistance`가 갱신한다) SQL의 `earth_box`·`ll_to_earth`로 할 수도 있다.
+그래도 서버에서 하는 이유는 **지오펜스가 몇 개 수준이기 때문이다**(지금은 0개다).
+전부 읽어 하버사인으로 재는 것이 남의 DB의 확장에 의존하는 것보다 낫다 — 그 확장은
+TeslaMate가 자기 필요로 깐 것이고, 상류가 언제 걷어낼지는 우리가 정하지 않는다.
+
+지오펜스가 수십 개를 넘으면 그때 SQL 쪽으로 옮긴다. 그 전에는 옮길 이유가 없다.
 
 공기압은 **TeslaMate 저장 단위인 bar 그대로** 낸다. psi 병기는 앱이 한다.
 
@@ -139,11 +172,13 @@ SELECT ... FROM positions
 구성을 보지 않고 정한 수치라(7일), 결과에 따라 창을 조정하거나 `date` B-tree 인덱스 추가를 검토한다.
 **남의 DB에 인덱스를 만드는 것은 TeslaMate 업그레이드와 충돌하지 않는지 확인한 뒤에 한다.**
 
-#### 컬럼 확인
+#### 컬럼 확인 — 끝났다
 
-`tpms_pressure_fl`·`fr`·`rl`·`rr`, `usable_battery_level`, `est_battery_range_km`는
-TeslaMate 버전에 따라 없을 수 있다. **구현 전에 실제 컬럼 목록을 확인하고, 없는 것은 응답에서 뺀다.**
-있는 줄 알고 SELECT에 넣으면 상태 조회 전체가 죽는다.
+`tpms_pressure_fl`·`fr`·`rl`·`rr`, `usable_battery_level`, `est_battery_range_km`가
+**v4.0.1의 `positions`에 모두 있다**(`lib/teslamate/log/position.ex` 확인). 응답에서 뺄 것이 없다.
+
+버전을 올려 이 설계를 다시 쓰게 되면 그때 같은 확인을 다시 한다 — 있는 줄 알고 SELECT에 넣으면
+상태 조회 전체가 죽는다.
 
 ### `GET /tesla/charges/missing-cost?limit=50`
 
@@ -217,7 +252,7 @@ apps/daily-record/src/main/kotlin/com/toy/backend/tesla/
 | `yearMonth` 없음·형식 오류 | 400 `INVALID_REQUEST` (Spring 변환 + 공통 핸들러) |
 | `limit`이 1 미만·200 초과 | 400 `INVALID_REQUEST` |
 | `positions`에 행이 하나도 없음 | 200. **`asOf`가 null인 빈 상태** — 「기록이 아직 없다」와 「못 읽었다」는 다르다 |
-| `states`에 열린 행이 없음 | 200. `state`·`stateSince`만 null이고 나머지는 낸다 |
+| `states`에 열린 행이 없음 | 200. 나머지는 낸다. **파생은 여전히 산다** — 열린 충전·주행이 있으면 `state`가 `charging`·`driving`이고, 없을 때만 `state`가 null이다. `stateSince`는 `states`의 열린 행이 없으면 null이다 |
 | 그 달에 주행·충전이 없음 | 200. 필드가 null인 항목(0이 아니다) |
 | TeslaMate DB에 못 붙음 | 500. **가리지 않는다** — 빈 값으로 눙치면 「안 탔다」와 구분되지 않는다 |
 
@@ -234,6 +269,10 @@ apps/daily-record/src/main/kotlin/com/toy/backend/tesla/
 - 그 달에 아무것도 없으면 필드가 null이다(0이 아니다)
 - `positions` 행이 없으면 `asOf`가 null인 상태를 낸다
 - `states` 열린 행이 없어도 나머지 필드는 나온다
+- **열린 충전이 있으면 `states.state`가 `online`이어도 `charging`이다**
+- **열린 주행이 있으면 `driving`이다**
+- **충전과 주행이 동시에 열려 있으면 `charging`이 이긴다**(TeslaMate가 죽어 남은 주행 행)
+- 둘 다 없으면 `states`의 값이 그대로 나온다 — 모르는 값도 그대로 통과한다
 - 미등록 목록의 `totalCount`가 `limit`과 무관하다
 - 응답 시각이 UTC → KST로 되돌아온다
 
@@ -246,9 +285,15 @@ apps/daily-record/src/main/kotlin/com/toy/backend/tesla/
 ## 열린 항목
 
 - **`positions` 실행 계획.** 7일 창은 추정이다. 실제 행 수·BRIN 구성을 보고 조정한다.
-- **컬럼 존재.** `tpms_*`·`usable_battery_level`·`est_battery_range_km`를 실제 스키마에서 확인한다.
-- **지오펜스 반경 판정.** 좌표로 반경 안을 찾는 계산을 SQL에서 할지(`earthdistance`·`cube` 확장이
-  깔려 있는지 확인 필요) 단순 근사(위경도 차이)로 할지는 실제 지오펜스 수(수 개)를 보고 정한다.
-  **개수가 적으면 전부 읽어 앱 서버에서 판정하는 것이 확장 의존보다 낫다.**
+  **구현 중에 답이 오면 창 크기를 그때 정한다** — 코드 한 줄이라 나중에 바꿔도 싸다.
 - **`drives`의 진행 중 행.** 제외하기로 했지만, 주행이 끝나기 전에는 그 달 주행 km가 실제보다
   적게 보인다. 하루 수십 km 규모라 감수한다.
+
+### 닫힌 항목
+
+- ~~**컬럼 존재.**~~ `tpms_*`·`usable_battery_level`·`est_battery_range_km` 셋 다 v4.0.1
+  `positions`에 있다. 응답에서 뺄 것이 없다.
+- ~~**지오펜스 반경 판정.**~~ `cube`·`earthdistance`가 깔려 있지만 서버에서 판정하기로 했다.
+  지오펜스가 몇 개 수준이라 남의 DB의 확장에 의존할 이유가 없다.
+- ~~**`state` 값 목록.**~~ `states` 테이블은 `online`·`offline`·`asleep` 셋뿐이다.
+  `charging`·`driving`은 열린 행에서 파생시킨다(위 「`state`는 테이블 값 위에 두 개를 얹는다」).
