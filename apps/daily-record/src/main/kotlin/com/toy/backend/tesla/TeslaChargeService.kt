@@ -6,8 +6,6 @@ import org.springframework.stereotype.Service
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.YearMonth
-import java.time.ZoneId
-import java.time.ZoneOffset
 
 /**
  * **`@Transactional`을 붙이지 않는다.** 기본 트랜잭션 매니저는 daily-record 커넥션의 것이라
@@ -37,8 +35,8 @@ class TeslaChargeService(
         val stats = repository.findChargeStats(id)
         return TeslaChargeDetailResponse(
             id = row.id,
-            startedAt = toKst(row.startDateUtc),
-            endedAt = toKst(row.endDateUtc),
+            startedAt = TeslaTime.toKst(row.startDateUtc),
+            endedAt = TeslaTime.toKst(row.endDateUtc),
             durationMin = row.durationMin,
             energyAddedKwh = row.energyAddedKwh,
             energyUsedKwh = row.energyUsedKwh,
@@ -90,8 +88,7 @@ class TeslaChargeService(
             throw CustomException(ErrorCode.INVALID_REQUEST, "yearMonth와 from·to는 함께 보낼 수 없습니다")
         }
         if (yearMonth != null) {
-            return toUtc(yearMonth.atDay(1).atStartOfDay()) to
-                toUtc(yearMonth.plusMonths(1).atDay(1).atStartOfDay())
+            return TeslaTime.monthRangeUtc(yearMonth)
         }
         if (from == null || to == null) {
             throw CustomException(ErrorCode.INVALID_REQUEST, "from과 to는 함께 보내야 합니다")
@@ -99,14 +96,14 @@ class TeslaChargeService(
         if (from.isAfter(to)) {
             throw CustomException(ErrorCode.INVALID_REQUEST, "from이 to보다 늦습니다")
         }
-        return toUtc(from.atStartOfDay()) to toUtc(to.plusDays(1).atStartOfDay())
+        return TeslaTime.toUtc(from.atStartOfDay()) to TeslaTime.toUtc(to.plusDays(1).atStartOfDay())
     }
 
     private fun ChargeRow.toItem() =
         ChargeListItem(
             id = id,
-            startedAt = toKst(startDateUtc),
-            endedAt = toKst(endDateUtc),
+            startedAt = TeslaTime.toKst(startDateUtc),
+            endedAt = TeslaTime.toKst(endDateUtc),
             durationMin = durationMin,
             locationName = locationName,
             energyAddedKwh = energyAddedKwh,
@@ -115,12 +112,4 @@ class TeslaChargeService(
             endBatteryLevel = endBatteryLevel,
             cost = cost,
         )
-
-    companion object {
-        private val KST: ZoneId = ZoneId.of("Asia/Seoul")
-
-        fun toUtc(kst: LocalDateTime): LocalDateTime = kst.atZone(KST).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime()
-
-        fun toKst(utc: LocalDateTime): LocalDateTime = utc.atZone(ZoneOffset.UTC).withZoneSameInstant(KST).toLocalDateTime()
-    }
 }
