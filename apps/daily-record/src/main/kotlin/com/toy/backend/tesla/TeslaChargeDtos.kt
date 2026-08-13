@@ -28,3 +28,34 @@ data class ChargeListItem(
     val endBatteryLevel: Int?,
     val cost: BigDecimal?,
 )
+
+/**
+ * 목록은 `locationName` 하나로 합치지만 상세는 `geofenceName`과 `address`를 따로 낸다 —
+ * 「집」이라고만 적힌 항목의 실제 주소를 확인하는 것이 상세를 여는 이유 중 하나다.
+ *
+ * 효율(added/used)과 kWh당 단가(cost/added)는 서버에서 계산하지 않는다. 두 값이 다 내려가니
+ * 앱에서 나눗셈 한 번이면 되고, 분모가 0이거나 null일 때의 처리를 서버가 정해 버리면 화면이 그것을 따라야 한다.
+ */
+data class TeslaChargeDetailResponse(
+    val id: Long,
+    val startedAt: LocalDateTime,
+    val endedAt: LocalDateTime,
+    val durationMin: Int?,
+    val energyAddedKwh: BigDecimal?,
+    /** 벽에서 뽑아쓴 양. 구버전 데이터에서 null일 수 있다. */
+    val energyUsedKwh: BigDecimal?,
+    val startBatteryLevel: Int?,
+    val endBatteryLevel: Int?,
+    val startRatedRangeKm: BigDecimal?,
+    val endRatedRangeKm: BigDecimal?,
+    val outsideTempAvg: BigDecimal?,
+    val geofenceName: String?,
+    val address: String?,
+    val cost: BigDecimal?,
+    /** charges 샘플이 없으면 아래 다섯은 전부 null이다 — 0이 아니다. */
+    val maxPowerKw: Int?,
+    val avgPowerKw: BigDecimal?,
+    val fastCharger: Boolean?,
+    val fastChargerBrand: String?,
+    val fastChargerType: String?,
+)

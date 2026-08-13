@@ -32,6 +32,32 @@ class TeslaChargeService(
         )
     }
 
+    fun detail(id: Long): TeslaChargeDetailResponse {
+        val row = repository.findDetail(id) ?: throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
+        val stats = repository.findChargeStats(id)
+        return TeslaChargeDetailResponse(
+            id = row.id,
+            startedAt = toKst(row.startDateUtc),
+            endedAt = toKst(row.endDateUtc),
+            durationMin = row.durationMin,
+            energyAddedKwh = row.energyAddedKwh,
+            energyUsedKwh = row.energyUsedKwh,
+            startBatteryLevel = row.startBatteryLevel,
+            endBatteryLevel = row.endBatteryLevel,
+            startRatedRangeKm = row.startRatedRangeKm,
+            endRatedRangeKm = row.endRatedRangeKm,
+            outsideTempAvg = row.outsideTempAvg,
+            geofenceName = row.geofenceName,
+            address = row.address,
+            cost = row.cost,
+            maxPowerKw = stats.maxPowerKw,
+            avgPowerKw = stats.avgPowerKw,
+            fastCharger = stats.fastCharger,
+            fastChargerBrand = stats.fastChargerBrand,
+            fastChargerType = stats.fastChargerType,
+        )
+    }
+
     /**
      * KST 경계를 UTC로 번역한다. `to`는 **포함**이라 그 다음 날 자정이 상한이 된다.
      * 기본값을 「이번 달」로 채우지 않는다 — 조회 범위가 응답에 실리지 않으므로 서버가 몰래 고른

@@ -112,4 +112,90 @@ class TeslaChargeServiceTest :
                 }
             }
         }
+
+        Given("상세를 조회할 때") {
+            every { repository.findDetail(3312L) } returns
+                ChargeDetailRow(
+                    id = 3312,
+                    startDateUtc = LocalDateTime.of(2026, 8, 11, 13, 14),
+                    endDateUtc = LocalDateTime.of(2026, 8, 11, 17, 31),
+                    durationMin = 257,
+                    energyAddedKwh = BigDecimal("48.2"),
+                    energyUsedKwh = BigDecimal("51.0"),
+                    startBatteryLevel = 18,
+                    endBatteryLevel = 90,
+                    startRatedRangeKm = BigDecimal("72.4"),
+                    endRatedRangeKm = BigDecimal("361.8"),
+                    outsideTempAvg = BigDecimal("27.5"),
+                    geofenceName = "집",
+                    address = "서울특별시 강남구 …",
+                    cost = BigDecimal("14100"),
+                )
+            every { repository.findChargeStats(3312L) } returns
+                ChargeStatsRow(
+                    maxPowerKw = 11,
+                    avgPowerKw = BigDecimal("10.4"),
+                    fastCharger = false,
+                    fastChargerBrand = null,
+                    fastChargerType = null,
+                )
+
+            val detail = service.detail(3312L)
+
+            Then("시각이 KST로 되돌아온다") {
+                detail.startedAt shouldBe LocalDateTime.of(2026, 8, 11, 22, 14)
+                detail.endedAt shouldBe LocalDateTime.of(2026, 8, 12, 2, 31)
+            }
+
+            Then("장소는 지오펜스 이름과 주소를 따로 싣는다") {
+                detail.geofenceName shouldBe "집"
+                detail.address shouldBe "서울특별시 강남구 …"
+            }
+
+            Then("charges 집계가 실린다") {
+                detail.maxPowerKw shouldBe 11
+                detail.avgPowerKw shouldBe BigDecimal("10.4")
+                detail.fastCharger shouldBe false
+            }
+        }
+
+        Given("charges 샘플이 하나도 없는 오래된 세션을 조회할 때") {
+            every { repository.findDetail(9L) } returns
+                ChargeDetailRow(
+                    id = 9,
+                    startDateUtc = LocalDateTime.of(2026, 1, 1, 0, 0),
+                    endDateUtc = LocalDateTime.of(2026, 1, 1, 1, 0),
+                    durationMin = 60,
+                    energyAddedKwh = null,
+                    energyUsedKwh = null,
+                    startBatteryLevel = null,
+                    endBatteryLevel = null,
+                    startRatedRangeKm = null,
+                    endRatedRangeKm = null,
+                    outsideTempAvg = null,
+                    geofenceName = null,
+                    address = null,
+                    cost = null,
+                )
+            every { repository.findChargeStats(9L) } returns
+                ChargeStatsRow(null, null, null, null, null)
+
+            val detail = service.detail(9L)
+
+            // 0은 「0kW로 충전했다」는 뜻이 되어 없는 데이터와 구분되지 않는다.
+            Then("출력·충전기 필드가 0이 아니라 null이다") {
+                detail.maxPowerKw shouldBe null
+                detail.avgPowerKw shouldBe null
+                detail.fastCharger shouldBe null
+                detail.fastChargerBrand shouldBe null
+            }
+        }
+
+        Given("없는 id로 상세를 조회할 때") {
+            every { repository.findDetail(404L) } returns null
+
+            Then("404다") {
+                shouldThrow<CustomException> { service.detail(404L) }
+            }
+        }
     })

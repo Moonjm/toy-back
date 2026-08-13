@@ -17,6 +17,12 @@ interface TeslaChargeRepository {
         startUtc: LocalDateTime,
         endUtcExclusive: LocalDateTime,
     ): ChargeSummaryRow
+
+    /** 없으면 null. 진행 중(`end_date IS NULL`)인 행도 없는 것으로 본다. */
+    fun findDetail(id: Long): ChargeDetailRow?
+
+    /** 샘플이 하나도 없어도 행은 온다 — 모든 필드가 null인 행이다. */
+    fun findChargeStats(id: Long): ChargeStatsRow
 }
 
 data class ChargeRow(
@@ -35,4 +41,29 @@ data class ChargeSummaryRow(
     val count: Int,
     val totalEnergyAddedKwh: BigDecimal?,
     val totalCost: BigDecimal?,
+)
+
+data class ChargeDetailRow(
+    val id: Long,
+    val startDateUtc: LocalDateTime,
+    val endDateUtc: LocalDateTime,
+    val durationMin: Int?,
+    val energyAddedKwh: BigDecimal?,
+    val energyUsedKwh: BigDecimal?,
+    val startBatteryLevel: Int?,
+    val endBatteryLevel: Int?,
+    val startRatedRangeKm: BigDecimal?,
+    val endRatedRangeKm: BigDecimal?,
+    val outsideTempAvg: BigDecimal?,
+    val geofenceName: String?,
+    val address: String?,
+    val cost: BigDecimal?,
+)
+
+data class ChargeStatsRow(
+    val maxPowerKw: Int?,
+    val avgPowerKw: BigDecimal?,
+    val fastCharger: Boolean?,
+    val fastChargerBrand: String?,
+    val fastChargerType: String?,
 )
