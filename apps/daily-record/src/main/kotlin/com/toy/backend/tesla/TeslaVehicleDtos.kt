@@ -1,6 +1,7 @@
 package com.toy.backend.tesla
 
 import java.math.BigDecimal
+import java.time.LocalDateTime
 import java.time.YearMonth
 
 /**
@@ -31,4 +32,43 @@ data class MonthlyStat(
     val energyUsedKwh: BigDecimal?,
     val cost: BigDecimal?,
     val chargeCount: Int?,
+)
+
+/**
+ * `positions`의 최신 1행 + `states`의 열린 행. **값과 `asOf`를 항상 함께 낸다** —
+ * 주차 중에는 위치가 뜸하게 쌓여 몇 시간 전 값일 수 있고, 시각 없이 배터리 %만 보면
+ * 지금 값으로 읽힌다.
+ *
+ * 좌표를 싣지 않는다 — 생활 동선이 그대로 드러나고, 앱이 지도를 그리지 않는다.
+ */
+data class TeslaStatusResponse(
+    /** 위치 행의 시각(KST). 기록이 하나도 없으면 null이다. */
+    val asOf: LocalDateTime?,
+    /**
+     * `charging`·`driving`·`online`·`offline`·`asleep`.
+     * 앞의 둘은 열린 행에서 파생한 것이고, 나머지는 `states`의 값 그대로다.
+     */
+    val state: String?,
+    /** `states`의 열린 행이 시작된 시각(KST). 파생 상태에는 해당하지 않아 null일 수 있다. */
+    val stateSince: LocalDateTime?,
+    val batteryLevel: Int?,
+    val usableBatteryLevel: Int?,
+    val ratedRangeKm: BigDecimal?,
+    val estRangeKm: BigDecimal?,
+    val odometerKm: Double?,
+    val insideTempC: BigDecimal?,
+    val outsideTempC: BigDecimal?,
+    val climateOn: Boolean?,
+    /** 반경 안의 지오펜스 이름. 없으면 null이다(주소는 내지 않는다). */
+    val locationName: String?,
+    /** 위치 기록이 없으면 통째로 null이다. */
+    val tpmsBar: TpmsBar?,
+)
+
+/** TeslaMate 저장 단위인 bar 그대로. psi 병기는 앱이 한다. */
+data class TpmsBar(
+    val fl: BigDecimal?,
+    val fr: BigDecimal?,
+    val rl: BigDecimal?,
+    val rr: BigDecimal?,
 )

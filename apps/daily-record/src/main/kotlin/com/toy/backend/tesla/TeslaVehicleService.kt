@@ -4,6 +4,11 @@ import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.exception.CustomException
 import org.springframework.stereotype.Service
 import java.time.YearMonth
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * **`@Transactional`을 붙이지 않는다.** 기본 트랜잭션 매니저는 daily-record 커넥션의 것이라
@@ -39,6 +44,78 @@ class TeslaVehicleService(
         )
     }
 
+    fun status(): TeslaStatusResponse {
+        val position = vehicleRepository.findLatestPosition()
+        val openState = vehicleRepository.findOpenState()
+        val activity = vehicleRepository.findActivity()
+        return TeslaStatusResponse(
+            asOf = position?.dateUtc?.let { TeslaTime.toKst(it) },
+            state = resolveState(activity, openState),
+            stateSince = openState?.startDateUtc?.let { TeslaTime.toKst(it) },
+            batteryLevel = position?.batteryLevel,
+            usableBatteryLevel = position?.usableBatteryLevel,
+            ratedRangeKm = position?.ratedRangeKm,
+            estRangeKm = position?.estRangeKm,
+            odometerKm = position?.odometerKm,
+            insideTempC = position?.insideTempC,
+            outsideTempC = position?.outsideTempC,
+            climateOn = position?.climateOn,
+            locationName = position?.let { geofenceNameAt(it) },
+            tpmsBar = position?.let { TpmsBar(it.tpmsFl, it.tpmsFr, it.tpmsRl, it.tpmsRr) },
+        )
+    }
+
+    /**
+     * `states` 테이블에는 `online`·`offline`·`asleep` 셋뿐이다
+     * (`CREATE TYPE states_status AS ENUM (...)`). `charging`·`driving`은 열린 행에서 파생시킨다 —
+     * 테이블 값만 내면 **충전 중에도 online으로만 나온다.**
+     *
+     * 충전을 먼저 보는 이유: TeslaMate가 죽었다 살아나면 끝나지 않은 주행 행이 남을 수 있고,
+     * 그 상태로 충전을 시작하면 두 조건이 동시에 참이 된다. 그때 사실에 가까운 쪽은 충전이다.
+     */
+    private fun resolveState(
+        activity: ActivityRow,
+        openState: StateRow?,
+    ): String? =
+        when {
+            activity.charging -> "charging"
+            activity.driving -> "driving"
+            else -> openState?.state
+        }
+
+    /**
+     * 반경 안에 드는 것 중 가장 가까운 하나. 없으면 null이다.
+     *
+     * **판정을 서버에서 한다.** TeslaMate가 `cube`·`earthdistance`를 깔아 두지만, 그 확장은
+     * 상류가 자기 필요로 깐 것이고 지오펜스는 몇 개 수준이다. 전부 읽어 재는 편이 낫다.
+     */
+    private fun geofenceNameAt(position: PositionRow): String? {
+        val lat = position.latitude?.toDouble() ?: return null
+        val lon = position.longitude?.toDouble() ?: return null
+        return vehicleRepository
+            .findGeofences()
+            .map { it to distanceMeters(lat, lon, it.latitude.toDouble(), it.longitude.toDouble()) }
+            .filter { (fence, distance) -> distance <= fence.radiusM }
+            .minByOrNull { (_, distance) -> distance }
+            ?.first
+            ?.name
+    }
+
+    /** 하버사인. 지구를 구로 보고 재며, 수 km 규모에서 오차는 판정에 영향을 주지 않는다. */
+    private fun distanceMeters(
+        lat1: Double,
+        lon1: Double,
+        lat2: Double,
+        lon2: Double,
+    ): Double {
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a =
+            sin(dLat / 2).pow(2) +
+                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2).pow(2)
+        return 2 * EARTH_RADIUS_M * atan2(sqrt(a), sqrt(1 - a))
+    }
+
     private fun statOf(
         month: YearMonth,
         drives: Map<YearMonth, DriveMonthRow>,
@@ -61,5 +138,6 @@ class TeslaVehicleService(
     companion object {
         /** 기준 달을 포함해 거슬러 세는 개월 수. */
         const val TREND_MONTHS = 12
+        private const val EARTH_RADIUS_M = 6_371_000.0
     }
 }
