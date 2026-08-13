@@ -2,6 +2,7 @@ package com.toy.backend.tesla
 
 import java.math.BigDecimal
 import java.time.LocalDateTime
+import java.time.YearMonth
 
 /**
  * TeslaMate DB 접근. **행 타입의 시각은 전부 UTC다** — TeslaMate가 타임존 없는 timestamp에
@@ -28,6 +29,15 @@ interface TeslaChargeRepository {
         id: Long,
         cost: BigDecimal,
     ): Int
+
+    /**
+     * 월별 충전 집계. **월 경계는 KST 기준**이다 — SQL이 UTC 값을 KST로 옮긴 뒤 자른다.
+     * 데이터가 없는 달은 행이 오지 않는다(0행이지 0값이 아니다).
+     */
+    fun chargeMonthly(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<ChargeMonthRow>
 }
 
 data class ChargeRow(
@@ -67,4 +77,12 @@ data class ChargeStatsRow(
     val fastCharger: Boolean?,
     val fastChargerBrand: String?,
     val fastChargerType: String?,
+)
+
+data class ChargeMonthRow(
+    val month: YearMonth,
+    val count: Int,
+    val energyAddedKwh: BigDecimal?,
+    val energyUsedKwh: BigDecimal?,
+    val cost: BigDecimal?,
 )

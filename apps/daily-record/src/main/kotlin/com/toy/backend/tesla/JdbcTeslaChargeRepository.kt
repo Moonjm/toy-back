@@ -5,7 +5,9 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import java.math.BigDecimal
 import java.sql.ResultSet
+import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.YearMonth
 
 /**
  * **nullable 정수·불리언은 `getObject`로 읽는다.** `rs.getInt`는 SQL NULL에 0을 돌려주고
@@ -89,6 +91,24 @@ class JdbcTeslaChargeRepository(
             .param("cost", cost)
             .update()
 
+    override fun chargeMonthly(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<ChargeMonthRow> =
+        teslaMateJdbcClient
+            .sql(CHARGE_MONTHLY_SQL)
+            .param("start", startUtc)
+            .param("end", endUtcExclusive)
+            .query { rs, _ ->
+                ChargeMonthRow(
+                    month = YearMonth.from(rs.getObject("month_start", LocalDate::class.java)),
+                    count = rs.getInt("row_count"),
+                    energyAddedKwh = rs.getBigDecimal("energy_added_kwh"),
+                    energyUsedKwh = rs.getBigDecimal("energy_used_kwh"),
+                    cost = rs.getBigDecimal("cost"),
+                )
+            }.list()
+
     private fun ResultSet.nullableInt(column: String): Int? = getObject(column) as Int?
 
     companion object {
@@ -164,6 +184,29 @@ class JdbcTeslaChargeRepository(
                SET cost = :cost
              WHERE id = :id
                AND end_date IS NOT NULL
+        """
+
+        /**
+         * **월 경계를 KST로 자른다.** `start_date`는 타임존 없는 컬럼에 든 UTC 값이라,
+         * `AT TIME ZONE 'UTC'`로 timestamptz를 만든 뒤 `AT TIME ZONE 'Asia/Seoul'`로 KST 벽시계로
+         * 옮기고 자른다. 그냥 `date_trunc('month', cp.start_date)`를 쓰면 UTC 기준으로 잘려
+         * **KST 8월 1일 0시 30분 충전이 7월로 들어간다.**
+         */
+        private const val CHARGE_MONTHLY_SQL = """
+            SELECT date_trunc(
+                       'month',
+                       cp.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul'
+                   )::date                     AS month_start,
+                   COUNT(*)                    AS row_count,
+                   SUM(cp.charge_energy_added) AS energy_added_kwh,
+                   SUM(cp.charge_energy_used)  AS energy_used_kwh,
+                   SUM(cp.cost)                AS cost
+              FROM charging_processes cp
+             WHERE cp.end_date IS NOT NULL
+               AND cp.start_date >= :start
+               AND cp.start_date <  :end
+             GROUP BY month_start
+             ORDER BY month_start
         """
     }
 }
