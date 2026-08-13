@@ -8,15 +8,11 @@ import java.time.LocalDateTime
  * UTC 값을 넣기 때문이다. KST 변환은 서비스가 한다.
  */
 interface TeslaChargeRepository {
-    fun findList(
-        startUtc: LocalDateTime,
-        endUtcExclusive: LocalDateTime,
-    ): List<ChargeRow>
+    /** `cost IS NULL AND end_date IS NOT NULL`을 `start_date DESC`로. 기간 필터가 없다. */
+    fun findMissingCost(limit: Int): List<ChargeRow>
 
-    fun summarize(
-        startUtc: LocalDateTime,
-        endUtcExclusive: LocalDateTime,
-    ): ChargeSummaryRow
+    /** `limit`과 무관한 전체 개수. */
+    fun countMissingCost(): Int
 
     /** 없으면 null. 진행 중(`end_date IS NULL`)인 행도 없는 것으로 본다. */
     fun findDetail(id: Long): ChargeDetailRow?
@@ -46,12 +42,6 @@ data class ChargeRow(
     val startBatteryLevel: Int?,
     val endBatteryLevel: Int?,
     val cost: BigDecimal?,
-)
-
-data class ChargeSummaryRow(
-    val count: Int,
-    val totalEnergyAddedKwh: BigDecimal?,
-    val totalCost: BigDecimal?,
 )
 
 data class ChargeDetailRow(

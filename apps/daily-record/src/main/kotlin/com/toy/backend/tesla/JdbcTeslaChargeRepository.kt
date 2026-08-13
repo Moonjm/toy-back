@@ -15,14 +15,10 @@ import java.time.LocalDateTime
 class JdbcTeslaChargeRepository(
     @Qualifier("teslaMateJdbcClient") private val teslaMateJdbcClient: JdbcClient,
 ) : TeslaChargeRepository {
-    override fun findList(
-        startUtc: LocalDateTime,
-        endUtcExclusive: LocalDateTime,
-    ): List<ChargeRow> =
+    override fun findMissingCost(limit: Int): List<ChargeRow> =
         teslaMateJdbcClient
-            .sql(LIST_SQL)
-            .param("start", startUtc)
-            .param("end", endUtcExclusive)
+            .sql(MISSING_COST_SQL)
+            .param("limit", limit)
             .query { rs, _ ->
                 ChargeRow(
                     id = rs.getLong("id"),
@@ -38,20 +34,11 @@ class JdbcTeslaChargeRepository(
                 )
             }.list()
 
-    override fun summarize(
-        startUtc: LocalDateTime,
-        endUtcExclusive: LocalDateTime,
-    ): ChargeSummaryRow =
+    override fun countMissingCost(): Int =
         teslaMateJdbcClient
-            .sql(SUMMARY_SQL)
-            .param("start", startUtc)
-            .param("end", endUtcExclusive)
+            .sql(COUNT_MISSING_COST_SQL)
             .query { rs, _ ->
-                ChargeSummaryRow(
-                    count = rs.getInt("row_count"),
-                    totalEnergyAddedKwh = rs.getBigDecimal("total_energy_added_kwh"),
-                    totalCost = rs.getBigDecimal("total_cost"),
-                )
+                rs.getInt("count")
             }.single()
 
     override fun findDetail(id: Long): ChargeDetailRow? =
@@ -105,7 +92,7 @@ class JdbcTeslaChargeRepository(
     private fun ResultSet.nullableInt(column: String): Int? = getObject(column) as Int?
 
     companion object {
-        private const val LIST_SQL = """
+        private const val MISSING_COST_SQL = """
             SELECT cp.id,
                    cp.start_date,
                    cp.end_date,
@@ -120,20 +107,16 @@ class JdbcTeslaChargeRepository(
               LEFT JOIN geofences g ON g.id = cp.geofence_id
               LEFT JOIN addresses a ON a.id = cp.address_id
              WHERE cp.end_date IS NOT NULL
-               AND cp.start_date >= :start
-               AND cp.start_date <  :end
+               AND cp.cost IS NULL
              ORDER BY cp.start_date DESC
+             LIMIT :limit
         """
 
-        /** 목록을 순회해 더하지 않는다 — 페이지네이션이 붙는 순간 조용히 틀린 합계가 된다. */
-        private const val SUMMARY_SQL = """
-            SELECT COUNT(*)                    AS row_count,
-                   SUM(cp.charge_energy_added) AS total_energy_added_kwh,
-                   SUM(cp.cost)                AS total_cost
+        private const val COUNT_MISSING_COST_SQL = """
+            SELECT COUNT(*) AS count
               FROM charging_processes cp
              WHERE cp.end_date IS NOT NULL
-               AND cp.start_date >= :start
-               AND cp.start_date <  :end
+               AND cp.cost IS NULL
         """
 
         private const val DETAIL_SQL = """

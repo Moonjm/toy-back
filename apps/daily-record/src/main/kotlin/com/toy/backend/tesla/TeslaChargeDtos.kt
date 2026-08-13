@@ -6,16 +6,15 @@ import jakarta.validation.constraints.NotNull
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
-data class TeslaChargeListResponse(
-    val summary: ChargeSummary,
+/**
+ * 금액이 빈 충전을 모아 보는 목록. **기간 파라미터가 없다** — 채워 넣으려는 사람에게 필요한 것은
+ * 「어느 달의 빈 건」이 아니라 「빈 건 전부」다.
+ *
+ * `totalCount`는 `limit`과 무관한 전체 개수다. 앱이 배지에 띄우고 채울수록 줄어드는 것을 본다.
+ */
+data class MissingCostResponse(
+    val totalCount: Int,
     val items: List<ChargeListItem>,
-)
-
-/** 집계는 SQL이 계산한다 — 목록을 순회해 더하지 않는다. */
-data class ChargeSummary(
-    val count: Int,
-    val totalEnergyAddedKwh: BigDecimal?,
-    val totalCost: BigDecimal?,
 )
 
 data class ChargeListItem(
