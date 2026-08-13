@@ -109,6 +109,29 @@ class JdbcTeslaChargeRepository(
                 )
             }.list()
 
+    override fun findMonthCharges(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<ChargeRow> =
+        teslaMateJdbcClient
+            .sql(MONTH_CHARGES_SQL)
+            .param("start", startUtc)
+            .param("end", endUtcExclusive)
+            .query { rs, _ ->
+                ChargeRow(
+                    id = rs.getLong("id"),
+                    startDateUtc = rs.getObject("start_date", LocalDateTime::class.java),
+                    endDateUtc = rs.getObject("end_date", LocalDateTime::class.java),
+                    durationMin = rs.nullableInt("duration_min"),
+                    locationName = rs.getString("location_name"),
+                    energyAddedKwh = rs.getBigDecimal("charge_energy_added"),
+                    energyUsedKwh = rs.getBigDecimal("charge_energy_used"),
+                    startBatteryLevel = rs.nullableInt("start_battery_level"),
+                    endBatteryLevel = rs.nullableInt("end_battery_level"),
+                    cost = rs.getBigDecimal("cost"),
+                )
+            }.list()
+
     private fun ResultSet.nullableInt(column: String): Int? = getObject(column) as Int?
 
     companion object {
@@ -207,6 +230,26 @@ class JdbcTeslaChargeRepository(
                AND cp.start_date <  :end
              GROUP BY month_start
              ORDER BY month_start
+        """
+
+        private const val MONTH_CHARGES_SQL = """
+            SELECT cp.id,
+                   cp.start_date,
+                   cp.end_date,
+                   cp.duration_min,
+                   COALESCE(g.name, a.name, a.display_name) AS location_name,
+                   cp.charge_energy_added,
+                   cp.charge_energy_used,
+                   cp.start_battery_level,
+                   cp.end_battery_level,
+                   cp.cost
+              FROM charging_processes cp
+              LEFT JOIN geofences g ON g.id = cp.geofence_id
+              LEFT JOIN addresses a ON a.id = cp.address_id
+             WHERE cp.end_date IS NOT NULL
+               AND cp.start_date >= :start
+               AND cp.start_date <  :end
+             ORDER BY cp.start_date DESC
         """
     }
 }

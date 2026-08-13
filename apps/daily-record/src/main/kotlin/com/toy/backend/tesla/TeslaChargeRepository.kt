@@ -38,6 +38,12 @@ interface TeslaChargeRepository {
         startUtc: LocalDateTime,
         endUtcExclusive: LocalDateTime,
     ): List<ChargeMonthRow>
+
+    /** 그 달의 충전 목록. 진행 중은 제외하고 `start_date DESC`. */
+    fun findMonthCharges(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<ChargeRow>
 }
 
 data class ChargeRow(
