@@ -2,6 +2,7 @@ package com.toy.backend.tesla
 
 import com.toy.backend.common.response.DataResponseBody
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
 /**
@@ -25,6 +27,14 @@ import org.springframework.web.bind.annotation.RestController
 class TeslaChargeController(
     private val service: TeslaChargeService,
 ) {
+    @GetMapping("/missing-cost")
+    @Operation(summary = "금액이 빈 충전 조회 — 기간 무관, 최신순")
+    fun missingCost(
+        @Parameter(description = "최대 건수 (1~200)", example = "50")
+        @RequestParam(required = false, defaultValue = "50")
+        limit: Int,
+    ): ResponseEntity<DataResponseBody<MissingCostResponse>> = ResponseEntity.ok(DataResponseBody(service.missingCost(limit)))
+
     @GetMapping("/{id}")
     @Operation(summary = "충전 상세 조회")
     fun detail(
