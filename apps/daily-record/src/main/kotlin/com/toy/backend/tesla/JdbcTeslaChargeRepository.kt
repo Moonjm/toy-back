@@ -1,5 +1,6 @@
 package com.toy.backend.tesla
 
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import java.math.BigDecimal
@@ -12,7 +13,7 @@ import java.time.LocalDateTime
  */
 @Repository
 class JdbcTeslaChargeRepository(
-    private val teslaMateJdbcClient: JdbcClient,
+    @Qualifier("teslaMateJdbcClient") private val teslaMateJdbcClient: JdbcClient,
 ) : TeslaChargeRepository {
     override fun findList(
         startUtc: LocalDateTime,

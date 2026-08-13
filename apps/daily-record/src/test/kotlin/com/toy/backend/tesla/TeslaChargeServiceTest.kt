@@ -1,5 +1,6 @@
 package com.toy.backend.tesla
 
+import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.exception.CustomException
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
@@ -90,26 +91,29 @@ class TeslaChargeServiceTest :
         Given("파라미터가 잘못됐을 때") {
             Then("셋 다 없으면 400이다") {
                 shouldThrow<CustomException> { service.list(null, null, null) }
+                    .errorCode shouldBe ErrorCode.INVALID_REQUEST
             }
 
             Then("yearMonth와 from이 함께 오면 400이다") {
                 shouldThrow<CustomException> {
                     service.list(YearMonth.of(2026, 8), LocalDate.of(2026, 8, 1), null)
-                }
+                }.errorCode shouldBe ErrorCode.INVALID_REQUEST
             }
 
             Then("from만 오면 400이다") {
                 shouldThrow<CustomException> { service.list(null, LocalDate.of(2026, 8, 1), null) }
+                    .errorCode shouldBe ErrorCode.INVALID_REQUEST
             }
 
             Then("to만 오면 400이다") {
                 shouldThrow<CustomException> { service.list(null, null, LocalDate.of(2026, 8, 1)) }
+                    .errorCode shouldBe ErrorCode.INVALID_REQUEST
             }
 
             Then("from이 to보다 늦으면 400이다") {
                 shouldThrow<CustomException> {
                     service.list(null, LocalDate.of(2026, 8, 14), LocalDate.of(2026, 8, 13))
-                }
+                }.errorCode shouldBe ErrorCode.INVALID_REQUEST
             }
         }
 
@@ -198,6 +202,7 @@ class TeslaChargeServiceTest :
 
             Then("404다") {
                 shouldThrow<CustomException> { service.detail(404L) }
+                    .errorCode shouldBe ErrorCode.RESOURCE_NOT_FOUND
             }
         }
 
@@ -258,7 +263,17 @@ class TeslaChargeServiceTest :
             Then("404다") {
                 shouldThrow<CustomException> {
                     service.updateCost(404L, ChargeCostRequest(BigDecimal("15000")))
-                }
+                }.errorCode shouldBe ErrorCode.RESOURCE_NOT_FOUND
+            }
+        }
+
+        // 리포지토리 스텁을 두지 않는다 — null이면 리포지토리에 닿기 전에 던져야 하고,
+        // mockk 엄격 스텁이라 닿으면 이 테스트가 깨진다.
+        Given("cost 없이 금액을 수정할 때") {
+            Then("400이다") {
+                shouldThrow<CustomException> {
+                    service.updateCost(3312L, ChargeCostRequest(null))
+                }.errorCode shouldBe ErrorCode.INVALID_REQUEST
             }
         }
     })

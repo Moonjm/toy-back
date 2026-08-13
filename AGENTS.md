@@ -23,7 +23,10 @@ apps/daily-record, apps/family-tree   각 앱 (전용 DB 사용)
 - `daily-record`는 **TeslaMate PostgreSQL에 보조 DataSource로 붙는다**(`com.toy.backend.tesla`).
   읽기 전용에 가깝고 유일한 쓰기는 `charging_processes.cost`다. JPA를 붙이지 않고 `JdbcClient`만
   쓴다 — `ddl-auto: update`가 남의 스키마에 닿지 않게 하기 위해서다. 보조 DataSource 때문에
-  **기본 DataSource도 `TeslaMateDataSourceConfig`가 손으로 정의한다**(자동설정이 backing off 한다)
+  **기본 DataSource도 `TeslaMateDataSourceConfig`가 손으로 정의한다**(자동설정이 backing off 한다).
+  TeslaMate의 `charging_processes.cost`는 상류 기본이 `numeric(6,2)`(최대 9999.99)라 원화 금액을
+  넣으려면 **`numeric(10,2)`로 수동 확장돼 있어야 한다** — 우리 마이그레이션 도구가 안 미치는 남의
+  DB라 TeslaMate를 복원·재설치하면 이 확장이 조용히 사라지고, 증상은 1만 원 이상 금액 수정만 400이 되는 것이다
 - 앱 모듈은 `common-core`·`common-auth`를 의존하고, 앱끼리는 의존하지 않는다
 - 앱 전용 에러 코드는 앱 모듈에 `Code` 구현 enum으로 둔다(예: `LedgerErrorCode`).
   공통 인프라 성격만 `common-core`의 `ErrorCode`에 추가한다
