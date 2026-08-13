@@ -31,6 +31,7 @@ class JdbcTeslaChargeRepository(
                     durationMin = rs.nullableInt("duration_min"),
                     locationName = rs.getString("location_name"),
                     energyAddedKwh = rs.getBigDecimal("charge_energy_added"),
+                    energyUsedKwh = rs.getBigDecimal("charge_energy_used"),
                     startBatteryLevel = rs.nullableInt("start_battery_level"),
                     endBatteryLevel = rs.nullableInt("end_battery_level"),
                     cost = rs.getBigDecimal("cost"),
@@ -111,6 +112,7 @@ class JdbcTeslaChargeRepository(
                    cp.duration_min,
                    COALESCE(g.name, a.name, a.display_name) AS location_name,
                    cp.charge_energy_added,
+                   cp.charge_energy_used,
                    cp.start_battery_level,
                    cp.end_battery_level,
                    cp.cost

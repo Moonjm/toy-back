@@ -41,6 +41,8 @@ data class ChargeRow(
     val durationMin: Int?,
     val locationName: String?,
     val energyAddedKwh: BigDecimal?,
+    /** 벽에서 뽑아쓴 양. 구버전 데이터에서 null일 수 있다. */
+    val energyUsedKwh: BigDecimal?,
     val startBatteryLevel: Int?,
     val endBatteryLevel: Int?,
     val cost: BigDecimal?,

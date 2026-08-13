@@ -110,6 +110,7 @@ class TeslaChargeService(
             durationMin = durationMin,
             locationName = locationName,
             energyAddedKwh = energyAddedKwh,
+            energyUsedKwh = energyUsedKwh,
             startBatteryLevel = startBatteryLevel,
             endBatteryLevel = endBatteryLevel,
             cost = cost,

@@ -62,6 +62,7 @@ class TeslaChargeServiceTest :
                         durationMin = 257,
                         locationName = "집",
                         energyAddedKwh = BigDecimal("48.2"),
+                        energyUsedKwh = BigDecimal("51.8"),
                         startBatteryLevel = 18,
                         endBatteryLevel = 90,
                         cost = BigDecimal("14100"),
@@ -79,6 +80,11 @@ class TeslaChargeServiceTest :
                 response.items[0].id shouldBe 3312L
                 response.items[0].locationName shouldBe "집"
                 response.items[0].cost shouldBe BigDecimal("14100")
+            }
+
+            // 목록에서도 kWh당 단가를 내려면 분모가 필요하다 — 그 분모는 벽에서 뽑아쓴 양이다.
+            Then("사용 전력도 목록에 실린다") {
+                response.items[0].energyUsedKwh shouldBe BigDecimal("51.8")
             }
 
             Then("합계는 리포지토리 집계를 그대로 싣는다") {
