@@ -28,7 +28,7 @@ class TeslaChargeController(
     private val service: TeslaChargeService,
 ) {
     @GetMapping("/missing-cost")
-    @Operation(summary = "금액이 빈 충전 조회 — 기간 무관, 최신순")
+    @Operation(summary = "금액이 빈 충전 조회 — 최근 한 달, 최신순")
     fun missingCost(
         @Parameter(description = "최대 건수 (1~200)", example = "50")
         @RequestParam(required = false, defaultValue = "50")

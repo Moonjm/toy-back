@@ -4,7 +4,8 @@
 
 - `GET /tesla/summary`(월별 주행+충전 요약, 지난달 대비, 최근 12개월 추이, 그 달의 충전 목록)를 추가했다.
 - `GET /tesla/status`(현재 차량 상태 — 배터리·주행가능거리·주행거리·실내외 온도·에어컨·위치·타이어 공기압)를 추가했다.
-- `GET /tesla/charges/missing-cost`(금액 미등록 충전을 기간 무관하게 최신순으로 낸다)를 추가했다.
+- `GET /tesla/charges/missing-cost`(금액 미등록 충전을 **최근 한 달** 안에서 최신순으로 낸다)를
+  추가했다. `totalCount`도 같은 창의 개수다 — 목록만 좁히면 배지와 목록이 어긋난다.
 - `GET /tesla/charges`(월/기간별 충전 목록)를 제거했다. 그 목록은 이제 `GET /tesla/summary` 응답의
   `charges` 필드로 나온다. `from`/`to` 분기와 그 조합 검증도 함께 사라졌다.
 

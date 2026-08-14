@@ -8,7 +8,7 @@ import java.time.LocalDateTime
  * UTC 값을 넣기 때문이다. KST 변환은 서비스가 한다.
  */
 interface TeslaChargeRepository {
-    /** `cost IS NULL AND end_date IS NOT NULL`을 `start_date DESC`로. 기간 필터가 없다. */
+    /** `cost IS NULL AND end_date IS NOT NULL`을 `start_date DESC`로. **최근 한 달**만 낸다. */
     fun findMissingCost(limit: Int): List<ChargeRow>
 
     /** `limit`과 무관한 전체 개수. */

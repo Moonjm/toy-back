@@ -135,6 +135,15 @@ class JdbcTeslaChargeRepository(
     private fun ResultSet.nullableInt(column: String): Int? = getObject(column) as Int?
 
     companion object {
+        /**
+         * **최근 한 달 안의 미등록 건만 낸다.** 오래된 것까지 다 내리면 채워 넣을 마음이 안 드는
+         * 길이가 되고, 실제로 채우는 것은 최근 것이다.
+         *
+         * 경계를 SQL에서 잡는 이유는 Kotlin에서 `now()`를 쓰면 시계 주입과 테스트 이음새가
+         * 따라붙기 때문이다. `start_date`는 타임존 없는 컬럼에 든 UTC 값이라
+         * `now() AT TIME ZONE 'UTC'`로 맞춰야 창이 어긋나지 않는다 —
+         * `now()`(timestamptz)와 그냥 비교하면 세션 타임존만큼(KST면 9시간) 짧아진다.
+         */
         private const val MISSING_COST_SQL = """
             SELECT cp.id,
                    cp.start_date,
@@ -151,15 +160,21 @@ class JdbcTeslaChargeRepository(
               LEFT JOIN addresses a ON a.id = cp.address_id
              WHERE cp.end_date IS NOT NULL
                AND cp.cost IS NULL
+               AND cp.start_date >= (now() AT TIME ZONE 'UTC') - interval '1 month'
              ORDER BY cp.start_date DESC
              LIMIT :limit
         """
 
+        /**
+         * **목록과 같은 창을 쓴다.** 목록만 좁히면 배지가 「37건」인데 목록에는 3건만 보이고,
+         * 채워도 배지가 거의 줄지 않아 무엇이 남았는지 읽히지 않는다.
+         */
         private const val COUNT_MISSING_COST_SQL = """
             SELECT COUNT(*) AS row_count
               FROM charging_processes cp
              WHERE cp.end_date IS NOT NULL
                AND cp.cost IS NULL
+               AND cp.start_date >= (now() AT TIME ZONE 'UTC') - interval '1 month'
         """
 
         private const val DETAIL_SQL = """
