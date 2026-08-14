@@ -40,7 +40,10 @@ class TeslaVehicleServiceTest :
 
         Given("주행만 있는 달과 충전만 있는 달이 섞여 있을 때") {
             every { vehicleRepository.driveMonthly(any(), any()) } returns
-                listOf(DriveMonthRow(YearMonth.of(2026, 8), 61, BigDecimal("842.3"), 1043))
+                listOf(
+                    DriveMonthRow(YearMonth.of(2026, 8), 61, BigDecimal("842.3"), 1043),
+                    DriveMonthRow(YearMonth.of(2026, 6), 30, BigDecimal("410.5"), 520),
+                )
             every { chargeRepository.chargeMonthly(any(), any()) } returns
                 listOf(
                     ChargeMonthRow(YearMonth.of(2026, 8), 5, BigDecimal("186.4"), BigDecimal("201.7"), BigDecimal("52300")),
@@ -64,6 +67,13 @@ class TeslaVehicleServiceTest :
                 response.previous.cost shouldBe BigDecimal("39800")
                 response.previous.distanceKm shouldBe null
                 response.previous.driveCount shouldBe null
+            }
+
+            // 6월은 주행만 있다 — 충전 필드가 0이 아니라 null이어야 「기록이 없다」로 읽힌다.
+            Then("주행만 있는 달은 충전 필드가 null이다") {
+                val june = response.trend.first { it.yearMonth == YearMonth.of(2026, 6) }
+                june.driveCount shouldBe 30
+                june.cost shouldBe null
             }
 
             Then("추이는 기준 달 포함 12개월이고 오래된 것부터다") {
@@ -266,14 +276,19 @@ class TeslaVehicleServiceTest :
                 listOf(
                     // 약 3km 떨어진 것 — 반경 100m 밖이다.
                     GeofenceRow("회사", BigDecimal("37.59300"), BigDecimal("126.97800"), 100),
-                    // 같은 좌표 — 반경 안이다.
-                    GeofenceRow("집", BigDecimal("37.56650"), BigDecimal("126.97800"), 100),
+                    // 차 위치에서 약 11m — 반경 안이지만 더 멀다. 리스트의 첫 반경-안 항목이라
+                    // `firstOrNull`로 바꿔도 이게 나와 버린다.
+                    GeofenceRow("집", BigDecimal("37.56660"), BigDecimal("126.97800"), 500),
+                    // 차와 좌표가 같다 — 거리 0, 반경 안에서 가장 가깝다.
+                    GeofenceRow("동네", BigDecimal("37.56650"), BigDecimal("126.97800"), 500),
                 )
 
             val status = service.status()
 
-            Then("반경 안의 지오펜스 이름이 나온다") {
-                status.locationName shouldBe "집"
+            // 「집」(약 11m)과 「동네」(0m) 둘 다 반경 안이다 — `minByOrNull`이 더 가까운
+            // 「동네」를 골라야 한다. `firstOrNull`이면 리스트 순서상 「집」이 나와 버린다.
+            Then("반경 안의 지오펜스 중 가장 가까운 이름이 나온다") {
+                status.locationName shouldBe "동네"
             }
         }
 

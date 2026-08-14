@@ -122,7 +122,7 @@ class JdbcTeslaVehicleRepository(
                    )::date                            AS month_start,
                    COUNT(*)                           AS row_count,
                    ROUND(SUM(d.distance)::numeric, 1) AS distance_km,
-                   SUM(d.duration_min)                AS driving_min
+                   SUM(d.duration_min)::int           AS driving_min
               FROM drives d
              WHERE d.end_date IS NOT NULL
                AND d.start_date >= :start
@@ -142,7 +142,7 @@ class JdbcTeslaVehicleRepository(
         private const val LATEST_POSITION_WINDOW_SQL = """
             SELECT $POSITION_COLUMNS
               FROM positions p
-             WHERE p.date >= now() - interval '7 days'
+             WHERE p.date >= (now() AT TIME ZONE 'UTC') - interval '7 days'
              ORDER BY p.date DESC
              LIMIT 1
         """

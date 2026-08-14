@@ -29,13 +29,13 @@ class TeslaVehicleService(
         }
         val oldest = yearMonth.minusMonths((TREND_MONTHS - 1).toLong())
         val windowStart = TeslaTime.monthRangeUtc(oldest).first
-        val windowEnd = TeslaTime.monthRangeUtc(yearMonth).second
+        val (monthStart, monthEnd) = TeslaTime.monthRangeUtc(yearMonth)
+        val windowEnd = monthEnd
 
         val drives = vehicleRepository.driveMonthly(windowStart, windowEnd).associateBy { it.month }
         val charges = chargeRepository.chargeMonthly(windowStart, windowEnd).associateBy { it.month }
         val trend = (0 until TREND_MONTHS).map { statOf(oldest.plusMonths(it.toLong()), drives, charges) }
 
-        val (monthStart, monthEnd) = TeslaTime.monthRangeUtc(yearMonth)
         return TeslaSummaryResponse(
             month = statOf(yearMonth, drives, charges),
             previous = statOf(yearMonth.minusMonths(1), drives, charges),

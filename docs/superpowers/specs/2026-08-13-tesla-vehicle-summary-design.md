@@ -165,12 +165,13 @@ SELECT ... FROM positions
  ORDER BY date DESC LIMIT 1
 ```
 
-7일 안에 행이 없으면(장기 주차·차량 오프라인) 창 없이 한 번 더 돌린다. 두 번째 쿼리는 느려도
-되는 자리다 — 그때는 애초에 보여 줄 최신 값이 없다.
+7일 안에 행이 없으면(장기 주차·차량 오프라인) **PK 역순(`ORDER BY id DESC LIMIT 1`)으로 폴백한다.**
+`positions.id`는 serial이고 PK B-tree가 있어 즉시이며, TeslaMate가 시간 순으로만 append하므로
+최대 id가 최신 행이다.
 
-**배포 전에 실제 DB에서 `EXPLAIN ANALYZE`로 확인한다.** 라즈베리파이의 실제 행 수와 인덱스
-구성을 보지 않고 정한 수치라(7일), 결과에 따라 창을 조정하거나 `date` B-tree 인덱스 추가를 검토한다.
-**남의 DB에 인덱스를 만드는 것은 TeslaMate 업그레이드와 충돌하지 않는지 확인한 뒤에 한다.**
+**실제 DB에서 확인했다.** 창 없는 `ORDER BY date DESC`는 3,000만 행 규모에서 Parallel Seq Scan이
+걸려 **11.7초**, 7일 창은 **123ms**다. 그 차이가 「창이 비면 창 없이 한 번 더」 대신 PK 역순
+폴백을 택한 이유다 — 최신 id의 `date`가 `max(date)`와 일치하는 것도 실제 DB에서 확인했다.
 
 #### 컬럼 확인 — 끝났다
 
@@ -284,8 +285,6 @@ apps/daily-record/src/main/kotlin/com/toy/backend/tesla/
 
 ## 열린 항목
 
-- **`positions` 실행 계획.** 7일 창은 추정이다. 실제 행 수·BRIN 구성을 보고 조정한다.
-  **구현 중에 답이 오면 창 크기를 그때 정한다** — 코드 한 줄이라 나중에 바꿔도 싸다.
 - **`drives`의 진행 중 행.** 제외하기로 했지만, 주행이 끝나기 전에는 그 달 주행 km가 실제보다
   적게 보인다. 하루 수십 km 규모라 감수한다.
 
@@ -297,3 +296,7 @@ apps/daily-record/src/main/kotlin/com/toy/backend/tesla/
   지오펜스가 몇 개 수준이라 남의 DB의 확장에 의존할 이유가 없다.
 - ~~**`state` 값 목록.**~~ `states` 테이블은 `online`·`offline`·`asleep` 셋뿐이다.
   `charging`·`driving`은 열린 행에서 파생시킨다(위 「`state`는 테이블 값 위에 두 개를 얹는다」).
+- ~~**`positions` 실행 계획.**~~ 실제 DB에서 측정했다 — 3,000만 행 규모에서 창 없는
+  `ORDER BY date DESC`는 11.7초, 7일 창은 123ms다. 창이 비면 PK 역순
+  (`ORDER BY id DESC LIMIT 1`)으로 폴백한다. `positions.id`가 serial이고 PK B-tree가 있어
+  즉시이며, 최신 id의 `date`가 `max(date)`와 일치하는 것도 확인했다.

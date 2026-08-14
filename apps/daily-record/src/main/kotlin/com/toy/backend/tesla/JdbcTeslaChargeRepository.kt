@@ -40,7 +40,7 @@ class JdbcTeslaChargeRepository(
         teslaMateJdbcClient
             .sql(COUNT_MISSING_COST_SQL)
             .query { rs, _ ->
-                rs.getInt("count")
+                rs.getInt("row_count")
             }.single()
 
     override fun findDetail(id: Long): ChargeDetailRow? =
@@ -156,7 +156,7 @@ class JdbcTeslaChargeRepository(
         """
 
         private const val COUNT_MISSING_COST_SQL = """
-            SELECT COUNT(*) AS count
+            SELECT COUNT(*) AS row_count
               FROM charging_processes cp
              WHERE cp.end_date IS NOT NULL
                AND cp.cost IS NULL
@@ -220,10 +220,10 @@ class JdbcTeslaChargeRepository(
                        'month',
                        cp.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul'
                    )::date                     AS month_start,
-                   COUNT(*)                    AS row_count,
-                   SUM(cp.charge_energy_added) AS energy_added_kwh,
-                   SUM(cp.charge_energy_used)  AS energy_used_kwh,
-                   SUM(cp.cost)                AS cost
+                   COUNT(*)                                       AS row_count,
+                   ROUND(SUM(cp.charge_energy_added)::numeric, 1) AS energy_added_kwh,
+                   ROUND(SUM(cp.charge_energy_used)::numeric, 1)  AS energy_used_kwh,
+                   SUM(cp.cost)                                   AS cost
               FROM charging_processes cp
              WHERE cp.end_date IS NOT NULL
                AND cp.start_date >= :start
