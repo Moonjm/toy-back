@@ -166,10 +166,32 @@ class JdbcTeslaVehicleRepository(
          * TeslaMate는 `driving`·`charging`을 `states`에 저장하지 않는다
          * (`CREATE TYPE states_status AS ENUM ('online', 'offline', 'asleep')`).
          * 열린 행의 존재로 파생시킨다.
+         *
+         * **열린 행에 최근성 조건이 반드시 있어야 한다.** TeslaMate가 충전·주행 중에 죽거나 차가
+         * 오프라인이 되면 세션이 마감되지 않고 `end_date IS NULL`인 채로 영원히 남는다. 실제
+         * 이 DB에는 그렇게 쌓인 유령이 충전 6건(2021~2025년)·주행 12건(2022~2024년) 있었고,
+         * 조건 없는 `EXISTS`는 그중 하나만 있어도 **늘 「지금 충전 중」을 냈다** — `state`가
+         * 배포 이후 한 번도 맞은 적이 없었다.
+         *
+         * 24시간인 이유: 완속 오버나이트 충전이 10시간쯤이고 한 번에 24시간 연속 주행은 없다.
+         * 진짜 세션은 이 창을 넘지 않고, **새로 생긴 유령도 하루면 스스로 낫는다.**
+         *
+         * `charges`·`positions`에 최근 샘플이 들어왔는지 보는 편이 더 정밀하지만,
+         * `positions.drive_id`에 인덱스가 있는지 확인되지 않아 3,000만 행을 잘못 훑을 수 있다.
+         * 유령이 전부 8개월 이상 된 이 데이터에서는 시간 조건만으로 충분히 갈린다.
+         *
+         * `start_date`는 타임존 없는 컬럼에 든 UTC 값이라 `now() AT TIME ZONE 'UTC'`로 맞춘다 —
+         * `now()`(timestamptz)와 그냥 비교하면 세션 타임존만큼(KST면 9시간) 창이 짧아진다.
          */
         private const val ACTIVITY_SQL = """
-            SELECT EXISTS (SELECT 1 FROM charging_processes WHERE end_date IS NULL) AS charging,
-                   EXISTS (SELECT 1 FROM drives             WHERE end_date IS NULL) AS driving
+            SELECT EXISTS (SELECT 1
+                             FROM charging_processes
+                            WHERE end_date IS NULL
+                              AND start_date >= (now() AT TIME ZONE 'UTC') - interval '24 hours') AS charging,
+                   EXISTS (SELECT 1
+                             FROM drives
+                            WHERE end_date IS NULL
+                              AND start_date >= (now() AT TIME ZONE 'UTC') - interval '24 hours') AS driving
         """
 
         private const val GEOFENCES_SQL = """

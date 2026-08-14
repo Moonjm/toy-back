@@ -47,6 +47,9 @@ data class StateRow(
  * TeslaMate는 `driving`·`charging`을 `states`에 **저장하지 않는다**
  * (`CREATE TYPE states_status AS ENUM ('online', 'offline', 'asleep')`).
  * 열린 행에서 파생시킨다.
+ *
+ * **「열린」것만으로는 부족하고 「최근」이어야 한다.** TeslaMate가 죽으면 마감되지 않은 세션이
+ * 영원히 남는다 — 리포지토리 SQL이 24시간 창을 거는 이유다.
  */
 data class ActivityRow(
     val charging: Boolean,

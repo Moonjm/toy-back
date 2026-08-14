@@ -29,7 +29,12 @@ interface TeslaVehicleRepository {
     /** `states`의 열린 행(`end_date IS NULL`). 없으면 null. */
     fun findOpenState(): StateRow?
 
-    /** 열린 충전·주행 행의 존재 여부. `state` 파생에 쓴다. */
+    /**
+     * **최근 24시간 안에 시작된** 열린 충전·주행 행의 존재 여부. `state` 파생에 쓴다.
+     *
+     * 최근성 조건이 핵심이다 — TeslaMate가 죽으면 마감되지 않은 세션이 영원히 남아,
+     * 조건이 없으면 몇 년 전 유령 하나가 늘 「지금 충전 중」을 만든다.
+     */
     fun findActivity(): ActivityRow
 
     /** 전부 읽는다 — 지오펜스는 몇 개 수준이라 반경 판정을 서버에서 한다. */

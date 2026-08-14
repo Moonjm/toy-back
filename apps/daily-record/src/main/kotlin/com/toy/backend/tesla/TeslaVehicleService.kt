@@ -72,6 +72,9 @@ class TeslaVehicleService(
      *
      * 충전을 먼저 보는 이유: TeslaMate가 죽었다 살아나면 끝나지 않은 주행 행이 남을 수 있고,
      * 그 상태로 충전을 시작하면 두 조건이 동시에 참이 된다. 그때 사실에 가까운 쪽은 충전이다.
+     *
+     * **마감되지 않은 세션을 거르는 것은 리포지토리의 24시간 창이 한다.** 여기서는 이미 걸러진
+     * 결과를 받는다 — 그 창이 없으면 몇 년 전 유령 하나가 `charging`을 영원히 참으로 만든다.
      */
     private fun resolveState(
         activity: ActivityRow,
