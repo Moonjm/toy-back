@@ -5,7 +5,6 @@ import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
-import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -14,8 +13,6 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import java.time.LocalDate
-import java.time.YearMonth
 
 /**
  * TeslaMate DB를 직접 읽는다. TeslaMate에는 쓸 수 있는 데이터 API가 없다 —
@@ -30,22 +27,13 @@ import java.time.YearMonth
 class TeslaChargeController(
     private val service: TeslaChargeService,
 ) {
-    @GetMapping
-    @Operation(summary = "충전 내역 조회 — 연월(yearMonth) 또는 기간(from·to). 둘 중 하나는 필수")
-    fun list(
-        @Parameter(description = "조회 연월", example = "2026-08")
-        @RequestParam(required = false)
-        @DateTimeFormat(pattern = "yyyy-MM")
-        yearMonth: YearMonth?,
-        @Parameter(description = "시작일(포함)", example = "2026-06-01")
-        @RequestParam(required = false)
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-        from: LocalDate?,
-        @Parameter(description = "종료일(포함)", example = "2026-08-13")
-        @RequestParam(required = false)
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-        to: LocalDate?,
-    ): ResponseEntity<DataResponseBody<TeslaChargeListResponse>> = ResponseEntity.ok(DataResponseBody(service.list(yearMonth, from, to)))
+    @GetMapping("/missing-cost")
+    @Operation(summary = "금액이 빈 충전 조회 — 최근 한 달, 최신순")
+    fun missingCost(
+        @Parameter(description = "최대 건수 (1~200)", example = "50")
+        @RequestParam(required = false, defaultValue = "50")
+        limit: Int,
+    ): ResponseEntity<DataResponseBody<MissingCostResponse>> = ResponseEntity.ok(DataResponseBody(service.missingCost(limit)))
 
     @GetMapping("/{id}")
     @Operation(summary = "충전 상세 조회")

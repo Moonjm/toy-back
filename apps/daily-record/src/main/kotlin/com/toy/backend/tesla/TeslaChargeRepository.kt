@@ -8,15 +8,11 @@ import java.time.LocalDateTime
  * UTC 값을 넣기 때문이다. KST 변환은 서비스가 한다.
  */
 interface TeslaChargeRepository {
-    fun findList(
-        startUtc: LocalDateTime,
-        endUtcExclusive: LocalDateTime,
-    ): List<ChargeRow>
+    /** `cost IS NULL AND end_date IS NOT NULL`을 `start_date DESC`로. **최근 한 달**만 낸다. */
+    fun findMissingCost(limit: Int): List<ChargeRow>
 
-    fun summarize(
-        startUtc: LocalDateTime,
-        endUtcExclusive: LocalDateTime,
-    ): ChargeSummaryRow
+    /** `limit`과 무관한 전체 개수. */
+    fun countMissingCost(): Int
 
     /** 없으면 null. 진행 중(`end_date IS NULL`)인 행도 없는 것으로 본다. */
     fun findDetail(id: Long): ChargeDetailRow?
@@ -32,49 +28,19 @@ interface TeslaChargeRepository {
         id: Long,
         cost: BigDecimal,
     ): Int
+
+    /**
+     * 월별 충전 집계. **월 경계는 KST 기준**이다 — SQL이 UTC 값을 KST로 옮긴 뒤 자른다.
+     * 데이터가 없는 달은 행이 오지 않는다(0행이지 0값이 아니다).
+     */
+    fun chargeMonthly(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<ChargeMonthRow>
+
+    /** 그 달의 충전 목록. 진행 중은 제외하고 `start_date DESC`. */
+    fun findMonthCharges(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<ChargeRow>
 }
-
-data class ChargeRow(
-    val id: Long,
-    val startDateUtc: LocalDateTime,
-    val endDateUtc: LocalDateTime,
-    val durationMin: Int?,
-    val locationName: String?,
-    val energyAddedKwh: BigDecimal?,
-    /** 벽에서 뽑아쓴 양. 구버전 데이터에서 null일 수 있다. */
-    val energyUsedKwh: BigDecimal?,
-    val startBatteryLevel: Int?,
-    val endBatteryLevel: Int?,
-    val cost: BigDecimal?,
-)
-
-data class ChargeSummaryRow(
-    val count: Int,
-    val totalEnergyAddedKwh: BigDecimal?,
-    val totalCost: BigDecimal?,
-)
-
-data class ChargeDetailRow(
-    val id: Long,
-    val startDateUtc: LocalDateTime,
-    val endDateUtc: LocalDateTime,
-    val durationMin: Int?,
-    val energyAddedKwh: BigDecimal?,
-    val energyUsedKwh: BigDecimal?,
-    val startBatteryLevel: Int?,
-    val endBatteryLevel: Int?,
-    val startRatedRangeKm: BigDecimal?,
-    val endRatedRangeKm: BigDecimal?,
-    val outsideTempAvg: BigDecimal?,
-    val geofenceName: String?,
-    val address: String?,
-    val cost: BigDecimal?,
-)
-
-data class ChargeStatsRow(
-    val maxPowerKw: Int?,
-    val avgPowerKw: BigDecimal?,
-    val fastCharger: Boolean?,
-    val fastChargerBrand: String?,
-    val fastChargerType: String?,
-)

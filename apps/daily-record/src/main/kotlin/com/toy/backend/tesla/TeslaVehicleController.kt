@@ -1,0 +1,40 @@
+package com.toy.backend.tesla
+
+import com.toy.backend.common.response.DataResponseBody
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.tags.Tag
+import org.springframework.format.annotation.DateTimeFormat
+import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.RestController
+import java.time.YearMonth
+
+/**
+ * 충전(`/tesla/charges` 하위)과 차량(`/tesla/summary`·`/tesla/status`)을 갈라 둔다 —
+ * 읽는 테이블도 갱신 주기도 다르다. 한 파일에 다섯 엔드포인트를 두면 그 경계가 안 보인다.
+ *
+ * 인증은 기존 SecurityConfig가 요구한다. `PublicEndpoint`를 두지 않는다 —
+ * 주행 거리·위치·차량 상태는 충전 시각보다 더 직접적으로 생활을 드러낸다.
+ */
+@Tag(name = "차량", description = "TeslaMate 차량 요약·상태 API")
+@RestController
+@RequestMapping("/tesla")
+class TeslaVehicleController(
+    private val service: TeslaVehicleService,
+) {
+    @GetMapping("/summary")
+    @Operation(summary = "월별 차량 요약 — 주행·충전 합계, 직전 달, 12개월 추이, 그 달의 충전 목록")
+    fun summary(
+        @Parameter(description = "조회 연월", example = "2026-08")
+        @RequestParam(required = false)
+        @DateTimeFormat(pattern = "yyyy-MM")
+        yearMonth: YearMonth?,
+    ): ResponseEntity<DataResponseBody<TeslaSummaryResponse>> = ResponseEntity.ok(DataResponseBody(service.summary(yearMonth)))
+
+    @GetMapping("/status")
+    @Operation(summary = "차량 현재 상태 — 값과 그 값의 기준 시각(asOf)을 함께 낸다")
+    fun status(): ResponseEntity<DataResponseBody<TeslaStatusResponse>> = ResponseEntity.ok(DataResponseBody(service.status()))
+}

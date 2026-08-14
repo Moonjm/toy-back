@@ -7,11 +7,8 @@ import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.slot
 import java.math.BigDecimal
-import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.YearMonth
 
 /**
  * **TeslaMate는 UTC 값을 타임존 없는 timestamp 컬럼에 넣는다.** 경계를 KST로 받아 UTC로 바꾸지
@@ -22,104 +19,47 @@ class TeslaChargeServiceTest :
         val repository = mockk<TeslaChargeRepository>()
         val service = TeslaChargeService(repository)
 
-        Given("yearMonth로 조회할 때") {
-            val start = slot<LocalDateTime>()
-            val end = slot<LocalDateTime>()
-            every { repository.summarize(capture(start), capture(end)) } returns ChargeSummaryRow(0, null, null)
-            every { repository.findList(any(), any()) } returns emptyList()
-
-            service.list(YearMonth.of(2026, 8), null, null)
-
-            Then("KST 8월이 UTC 경계로 번역된다") {
-                start.captured shouldBe LocalDateTime.of(2026, 7, 31, 15, 0)
-                end.captured shouldBe LocalDateTime.of(2026, 8, 31, 15, 0)
-            }
-        }
-
-        Given("from·to로 조회할 때") {
-            val start = slot<LocalDateTime>()
-            val end = slot<LocalDateTime>()
-            every { repository.summarize(capture(start), capture(end)) } returns ChargeSummaryRow(0, null, null)
-            every { repository.findList(any(), any()) } returns emptyList()
-
-            service.list(null, LocalDate.of(2026, 6, 1), LocalDate.of(2026, 8, 13))
-
-            Then("to는 포함이고 그 다음 날 자정(KST)이 상한이 된다") {
-                start.captured shouldBe LocalDateTime.of(2026, 5, 31, 15, 0)
-                end.captured shouldBe LocalDateTime.of(2026, 8, 13, 15, 0)
-            }
-        }
-
-        Given("조회 결과가 있을 때") {
-            every { repository.summarize(any(), any()) } returns
-                ChargeSummaryRow(2, BigDecimal("60.5"), BigDecimal("18000"))
-            every { repository.findList(any(), any()) } returns
+        Given("금액이 빈 충전을 조회할 때") {
+            every { repository.countMissingCost() } returns 37
+            every { repository.findMissingCost(50) } returns
                 listOf(
                     ChargeRow(
-                        id = 3312,
+                        id = 3120,
                         startDateUtc = LocalDateTime.of(2026, 8, 11, 13, 14),
                         endDateUtc = LocalDateTime.of(2026, 8, 11, 17, 31),
                         durationMin = 257,
-                        locationName = "집",
+                        locationName = null,
                         energyAddedKwh = BigDecimal("48.2"),
                         energyUsedKwh = BigDecimal("51.8"),
                         startBatteryLevel = 18,
                         endBatteryLevel = 90,
-                        cost = BigDecimal("14100"),
+                        cost = null,
                     ),
                 )
 
-            val response = service.list(YearMonth.of(2026, 8), null, null)
+            val response = service.missingCost(50)
 
-            Then("시각이 UTC에서 KST로 되돌아온다") {
+            Then("항목이 KST로 실린다") {
+                response.items[0].id shouldBe 3120L
                 response.items[0].startedAt shouldBe LocalDateTime.of(2026, 8, 11, 22, 14)
-                response.items[0].endedAt shouldBe LocalDateTime.of(2026, 8, 12, 2, 31)
             }
 
-            Then("나머지 필드는 그대로 실린다") {
-                response.items[0].id shouldBe 3312L
-                response.items[0].locationName shouldBe "집"
-                response.items[0].cost shouldBe BigDecimal("14100")
-            }
-
-            // 목록에서도 kWh당 단가를 내려면 분모가 필요하다 — 그 분모는 벽에서 뽑아쓴 양이다.
-            Then("사용 전력도 목록에 실린다") {
-                response.items[0].energyUsedKwh shouldBe BigDecimal("51.8")
-            }
-
-            Then("합계는 리포지토리 집계를 그대로 싣는다") {
-                response.summary.count shouldBe 2
-                response.summary.totalEnergyAddedKwh shouldBe BigDecimal("60.5")
-                response.summary.totalCost shouldBe BigDecimal("18000")
+            // 배지에 「미등록 37건」을 띄우고 채울수록 줄어드는 것을 본다.
+            Then("totalCount는 limit과 무관한 전체 개수다") {
+                response.totalCount shouldBe 37
+                response.items.size shouldBe 1
             }
         }
 
-        Given("파라미터가 잘못됐을 때") {
-            Then("셋 다 없으면 400이다") {
-                shouldThrow<CustomException> { service.list(null, null, null) }
+        Given("limit이 범위 밖일 때") {
+            Then("0이면 400이다") {
+                shouldThrow<CustomException> { service.missingCost(0) }
                     .errorCode shouldBe ErrorCode.INVALID_REQUEST
             }
 
-            Then("yearMonth와 from이 함께 오면 400이다") {
-                shouldThrow<CustomException> {
-                    service.list(YearMonth.of(2026, 8), LocalDate.of(2026, 8, 1), null)
-                }.errorCode shouldBe ErrorCode.INVALID_REQUEST
-            }
-
-            Then("from만 오면 400이다") {
-                shouldThrow<CustomException> { service.list(null, LocalDate.of(2026, 8, 1), null) }
+            Then("201이면 400이다") {
+                shouldThrow<CustomException> { service.missingCost(201) }
                     .errorCode shouldBe ErrorCode.INVALID_REQUEST
-            }
-
-            Then("to만 오면 400이다") {
-                shouldThrow<CustomException> { service.list(null, null, LocalDate.of(2026, 8, 1)) }
-                    .errorCode shouldBe ErrorCode.INVALID_REQUEST
-            }
-
-            Then("from이 to보다 늦으면 400이다") {
-                shouldThrow<CustomException> {
-                    service.list(null, LocalDate.of(2026, 8, 14), LocalDate.of(2026, 8, 13))
-                }.errorCode shouldBe ErrorCode.INVALID_REQUEST
             }
         }
 
