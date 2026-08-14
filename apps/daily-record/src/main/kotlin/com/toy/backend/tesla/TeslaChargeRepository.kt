@@ -2,7 +2,6 @@ package com.toy.backend.tesla
 
 import java.math.BigDecimal
 import java.time.LocalDateTime
-import java.time.YearMonth
 
 /**
  * TeslaMate DB 접근. **행 타입의 시각은 전부 UTC다** — TeslaMate가 타임존 없는 timestamp에
@@ -45,50 +44,3 @@ interface TeslaChargeRepository {
         endUtcExclusive: LocalDateTime,
     ): List<ChargeRow>
 }
-
-data class ChargeRow(
-    val id: Long,
-    val startDateUtc: LocalDateTime,
-    val endDateUtc: LocalDateTime,
-    val durationMin: Int?,
-    val locationName: String?,
-    val energyAddedKwh: BigDecimal?,
-    /** 벽에서 뽑아쓴 양. 구버전 데이터에서 null일 수 있다. */
-    val energyUsedKwh: BigDecimal?,
-    val startBatteryLevel: Int?,
-    val endBatteryLevel: Int?,
-    val cost: BigDecimal?,
-)
-
-data class ChargeDetailRow(
-    val id: Long,
-    val startDateUtc: LocalDateTime,
-    val endDateUtc: LocalDateTime,
-    val durationMin: Int?,
-    val energyAddedKwh: BigDecimal?,
-    val energyUsedKwh: BigDecimal?,
-    val startBatteryLevel: Int?,
-    val endBatteryLevel: Int?,
-    val startRatedRangeKm: BigDecimal?,
-    val endRatedRangeKm: BigDecimal?,
-    val outsideTempAvg: BigDecimal?,
-    val geofenceName: String?,
-    val address: String?,
-    val cost: BigDecimal?,
-)
-
-data class ChargeStatsRow(
-    val maxPowerKw: Int?,
-    val avgPowerKw: BigDecimal?,
-    val fastCharger: Boolean?,
-    val fastChargerBrand: String?,
-    val fastChargerType: String?,
-)
-
-data class ChargeMonthRow(
-    val month: YearMonth,
-    val count: Int,
-    val energyAddedKwh: BigDecimal?,
-    val energyUsedKwh: BigDecimal?,
-    val cost: BigDecimal?,
-)

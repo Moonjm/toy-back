@@ -1,8 +1,6 @@
 package com.toy.backend.tesla
 
-import java.math.BigDecimal
 import java.time.LocalDateTime
-import java.time.YearMonth
 
 /**
  * TeslaMate의 주행·위치·상태를 읽는다. **전부 읽기 전용이다** — 쓰는 것은
@@ -37,51 +35,3 @@ interface TeslaVehicleRepository {
     /** 전부 읽는다 — 지오펜스는 몇 개 수준이라 반경 판정을 서버에서 한다. */
     fun findGeofences(): List<GeofenceRow>
 }
-
-data class DriveMonthRow(
-    val month: YearMonth,
-    val count: Int,
-    val distanceKm: BigDecimal?,
-    val drivingMin: Int?,
-)
-
-data class PositionRow(
-    val dateUtc: LocalDateTime,
-    val latitude: BigDecimal?,
-    val longitude: BigDecimal?,
-    val batteryLevel: Int?,
-    val usableBatteryLevel: Int?,
-    val ratedRangeKm: BigDecimal?,
-    val estRangeKm: BigDecimal?,
-    val odometerKm: Double?,
-    val insideTempC: BigDecimal?,
-    val outsideTempC: BigDecimal?,
-    val climateOn: Boolean?,
-    val tpmsFl: BigDecimal?,
-    val tpmsFr: BigDecimal?,
-    val tpmsRl: BigDecimal?,
-    val tpmsRr: BigDecimal?,
-)
-
-data class StateRow(
-    /** `online`·`offline`·`asleep`. **번역하지 않는다** — 상류가 값을 늘리면 그대로 올라온다. */
-    val state: String,
-    val startDateUtc: LocalDateTime,
-)
-
-/**
- * TeslaMate는 `driving`·`charging`을 `states`에 **저장하지 않는다**
- * (`CREATE TYPE states_status AS ENUM ('online', 'offline', 'asleep')`).
- * 열린 행에서 파생시킨다.
- */
-data class ActivityRow(
-    val charging: Boolean,
-    val driving: Boolean,
-)
-
-data class GeofenceRow(
-    val name: String,
-    val latitude: BigDecimal,
-    val longitude: BigDecimal,
-    val radiusM: Int,
-)
