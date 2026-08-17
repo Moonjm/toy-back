@@ -323,4 +323,66 @@ class TeslaVehicleServiceTest :
                 status.locationName shouldBe null
             }
         }
+
+        // 서비스가 하는 일은 행→표본 변환과 정렬뿐이다. 중앙값·월 경계·표본 조건은 전부 SQL이 한다.
+        Given("배터리 건강 표본이 하나도 없을 때") {
+            every { vehicleRepository.batteryHealthMonthly() } returns emptyList()
+
+            val response = service.batteryHealth()
+
+            // 빈 배열이어야 한다. null이면 앱이 「응답이 깨졌다」와 「표본이 없다」를 못 가른다.
+            Then("samples가 빈 배열이다") {
+                response.samples shouldBe emptyList()
+            }
+        }
+
+        Given("용량 표본이 없는 달이 섞여 있을 때") {
+            every { vehicleRepository.batteryHealthMonthly() } returns
+                listOf(
+                    BatteryHealthMonthRow(YearMonth.of(2026, 7), BigDecimal("527.1"), null, 1, 0),
+                    BatteryHealthMonthRow(YearMonth.of(2026, 8), BigDecimal("525.3"), BigDecimal("71.6"), 3, 1),
+                )
+
+            val response = service.batteryHealth()
+
+            // ΔSoC ≥ 40인 충전은 몇 달에 한 번이라 capacityKwh는 자주 null이다. 0이 아니다.
+            Then("용량 표본이 없는 달은 capacityKwh가 null이고 개수가 0이다") {
+                val july = response.samples.first { it.yearMonth == YearMonth.of(2026, 7) }
+                july.fullRangeKm shouldBe BigDecimal("527.1")
+                july.capacityKwh shouldBe null
+                july.sampleCount shouldBe 1
+                july.capacitySampleCount shouldBe 0
+            }
+
+            Then("용량 표본이 있는 달은 두 개수가 따로 온다") {
+                val august = response.samples.first { it.yearMonth == YearMonth.of(2026, 8) }
+                august.capacityKwh shouldBe BigDecimal("71.6")
+                august.sampleCount shouldBe 3
+                august.capacitySampleCount shouldBe 1
+            }
+        }
+
+        // SQL이 이미 ORDER BY month_start로 내지만, 정렬 책임을 응답 쪽에도 못 박는다 —
+        // 앱이 선을 그리는 순서가 여기에 달렸다.
+        Given("여러 달의 표본이 뒤섞여 올 때") {
+            every { vehicleRepository.batteryHealthMonthly() } returns
+                listOf(
+                    BatteryHealthMonthRow(YearMonth.of(2026, 8), BigDecimal("525.3"), null, 3, 0),
+                    BatteryHealthMonthRow(YearMonth.of(2025, 12), BigDecimal("534.0"), null, 2, 0),
+                    BatteryHealthMonthRow(YearMonth.of(2026, 7), BigDecimal("527.1"), null, 1, 0),
+                )
+
+            val response = service.batteryHealth()
+
+            Then("오래된 것부터 나온다") {
+                response.samples.map { it.yearMonth } shouldBe
+                    listOf(YearMonth.of(2025, 12), YearMonth.of(2026, 7), YearMonth.of(2026, 8))
+            }
+
+            // 표본이 없는 달(2026-01~06)은 배열에서 빠진다. trend가 빈 달을 채우는 것과 다르다 —
+            // 열화는 월 경계가 의미를 갖는 값이 아니라, 선을 이을지 끊을지는 앱이 정한다.
+            Then("표본이 없는 달은 자리를 채우지 않는다") {
+                response.samples.size shouldBe 3
+            }
+        }
     })
