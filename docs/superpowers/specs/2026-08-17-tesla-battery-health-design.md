@@ -117,7 +117,6 @@ WITH sample AS (
      WHERE cp.end_date IS NOT NULL
        AND cp.end_battery_level >= 80
        AND cp.end_rated_range_km IS NOT NULL
-       AND cp.start_battery_level IS NOT NULL
 )
 SELECT month_start,
        COUNT(*)                AS row_count,
@@ -133,6 +132,7 @@ SELECT month_start,
 
 - `percentile_cont`는 `double precision`을 받으므로 명시적으로 캐스팅한다. 결과는 `numeric`으로 되돌려 소수 한 자리로 반올림한다 — 부동소수 잡음이 응답에 그대로 나가지 않게 한다.
 - `percentile_cont`는 null 입력을 무시한다. 그 달에 용량 표본이 하나도 없으면 `capacity_kwh`가 null로 나오고, `COUNT(capacity_kwh)`가 0이 된다.
+- **`start_battery_level`을 공통 WHERE에서 거르지 않는다.** 만충 환산은 시작 레벨을 쓰지 않으므로 거기서 걸러 버리면 용량만의 조건이 만충 환산 표본까지 끌고 내려간다. 용량 쪽 `CASE`가 이미 null-safe다 — start가 null이면 `NULL >= 40`이 NULL이라 `WHEN`이 참이 되지 않고 `capacity_kwh`가 NULL로 떨어진다. **초안 SQL에는 이 조건이 공통 WHERE에 있었다**(2026-08-17 지적받아 제거). 이 차량 데이터에서 실제로 빠지던 행은 0건이었지만(유일한 null-start 행 `id=15`는 end 레벨·주행가능거리도 전부 null이라 다른 조건에 이미 걸린다), TeslaMate가 「end는 있고 start만 없는」 행을 쓰면 그 달의 열화 표본이 조용히 사라질 자리였다.
 - 만충 환산이 신차 기준을 넘는 값(냉간·BMS 재보정)은 나올 수 있다. **자르지 않고 그대로 낸다.**
 
 ## 성능

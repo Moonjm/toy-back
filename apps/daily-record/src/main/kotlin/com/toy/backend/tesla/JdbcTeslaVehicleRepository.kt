@@ -163,6 +163,11 @@ class JdbcTeslaVehicleRepository(
          *
          * 만충 환산이 신차 기준을 넘는 값(냉간·BMS 재보정)은 나올 수 있다. **자르지 않는다.**
          *
+         * **`start_battery_level`을 공통 WHERE에서 거르지 않는다.** 만충 환산은 시작 레벨을
+         * 쓰지 않으므로, 거기서 걸러 버리면 용량만의 조건이 만충 환산 표본까지 끌고 내려간다.
+         * 용량 쪽 `CASE`가 이미 null-safe다 — start가 null이면 `NULL >= 40`이 NULL이라 `WHEN`이
+         * 참이 되지 않고 `capacity_kwh`가 NULL로 떨어져 `COUNT`가 건너뛴다.
+         *
          * `charging_processes`는 수백 행이라 전체 스캔이라도 즉시 끝난다 — 창을 두지 않는다.
          */
         private const val BATTERY_HEALTH_MONTHLY_SQL = """
@@ -182,7 +187,6 @@ class JdbcTeslaVehicleRepository(
                  WHERE cp.end_date IS NOT NULL
                    AND cp.end_battery_level >= 80
                    AND cp.end_rated_range_km IS NOT NULL
-                   AND cp.start_battery_level IS NOT NULL
             )
             SELECT month_start,
                    COUNT(*)            AS row_count,
