@@ -96,7 +96,11 @@ data class BatteryHealthSample(
     val yearMonth: YearMonth,
     /** 만충 환산 주행거리(km). `end_battery_level >= 80`인 충전만 표본이다. */
     val fullRangeKm: BigDecimal,
-    /** 사용 가능 용량(kWh). ΔSoC ≥ 40인 충전이 그 달에 없으면 **null이다. 0이 아니다.** */
+    /**
+     * 사용 가능 용량(kWh). 표본 조건은 `end_battery_level >= 80`이면서 ΔSoC ≥ 40인 충전이다
+     * (용량 표본도 만충 환산 표본과 같은 공통 WHERE 위에 얹혀 있다). 그런 충전이 그 달에
+     * 없으면 **null이다. 0이 아니다.**
+     */
     val capacityKwh: BigDecimal?,
     val sampleCount: Int,
     val capacitySampleCount: Int,

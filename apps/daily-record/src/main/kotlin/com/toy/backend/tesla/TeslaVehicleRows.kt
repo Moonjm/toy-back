@@ -75,7 +75,10 @@ data class GeofenceRow(
 data class BatteryHealthMonthRow(
     val month: YearMonth,
     val fullRangeKm: BigDecimal,
-    /** 그 달에 ΔSoC ≥ 40인 충전이 없으면 null이다. `percentile_cont`가 null 입력을 무시한 결과다. */
+    /**
+     * `end_battery_level >= 80`이면서 ΔSoC ≥ 40인 충전이 그 달에 없으면 null이다.
+     * `percentile_cont`가 null 입력을 무시한 결과다.
+     */
     val capacityKwh: BigDecimal?,
     val sampleCount: Int,
     val capacitySampleCount: Int,

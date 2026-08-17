@@ -20,7 +20,7 @@ import java.time.YearMonth
  * 인증은 기존 SecurityConfig가 요구한다. `PublicEndpoint`를 두지 않는다 —
  * 주행 거리·위치·차량 상태는 충전 시각보다 더 직접적으로 생활을 드러낸다.
  */
-@Tag(name = "차량", description = "TeslaMate 차량 요약·상태 API")
+@Tag(name = "차량", description = "TeslaMate 차량 요약·상태·배터리 건강 API")
 @RestController
 @RequestMapping("/tesla")
 class TeslaVehicleController(
