@@ -111,3 +111,69 @@ data class BatteryHealthSample(
     val sampleCount: Int,
     val capacitySampleCount: Int,
 )
+
+/**
+ * 주행 인사이트 네 카드. **한 화면이 넷을 함께 그리므로 한 응답에 싣는다** — 나누면 같은 화면이
+ * 네 번 부르고 그중 셋은 나머지 하나를 기다린다(`/tesla/summary`가 목록과 합계를 함께 싣는 것과
+ * 같은 이유다).
+ *
+ * **나눗셈은 앱이 한다.** 서버는 버킷별 합만 낸다 — 전비는
+ * `distanceKm ÷ (ratedRangeUsedKm × efficiencyKwhPerKm)`이고, 분모가 0인 버킷 처리는 화면이
+ * 정한다. 1단계의 예외(중앙값)와 달리 여기는 합이라 나눌 이유가 없다.
+ */
+data class TeslaDriveInsightsResponse(
+    /** 받은 창을 되돌려 싣는다 — 앱이 무엇을 받았는지 알 수 있게. */
+    val months: Int,
+    /**
+     * `cars.efficiency` 그대로(kWh/km). **null일 수 있다** — TeslaMate가 아직 못 채운
+     * 경우다. 그때 앱은 전비 카드를 감춘다.
+     */
+    val efficiencyKwhPerKm: BigDecimal?,
+    /** 다섯 개가 늘 온다. 빈 버킷도 자리를 지킨다. */
+    val temperatureBuckets: List<TemperatureBucket>,
+    /** **0인 칸은 빠진다.** 168칸 중 대부분이 0이라 히트맵이 빈칸으로 그리면 된다. */
+    val driveTimes: List<DriveTime>,
+    /** 다섯 개가 늘 온다. */
+    val distanceBuckets: List<DistanceBucket>,
+    /** 지오펜스를 붙인 도착지만, 건수 많은 순 상위 10개. **주소는 내지 않는다.** */
+    val places: List<DrivePlace>,
+)
+
+/**
+ * 하한/상한이 없으면 null이다(`fromC: null`이 영하, `toC: null`이 30 이상).
+ * 경계는 **`fromC` 포함, `toC` 미만**이다.
+ *
+ * **빈 버킷의 숫자는 0이지 null이 아니다.** `MonthlyStat`이 「기록이 없다」를 null로 내는 것과
+ * 반대인데 뜻이 다르기 때문이다 — 여기서 0은 「그 온도대에 실제로 안 탔다」는 사실이고, 창 안의
+ * 모든 주행이 반드시 어느 한 버킷에 들어가므로 「기록이 없다」와 헷갈릴 자리가 없다.
+ */
+data class TemperatureBucket(
+    val fromC: Int?,
+    val toC: Int?,
+    /** `outside_temp_avg`가 없거나 주행가능거리 소모가 0 이하인 주행은 빠진 뒤의 건수다. */
+    val driveCount: Int,
+    val distanceKm: BigDecimal,
+    /** `start_rated_range_km - end_rated_range_km`의 합. kWh 환산은 앱이 한다. */
+    val ratedRangeUsedKm: BigDecimal,
+)
+
+/** `weekday`는 **0이 일요일**이다(PostgreSQL `dow` 그대로). 시각은 KST다. */
+data class DriveTime(
+    val weekday: Int,
+    val hour: Int,
+    val count: Int,
+)
+
+/** `toKm`이 null이면 상한이 없다는 뜻이다. 경계는 **`fromKm` 포함, `toKm` 미만**이다. */
+data class DistanceBucket(
+    val fromKm: Int,
+    val toKm: Int?,
+    val driveCount: Int,
+    val distanceKm: BigDecimal,
+)
+
+data class DrivePlace(
+    val name: String,
+    val driveCount: Int,
+    val distanceKm: BigDecimal,
+)
