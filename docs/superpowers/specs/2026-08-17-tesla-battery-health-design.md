@@ -69,12 +69,14 @@
 | 지표 | 조건 | 이유 |
 |---|---|---|
 | 만충 환산 주행거리 | `end_battery_level >= 80` | 낮은 SoC에서 100%로 환산하면 오차가 커진다. 주행가능거리가 1km 틀리면 80%에서는 1.25km, 20%에서는 5km 틀린 값이 나온다 |
-| 사용 가능 용량 | `end_battery_level >= 80` **AND** `end_battery_level - start_battery_level >= 40` | 짧은 보충은 분모가 작아 오차가 크다. 앞의 조건은 공통 WHERE에서 물려받는 것이지 용량만의 독립 조건이 아니다 — 아래 「표가 SQL과 어긋나 있었다」 참고 |
+| 사용 가능 용량 | `end_battery_level >= 80` **AND** `end_rated_range_km IS NOT NULL` **AND** `end_battery_level - start_battery_level >= 40` | 짧은 보충은 분모가 작아 오차가 크다. 앞의 둘은 공통 WHERE에서 물려받는 것이지 용량만의 독립 조건이 아니다 — 아래 「표가 SQL과 어긋나 있었다」 참고 |
 | 공통 | `end_date IS NOT NULL` | 진행 중인 충전은 값이 흔들린다 |
 
 두 조건이 달라 표본 수도 따로 낸다(`sampleCount`·`capacitySampleCount`). 한 숫자로 합치면 용량이 null인 이유가 「표본이 없어서」인지 「값이 없어서」인지 화면에서 갈리지 않는다.
 
 **표가 SQL과 어긋나 있었다(2026-08-17 발견):** 이 표는 처음에 용량 행의 조건을 ΔSoC ≥ 40만으로 적었다. 그런데 실제 SQL(`BATTERY_HEALTH_MONTHLY_SQL`)은 두 지표를 하나의 CTE 공통 WHERE 위에 얹으므로, 용량 표본도 `end_battery_level >= 80`을 함께 통과해야 한다 — 20%→70%(ΔSoC 50, end 70%) 같은 충전은 표만 보면 유효한 용량 표본이지만 실제로는 세지 않는다. SQL은 그대로 두기로 결정했다(80% 조건을 용량 쪽에서만 풀면 `full_range_km`도 CASE로 감싸야 해 `fullRangeKm`의 non-null 보장이 깨지고, 실효 차이는 3.5%뿐이다). 2단계 표를 작성할 때는 표를 SQL과 줄 단위로 대조한다.
+
+**`end_rated_range_km IS NOT NULL`도 같은 커플링이다(2026-08-17 지적받음).** 용량은 에너지와 SoC만으로 나오므로 주행가능거리가 있든 없든 낼 수 있는데, 공통 WHERE에 있어 함께 걸린다. 이것도 풀지 않았다 — 빼면 `full_range_km`이 null일 수 있게 되어 `COUNT(*)`를 `COUNT(full_range_km)`로 바꿔야 하고 `fullRangeKm`의 nullable이 앱까지 올라간다. 실측으로 이 커플링에 걸리는 용량 표본은 0건이었고, **「`charge_energy_added`는 있는데 `end_rated_range_km`만 없는」 행이 484건 중 하나도 없다** — TeslaMate가 세션을 마감할 때 둘을 함께 쓰기 때문이다. 유일한 null 행(`id=15`, 2021-10-10)은 네 컬럼이 전부 null이라 어느 조건에든 걸린다. **같은 계열의 지적이 세 번 나왔다는 것 자체가 신호다** — 2단계 SQL은 처음부터 지표별 조건을 `CASE` 안에 두고 공통 WHERE에는 진짜 공통인 것만 남긴다.
 
 **2026-08-17 실측:** 이 차량의 60개월 전 구간(2021-09~2026-08)을 실 DB에서 돌려 보니 `capacityKwh`가 null인 달이 하나도 없었다 — 공통 WHERE(`end_battery_level >= 80`)와 ΔSoC ≥ 40을 함께 채우는 충전이 매달 최소 1건씩은 있었다. 전체 누적으로는 range 표본 384건 대, 엔드포인트가 실제로 내는 capacity 표본 329건으로 약 14.3% 적다(공통 WHERE의 80% 조건을 빼고 셌던 341건은 실제 응답과 맞지 않는 잘못된 값이었다). 「자주 null이다」는 예측은 이 차량의 실데이터와 맞지 않는다 — null 처리 자체는 표본이 더 적은 차량·기간을 위한 옳은 방어이므로 코드는 그대로 두되, null이 흔하다는 전제로 화면을 설계하지 않는다.
 

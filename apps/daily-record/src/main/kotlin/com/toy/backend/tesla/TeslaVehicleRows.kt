@@ -76,8 +76,11 @@ data class BatteryHealthMonthRow(
     val month: YearMonth,
     val fullRangeKm: BigDecimal,
     /**
-     * `end_battery_level >= 80`이면서 ΔSoC ≥ 40인 충전이 그 달에 없으면 null이다.
-     * `percentile_cont`가 null 입력을 무시한 결과다.
+     * `end_battery_level >= 80`이고 `end_rated_range_km`이 있으면서 ΔSoC ≥ 40인 충전이
+     * 그 달에 없으면 null이다. `percentile_cont`가 null 입력을 무시한 결과다.
+     *
+     * **앞의 두 조건은 용량이 쓰지도 않는 것인데 공통 WHERE에서 물려받는다** — 푸는 대가로
+     * `fullRangeKm`의 non-null 보장이 깨진다. 자세한 근거는 `BatteryHealthSample.capacityKwh`.
      */
     val capacityKwh: BigDecimal?,
     val sampleCount: Int,

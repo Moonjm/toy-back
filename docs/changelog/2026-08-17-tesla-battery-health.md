@@ -27,9 +27,16 @@
 전부 null이라 다른 조건에 이미 걸린다), TeslaMate가 「end는 있고 start만 없는」 행을 쓰면 그 달의
 열화 표본이 조용히 사라졌을 것이다.
 
-용량 표본이 공통 WHERE의 `end_battery_level >= 80`을 함께 물려받는 것은 그대로 뒀다 — 그쪽은
-푸는 대가로 `fullRangeKm`의 non-null 보장이 깨진다. 대신 그 사실을 응답 DTO 주석과 설계 표에
-적었다.
+용량 표본이 공통 WHERE의 `end_battery_level >= 80`과 `end_rated_range_km IS NOT NULL`을 함께
+물려받는 것은 그대로 뒀다 — 그쪽은 푸는 대가로 `full_range_km`이 null일 수 있게 되어
+`fullRangeKm`의 non-null 보장이 깨지고, 그 nullable이 앱까지 올라간다. 실측으로 이 커플링에
+걸리는 용량 표본은 0건이고, **`charge_energy_added`는 있는데 `end_rated_range_km`만 없는 행이
+484건 중 하나도 없다** — TeslaMate가 세션 마감 때 둘을 함께 쓴다. 대신 그 사실을 응답 DTO
+주석과 설계 표에 적었다.
+
+**같은 계열의 지적이 세 번 나왔다.** 두 지표를 한 WHERE에 몰아 놓으면 어느 조건이 어느 지표의
+것인지 코드에서 안 보인다. 2단계 SQL은 처음부터 지표별 조건을 `CASE` 안에 두고 공통 WHERE에는
+진짜 공통인 것만 남긴다.
 
 ## 평균이 아니라 중앙값인 이유
 

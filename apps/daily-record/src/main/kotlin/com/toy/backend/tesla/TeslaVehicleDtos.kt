@@ -97,9 +97,15 @@ data class BatteryHealthSample(
     /** 만충 환산 주행거리(km). `end_battery_level >= 80`인 충전만 표본이다. */
     val fullRangeKm: BigDecimal,
     /**
-     * 사용 가능 용량(kWh). 표본 조건은 `end_battery_level >= 80`이면서 ΔSoC ≥ 40인 충전이다
-     * (용량 표본도 만충 환산 표본과 같은 공통 WHERE 위에 얹혀 있다). 그런 충전이 그 달에
-     * 없으면 **null이다. 0이 아니다.**
+     * 사용 가능 용량(kWh). 표본 조건은 `end_battery_level >= 80`이고 `end_rated_range_km`이
+     * 있으면서 ΔSoC ≥ 40인 충전이다. 그런 충전이 그 달에 없으면 **null이다. 0이 아니다.**
+     *
+     * **앞의 두 조건은 용량 지표가 쓰지도 않는 것인데 공통 WHERE에서 물려받는다.** 용량은
+     * 에너지와 SoC만으로 나오기 때문이다. 그래도 풀지 않은 이유는 대가에 있다 — 공통 WHERE에서
+     * 빼면 `full_range_km`이 null일 수 있게 되어 `fullRangeKm`의 non-null 보장이 깨지고, 그
+     * nullable이 앱까지 올라간다. 실측(2026-08-17)으로 재 보니 이 커플링 때문에 빠지는 용량
+     * 표본은 0건이었고, 「에너지는 있는데 주행가능거리만 없는」 행은 484건 중 하나도 없다 —
+     * TeslaMate가 둘을 세션 마감 때 함께 쓰기 때문이다.
      */
     val capacityKwh: BigDecimal?,
     val sampleCount: Int,
