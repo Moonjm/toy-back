@@ -62,3 +62,21 @@ data class GeofenceRow(
     val longitude: BigDecimal,
     val radiusM: Int,
 )
+
+/**
+ * 한 달치 배터리 열화 표본. **두 지표의 표본 조건이 달라 개수도 따로 낸다** —
+ * 한 숫자로 합치면 `capacityKwh`가 null인 이유가 「표본이 없어서」인지 「값이 없어서」인지
+ * 화면에서 갈리지 않는다.
+ *
+ * `fullRangeKm`은 non-null이다. 그 달에 행이 왔다는 것은 `end_battery_level >= 80`이고
+ * `end_rated_range_km IS NOT NULL`인 충전이 최소 하나 있었다는 뜻이라, 중앙값이 null이 될 길이
+ * WHERE에서 막혀 있다.
+ */
+data class BatteryHealthMonthRow(
+    val month: YearMonth,
+    val fullRangeKm: BigDecimal,
+    /** 그 달에 ΔSoC ≥ 40인 충전이 없으면 null이다. `percentile_cont`가 null 입력을 무시한 결과다. */
+    val capacityKwh: BigDecimal?,
+    val sampleCount: Int,
+    val capacitySampleCount: Int,
+)

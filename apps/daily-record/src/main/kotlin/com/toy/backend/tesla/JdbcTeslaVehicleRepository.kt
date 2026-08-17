@@ -86,6 +86,19 @@ class JdbcTeslaVehicleRepository(
                 )
             }.list()
 
+    override fun batteryHealthMonthly(): List<BatteryHealthMonthRow> =
+        teslaMateJdbcClient
+            .sql(BATTERY_HEALTH_MONTHLY_SQL)
+            .query { rs, _ ->
+                BatteryHealthMonthRow(
+                    month = YearMonth.from(rs.getObject("month_start", LocalDate::class.java)),
+                    fullRangeKm = rs.getBigDecimal("full_range_km"),
+                    capacityKwh = rs.getBigDecimal("capacity_kwh"),
+                    sampleCount = rs.getInt("row_count"),
+                    capacitySampleCount = rs.getInt("capacity_row_count"),
+                )
+            }.list()
+
     private fun ResultSet.toPositionRow() =
         PositionRow(
             dateUtc = getObject("date", LocalDateTime::class.java),
@@ -127,6 +140,58 @@ class JdbcTeslaVehicleRepository(
              WHERE d.end_date IS NOT NULL
                AND d.start_date >= :start
                AND d.start_date <  :end
+             GROUP BY month_start
+             ORDER BY month_start
+        """
+
+        /**
+         * **월 경계를 `end_date` 기준 KST로 자른다.** 측정 시점은 충전이 끝난 때다 —
+         * `start_date`로 자르면 자정을 넘긴 오버나이트 충전이 앞 달로 들어간다.
+         *
+         * **평균이 아니라 중앙값이다.** 급속 충전 직후에는 `rated_battery_range_km`가 실제보다
+         * 높거나 낮게 잡히는 일이 있고, 표본이 두세 개뿐인 달에서 평균은 그 한 건에 끌려간다.
+         *
+         * `percentile_cont`는 `double precision`을 받으므로 명시적으로 캐스팅하고, 결과는
+         * `numeric`으로 되돌려 소수 한 자리로 반올림한다 — 부동소수 잡음이 응답에 그대로
+         * 나가지 않게 한다. **null 입력은 무시하므로** 그 달에 용량 표본이 하나도 없으면
+         * `capacity_kwh`가 null이 되고 `COUNT(capacity_kwh)`가 0이 된다.
+         *
+         * **분모가 0이 될 길을 WHERE에서 막는다.** `end_battery_level >= 80`이라 0이 아니고,
+         * 용량 쪽은 ΔSoC ≥ 40이라 역시 0이 아니다. 이 저장소가 나눗셈을 앱에 맡겨 온
+         * 이유(0·null 처리를 서버가 정하면 화면이 따라야 한다)가 여기서는 생기지 않는다 —
+         * 중앙값은 표본 집합 위의 연산이라 나누기 전에는 낼 수 없어 예외로 둔다.
+         *
+         * 만충 환산이 신차 기준을 넘는 값(냉간·BMS 재보정)은 나올 수 있다. **자르지 않는다.**
+         *
+         * `charging_processes`는 수백 행이라 전체 스캔이라도 즉시 끝난다 — 창을 두지 않는다.
+         */
+        private const val BATTERY_HEALTH_MONTHLY_SQL = """
+            WITH sample AS (
+                SELECT date_trunc(
+                           'month',
+                           cp.end_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul'
+                       )::date AS month_start,
+                       cp.end_rated_range_km / cp.end_battery_level * 100 AS full_range_km,
+                       CASE
+                           WHEN cp.end_battery_level - cp.start_battery_level >= 40
+                            AND cp.charge_energy_added > 0
+                           THEN cp.charge_energy_added
+                                / (cp.end_battery_level - cp.start_battery_level) * 100
+                       END AS capacity_kwh
+                  FROM charging_processes cp
+                 WHERE cp.end_date IS NOT NULL
+                   AND cp.end_battery_level >= 80
+                   AND cp.end_rated_range_km IS NOT NULL
+                   AND cp.start_battery_level IS NOT NULL
+            )
+            SELECT month_start,
+                   COUNT(*)            AS row_count,
+                   COUNT(capacity_kwh) AS capacity_row_count,
+                   ROUND(percentile_cont(0.5) WITHIN GROUP (
+                       ORDER BY full_range_km::double precision)::numeric, 1) AS full_range_km,
+                   ROUND(percentile_cont(0.5) WITHIN GROUP (
+                       ORDER BY capacity_kwh::double precision)::numeric, 1)  AS capacity_kwh
+              FROM sample
              GROUP BY month_start
              ORDER BY month_start
         """
