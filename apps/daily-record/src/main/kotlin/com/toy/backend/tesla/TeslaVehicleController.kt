@@ -13,7 +13,8 @@ import org.springframework.web.bind.annotation.RestController
 import java.time.YearMonth
 
 /**
- * 충전(`/tesla/charges` 하위)과 차량(`/tesla/summary`·`/tesla/status`)을 갈라 둔다 —
+ * 충전(`/tesla/charges` 하위)과 차량(`/tesla/summary`·`/tesla/status`·`/tesla/battery-health`)을
+ * 갈라 둔다 —
  * 읽는 테이블도 갱신 주기도 다르다. 한 파일에 다섯 엔드포인트를 두면 그 경계가 안 보인다.
  *
  * 인증은 기존 SecurityConfig가 요구한다. `PublicEndpoint`를 두지 않는다 —
@@ -37,4 +38,15 @@ class TeslaVehicleController(
     @GetMapping("/status")
     @Operation(summary = "차량 현재 상태 — 값과 그 값의 기준 시각(asOf)을 함께 낸다")
     fun status(): ResponseEntity<DataResponseBody<TeslaStatusResponse>> = ResponseEntity.ok(DataResponseBody(service.status()))
+
+    /**
+     * 읽는 테이블은 `charging_processes`지만 **충전이 아니라 차량에 붙인다** —
+     * 이 값이 답하는 질문은 「차가 어떤 상태인가」다.
+     *
+     * 파라미터가 없다. 전 기간을 내고, 몇 개월을 그릴지는 앱이 정한다.
+     */
+    @GetMapping("/battery-health")
+    @Operation(summary = "월별 배터리 열화 표본 — 만충 환산 주행거리·사용 가능 용량의 중앙값과 표본 수")
+    fun batteryHealth(): ResponseEntity<DataResponseBody<TeslaBatteryHealthResponse>> =
+        ResponseEntity.ok(DataResponseBody(service.batteryHealth()))
 }
