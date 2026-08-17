@@ -113,11 +113,41 @@ class JdbcTeslaVehicleRepository(
                 )
             }.list()
 
-    override fun driveTimes(months: Int): List<DriveTimeRow> = TODO("Task 2")
+    override fun driveTimes(months: Int): List<DriveTimeRow> =
+        teslaMateJdbcClient
+            .sql(DRIVE_TIMES_SQL)
+            .param("months", months)
+            .query { rs, _ ->
+                DriveTimeRow(
+                    weekday = rs.getInt("weekday"),
+                    hour = rs.getInt("hour"),
+                    count = rs.getInt("row_count"),
+                )
+            }.list()
 
-    override fun driveDistanceBuckets(months: Int): List<DriveDistanceBucketRow> = TODO("Task 2")
+    override fun driveDistanceBuckets(months: Int): List<DriveDistanceBucketRow> =
+        teslaMateJdbcClient
+            .sql(DRIVE_DISTANCE_BUCKETS_SQL)
+            .param("months", months)
+            .query { rs, _ ->
+                DriveDistanceBucketRow(
+                    bucket = rs.getInt("bucket"),
+                    driveCount = rs.getInt("drive_count"),
+                    distanceKm = rs.getBigDecimal("distance_km"),
+                )
+            }.list()
 
-    override fun drivePlaces(months: Int): List<DrivePlaceRow> = TODO("Task 2")
+    override fun drivePlaces(months: Int): List<DrivePlaceRow> =
+        teslaMateJdbcClient
+            .sql(DRIVE_PLACES_SQL)
+            .param("months", months)
+            .query { rs, _ ->
+                DrivePlaceRow(
+                    name = rs.getString("name"),
+                    driveCount = rs.getInt("drive_count"),
+                    distanceKm = rs.getBigDecimal("distance_km"),
+                )
+            }.list()
 
     override fun carEfficiency(): BigDecimal? =
         teslaMateJdbcClient
@@ -281,6 +311,80 @@ class JdbcTeslaVehicleRepository(
               FROM cars c
              ORDER BY c.id
              LIMIT 1
+        """
+
+        /**
+         * **KST로 옮긴 뒤 뽑는다.** UTC로 뽑으면 아침 8시 출근이 밤 11시로 찍힌다 —
+         * 실측(2026-08-17)으로 최근 12개월 상위 칸이 월 08시·화 17시·월 17시·화 08시라
+         * 출퇴근이 그대로 보인다.
+         *
+         * `dow`는 **0이 일요일**이다. 앱도 그대로 읽는다.
+         *
+         * **0인 칸은 행이 오지 않는다.** 168칸 중 대부분이 0이고, 히트맵은 없는 칸을 빈칸으로
+         * 그리면 된다 — 온도·거리 버킷이 빈 자리를 지키는 것과 반대다. 그쪽은 축이 흔들리지만
+         * 히트맵은 그렇지 않다.
+         *
+         * **온도·주행가능거리 조건을 걸지 않는다.** 시간대는 둘 다 쓰지 않는다.
+         */
+        private const val DRIVE_TIMES_SQL = """
+            SELECT EXTRACT(dow  FROM d.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')::int AS weekday,
+                   EXTRACT(hour FROM d.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')::int AS hour,
+                   COUNT(*)                                                                          AS row_count
+              FROM drives d
+             WHERE d.end_date IS NOT NULL
+               AND d.distance > 0
+               $DRIVE_WINDOW
+             GROUP BY weekday, hour
+             ORDER BY weekday, hour
+        """
+
+        /**
+         * **버킷 경계는 `TeslaVehicleService.DISTANCE_BUCKETS`와 같은 숫자여야 한다.**
+         *
+         * 시각은 `start_date`로 뽑지만 기간 창은 `end_date`로 건다 — 창에 드는 기준을 네 쿼리가
+         * 같이 쓰게 하려는 것이고, 자정을 걸친 주행 한 건의 차이일 뿐이다.
+         *
+         * **온도·주행가능거리 조건을 걸지 않는다.** 거리 분포는 둘 다 쓰지 않는다.
+         */
+        private const val DRIVE_DISTANCE_BUCKETS_SQL = """
+            SELECT CASE WHEN d.distance <   5 THEN 1
+                        WHEN d.distance <  20 THEN 2
+                        WHEN d.distance <  50 THEN 3
+                        WHEN d.distance < 100 THEN 4
+                        ELSE 5
+                   END                                AS bucket,
+                   COUNT(*)                           AS drive_count,
+                   ROUND(SUM(d.distance)::numeric, 1) AS distance_km
+              FROM drives d
+             WHERE d.end_date IS NOT NULL
+               AND d.distance > 0
+               $DRIVE_WINDOW
+             GROUP BY bucket
+             ORDER BY bucket
+        """
+
+        /**
+         * `end_geofence_id`로 묶어 이름을 낸다. **주소는 내지 않는다** — 지오펜스가 없는
+         * 도착지는 `JOIN`에서 아예 빠진다. `/tesla/status`가 좌표와 주소를 싣지 않는 방침과 같다.
+         *
+         * **이 DB에는 `geofences`가 0행이라 오늘은 항상 빈 결과다.** 등록하는 순간 살아난다.
+         *
+         * 이름이 아니라 **id로 묶는다** — 같은 이름의 지오펜스가 둘일 수 있다.
+         *
+         * `geofences`는 수십 행이고 `drives`는 수천 행이라 해시 조인으로 즉시 끝난다.
+         */
+        private const val DRIVE_PLACES_SQL = """
+            SELECT g.name                            AS name,
+                   COUNT(*)                          AS drive_count,
+                   ROUND(SUM(d.distance)::numeric, 1) AS distance_km
+              FROM drives d
+              JOIN geofences g ON g.id = d.end_geofence_id
+             WHERE d.end_date IS NOT NULL
+               AND d.distance > 0
+               $DRIVE_WINDOW
+             GROUP BY g.id, g.name
+             ORDER BY drive_count DESC, distance_km DESC
+             LIMIT 10
         """
 
         private const val POSITION_COLUMNS = """
