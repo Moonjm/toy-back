@@ -1,5 +1,6 @@
 package com.toy.backend.tesla
 
+import java.math.BigDecimal
 import java.time.LocalDateTime
 
 /**
@@ -51,4 +52,40 @@ interface TeslaVehicleRepository {
      * `start_date`로 자르면 자정을 넘긴 오버나이트 충전이 앞 달로 들어간다.
      */
     fun batteryHealthMonthly(): List<BatteryHealthMonthRow>
+
+    /**
+     * 온도 버킷별 주행 합. **자기 지표가 쓰는 조건만 건다** —
+     * `outside_temp_avg IS NOT NULL`(어느 버킷에도 못 넣는다)과
+     * `ΔratedRange > 0`(넣으면 전비가 무한대가 된다)이다.
+     *
+     * **행이 온 버킷만 온다.** 빈 버킷의 자리를 채우는 것은 서비스가 한다.
+     */
+    fun driveTemperatureBuckets(months: Int): List<DriveTemperatureBucketRow>
+
+    /**
+     * 요일·시각별 주행 건수. **KST로 옮긴 뒤 뽑는다** — UTC로 뽑으면 아침 8시 출근이
+     * 밤 11시로 찍힌다. 0인 칸은 행이 오지 않는다(168칸 중 대부분이 0이다).
+     *
+     * 온도·주행가능거리 조건을 걸지 않는다. 시간대는 둘 다 쓰지 않는다.
+     */
+    fun driveTimes(months: Int): List<DriveTimeRow>
+
+    /** 거리 버킷별 주행 합. 온도·주행가능거리 조건을 걸지 않는다. 행이 온 버킷만 온다. */
+    fun driveDistanceBuckets(months: Int): List<DriveDistanceBucketRow>
+
+    /**
+     * 도착 지오펜스별 주행 합, 건수 많은 순 상위 10개.
+     *
+     * **지오펜스가 없는 도착지는 아예 세지 않는다** — `/tesla/status`가 좌표와 주소를 싣지 않는
+     * 방침과 같다. 이 DB에는 지오펜스가 0개라 **오늘은 항상 빈 리스트다.**
+     */
+    fun drivePlaces(months: Int): List<DrivePlaceRow>
+
+    /**
+     * `cars.efficiency`(kWh/km) 그대로. 차량이 1대라 파라미터가 없다.
+     *
+     * **null일 수 있다** — TeslaMate가 아직 못 채운 경우다. 그때 앱은 전비 카드를 감춘다.
+     * 차량 상수라 기간 창을 걸지 않는다.
+     */
+    fun carEfficiency(): BigDecimal?
 }

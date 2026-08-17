@@ -3,6 +3,7 @@ package com.toy.backend.tesla
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
+import java.math.BigDecimal
 import java.sql.ResultSet
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -98,6 +99,32 @@ class JdbcTeslaVehicleRepository(
                     capacitySampleCount = rs.getInt("capacity_row_count"),
                 )
             }.list()
+
+    override fun driveTemperatureBuckets(months: Int): List<DriveTemperatureBucketRow> =
+        teslaMateJdbcClient
+            .sql(DRIVE_TEMPERATURE_BUCKETS_SQL)
+            .param("months", months)
+            .query { rs, _ ->
+                DriveTemperatureBucketRow(
+                    bucket = rs.getInt("bucket"),
+                    driveCount = rs.getInt("drive_count"),
+                    distanceKm = rs.getBigDecimal("distance_km"),
+                    ratedRangeUsedKm = rs.getBigDecimal("rated_range_used_km"),
+                )
+            }.list()
+
+    override fun driveTimes(months: Int): List<DriveTimeRow> = TODO("Task 2")
+
+    override fun driveDistanceBuckets(months: Int): List<DriveDistanceBucketRow> = TODO("Task 2")
+
+    override fun drivePlaces(months: Int): List<DrivePlaceRow> = TODO("Task 2")
+
+    override fun carEfficiency(): BigDecimal? =
+        teslaMateJdbcClient
+            .sql(CAR_EFFICIENCY_SQL)
+            .query { rs, _ -> rs.getBigDecimal("efficiency") }
+            .optional()
+            .orElse(null)
 
     private fun ResultSet.toPositionRow() =
         PositionRow(
@@ -198,6 +225,62 @@ class JdbcTeslaVehicleRepository(
               FROM sample
              GROUP BY month_start
              ORDER BY month_start
+        """
+
+        /**
+         * **기간 창의 기준을 `(now() AT TIME ZONE 'UTC')`로 맞춘다.** `end_date`는 타임존 없는
+         * 컬럼에 든 UTC 값이라 `now()`(timestamptz)와 그냥 비교하면 세션 타임존만큼(KST면
+         * 9시간) 창이 어긋난다 — `ACTIVITY_SQL`이 같은 이유로 같은 꼴을 쓴다.
+         *
+         * 네 주행 쿼리가 이 한 줄을 함께 쓴다.
+         */
+        private const val DRIVE_WINDOW = """
+                   AND d.end_date >= (now() AT TIME ZONE 'UTC') - (:months * interval '1 month')
+        """
+
+        /**
+         * **버킷 경계는 `TeslaVehicleService.TEMPERATURE_BUCKETS`와 같은 숫자여야 한다** —
+         * 여기는 임계값으로, 거기는 응답 라벨(`fromC`·`toC`)로 쓴다. 한쪽만 고치면 응답의
+         * 라벨과 실제 집계가 어긋난다.
+         *
+         * **자기 지표가 쓰는 조건만 건다.** `outside_temp_avg IS NOT NULL`은 어느 버킷에도
+         * 넣을 수 없어서고, `ΔratedRange > 0`은 넣으면 전비가 무한대가 되기 때문이다.
+         * 실측(2026-08-17)으로 후자에 걸리는 주행이 5,055건 중 447건인데 431건이 차이가
+         * 정확히 0이고 평균 거리가 0.2km다 — 주행가능거리 표시가 움직이지 않을 만큼 짧은
+         * 주행이라 거리 손실은 사실상 없다.
+         *
+         * `distance`는 `double precision`이라 `::numeric`으로 올려 반올림한다. 주행가능거리는
+         * 이미 `numeric`이라 그대로 `ROUND`한다.
+         */
+        private const val DRIVE_TEMPERATURE_BUCKETS_SQL = """
+            SELECT CASE WHEN d.outside_temp_avg <  0 THEN 1
+                        WHEN d.outside_temp_avg < 10 THEN 2
+                        WHEN d.outside_temp_avg < 20 THEN 3
+                        WHEN d.outside_temp_avg < 30 THEN 4
+                        ELSE 5
+                   END                                                          AS bucket,
+                   COUNT(*)                                                     AS drive_count,
+                   ROUND(SUM(d.distance)::numeric, 1)                           AS distance_km,
+                   ROUND(SUM(d.start_rated_range_km - d.end_rated_range_km), 1) AS rated_range_used_km
+              FROM drives d
+             WHERE d.end_date IS NOT NULL
+               AND d.distance > 0
+               $DRIVE_WINDOW
+               AND d.outside_temp_avg IS NOT NULL
+               AND d.start_rated_range_km - d.end_rated_range_km > 0
+             GROUP BY bucket
+             ORDER BY bucket
+        """
+
+        /**
+         * 차량이 1대다(`cars` 1행). 두 대가 되면 두 차의 값이 조용히 섞이는데, 그것은
+         * `/tesla/summary`·`/tesla/status`의 모든 SQL이 이미 안고 있는 전제와 같다.
+         */
+        private const val CAR_EFFICIENCY_SQL = """
+            SELECT c.efficiency
+              FROM cars c
+             ORDER BY c.id
+             LIMIT 1
         """
 
         private const val POSITION_COLUMNS = """
