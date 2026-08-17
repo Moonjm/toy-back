@@ -57,12 +57,11 @@ class TeslaVehicleController(
     @GetMapping("/drive-insights")
     @Operation(summary = "주행 인사이트 — 온도별 전비·주행 시간대·거리 분포·자주 가는 곳")
     fun driveInsights(
-        @Parameter(description = "거슬러 볼 개월 수(1~60)", example = "12")
-        // `defaultValue`는 애노테이션 인자라 **리터럴이어야 한다.**
-        // `TeslaVehicleService.DEFAULT_MONTHS`와 같은 값을 유지한다 — 한쪽만 고치면
-        // 파라미터를 생략했을 때의 창이 서비스가 아는 기본값과 어긋난다.
-        @RequestParam(defaultValue = "12")
+        @Parameter(description = "거슬러 볼 개월 수(1~60)", example = DEFAULT_MONTHS)
+        @RequestParam(defaultValue = DEFAULT_MONTHS)
         months: Int,
-    ): ResponseEntity<DataResponseBody<TeslaDriveInsightsResponse>> =
-        ResponseEntity.ok(DataResponseBody(service.driveInsights(months)))
+    ): ResponseEntity<DataResponseBody<TeslaDriveInsightsResponse>> = ResponseEntity.ok(DataResponseBody(service.driveInsights(months)))
 }
+
+/** 애너테이션 인자라 컴파일 상수여야 해서 문자열이다. */
+private const val DEFAULT_MONTHS = "12"

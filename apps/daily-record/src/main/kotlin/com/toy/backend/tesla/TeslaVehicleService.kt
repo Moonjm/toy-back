@@ -221,7 +221,6 @@ class TeslaVehicleService(
         /** `/tesla/drive-insights`의 창. 기본 12개월, 1~60. */
         const val MIN_MONTHS = 1
         const val MAX_MONTHS = 60
-        const val DEFAULT_MONTHS = 12
 
         /**
          * 온도 버킷의 **응답 라벨**이다(℃). `bucket` 번호 → (`fromC`, `toC`).

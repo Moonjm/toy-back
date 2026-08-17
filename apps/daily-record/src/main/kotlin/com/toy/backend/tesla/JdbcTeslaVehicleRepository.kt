@@ -279,6 +279,12 @@ class JdbcTeslaVehicleRepository(
          * 정확히 0이고 평균 거리가 0.2km다 — 주행가능거리 표시가 움직이지 않을 만큼 짧은
          * 주행이라 거리 손실은 사실상 없다.
          *
+         * **`ELSE 5`는 `outside_temp_avg IS NOT NULL`이 앞에서 걸러 준다는 것에 기대고 있다.**
+         * 지금은 WHERE가 온도 미상 주행을 이미 뺐으니 `ELSE`는 「30℃ 이상」만 받는다. 나중에
+         * 누군가 「ELSE가 다 받으니 이 필터는 필요 없다」고 판단해 그 줄을 지우면, 온도 미상
+         * 주행이 전부 「30℃ 이상」 버킷으로 조용히 들어간다 — 값이 틀리는데 행 수는 늘어
+         * 정상처럼 보인다.
+         *
          * `distance`는 `double precision`이라 `::numeric`으로 올려 반올림한다. 주행가능거리는
          * 이미 `numeric`이라 그대로 `ROUND`한다.
          */
@@ -324,6 +330,9 @@ class JdbcTeslaVehicleRepository(
          * 그리면 된다 — 온도·거리 버킷이 빈 자리를 지키는 것과 반대다. 그쪽은 축이 흔들리지만
          * 히트맵은 그렇지 않다.
          *
+         * **시각은 `start_date`로 뽑지만 기간 창은 `end_date`로 건다** — 창에 드는 기준을 네
+         * 쿼리가 같이 쓰게 하려는 것이고, 자정을 걸친 주행 한 건의 차이일 뿐이다.
+         *
          * **온도·주행가능거리 조건을 걸지 않는다.** 시간대는 둘 다 쓰지 않는다.
          */
         private const val DRIVE_TIMES_SQL = """
@@ -340,9 +349,6 @@ class JdbcTeslaVehicleRepository(
 
         /**
          * **버킷 경계는 `TeslaVehicleService.DISTANCE_BUCKETS`와 같은 숫자여야 한다.**
-         *
-         * 시각은 `start_date`로 뽑지만 기간 창은 `end_date`로 건다 — 창에 드는 기준을 네 쿼리가
-         * 같이 쓰게 하려는 것이고, 자정을 걸친 주행 한 건의 차이일 뿐이다.
          *
          * **온도·주행가능거리 조건을 걸지 않는다.** 거리 분포는 둘 다 쓰지 않는다.
          */
@@ -371,6 +377,9 @@ class JdbcTeslaVehicleRepository(
          *
          * 이름이 아니라 **id로 묶는다** — 같은 이름의 지오펜스가 둘일 수 있다.
          *
+         * **`ORDER BY`의 마지막 열로 `g.name`을 둔다.** 건수·거리가 모두 같은 지오펜스가
+         * `LIMIT 10` 경계에 걸리면 tie-breaker 없이는 어느 것이 잘릴지 실행마다 달라질 수 있다.
+         *
          * `geofences`는 수십 행이고 `drives`는 수천 행이라 해시 조인으로 즉시 끝난다.
          */
         private const val DRIVE_PLACES_SQL = """
@@ -383,7 +392,7 @@ class JdbcTeslaVehicleRepository(
                AND d.distance > 0
                $DRIVE_WINDOW
              GROUP BY g.id, g.name
-             ORDER BY drive_count DESC, distance_km DESC
+             ORDER BY drive_count DESC, distance_km DESC, g.name
              LIMIT 10
         """
 

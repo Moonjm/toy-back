@@ -144,8 +144,13 @@ data class TeslaDriveInsightsResponse(
  * 경계는 **`fromC` 포함, `toC` 미만**이다.
  *
  * **빈 버킷의 숫자는 0이지 null이 아니다.** `MonthlyStat`이 「기록이 없다」를 null로 내는 것과
- * 반대인데 뜻이 다르기 때문이다 — 여기서 0은 「그 온도대에 실제로 안 탔다」는 사실이고, 창 안의
- * 모든 주행이 반드시 어느 한 버킷에 들어가므로 「기록이 없다」와 헷갈릴 자리가 없다.
+ * 반대인데 뜻이 다르기 때문이다 — 여기서 0은 「그 온도대에 실제로 안 탔다」는 사실이다.
+ *
+ * **`DistanceBucket`과 달리, 창 안의 모든 주행이 어느 한 버킷에 들어가는 것은 아니다.**
+ * `outside_temp_avg IS NULL`이거나 `ΔratedRange <= 0`인 주행은 `driveCount`에서 빠진 뒤 집계되므로
+ * (아래 참고) 어느 버킷에도 들어가지 않는다 — 온도 버킷 다섯 개의 합이 거리 버킷 다섯 개의 합보다
+ * 작을 수 있다. `months=1`처럼 표본이 적은 창에서는 「그 온도대에 탔지만 전부 Δrated≤0로 걸러진」
+ * 버킷이 `driveCount: 0`으로 보일 수 있다 — 그 온도대에 «기록이 없다»는 뜻이 아니다.
  */
 data class TemperatureBucket(
     val fromC: Int?,

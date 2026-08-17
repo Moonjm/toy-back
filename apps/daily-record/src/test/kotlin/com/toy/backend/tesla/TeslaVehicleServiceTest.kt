@@ -512,4 +512,29 @@ class TeslaVehicleServiceTest :
                     .errorCode shouldBe ErrorCode.INVALID_REQUEST
             }
         }
+
+        // months는 이 엔드포인트의 유일한 파라미터다. 스텁을 전부 any()로 두면 서비스가
+        // driveTimes(12)처럼 값을 하드코딩해도 테스트가 초록으로 남는다 — 12가 아닌 값으로
+        // 불러 네 리포지토리 메서드가 그 값을 그대로 받는지 캡처로 확인한다.
+        // `carEfficiency()`는 파라미터가 없어 대상이 아니다.
+        Given("months=3으로 조회할 때") {
+            val temperatureMonths = slot<Int>()
+            val timesMonths = slot<Int>()
+            val distanceMonths = slot<Int>()
+            val placesMonths = slot<Int>()
+            every { vehicleRepository.driveTemperatureBuckets(capture(temperatureMonths)) } returns emptyList()
+            every { vehicleRepository.driveTimes(capture(timesMonths)) } returns emptyList()
+            every { vehicleRepository.driveDistanceBuckets(capture(distanceMonths)) } returns emptyList()
+            every { vehicleRepository.drivePlaces(capture(placesMonths)) } returns emptyList()
+            every { vehicleRepository.carEfficiency() } returns null
+
+            service.driveInsights(3)
+
+            Then("months를 받는 네 리포지토리 메서드가 3을 그대로 받는다") {
+                temperatureMonths.captured shouldBe 3
+                timesMonths.captured shouldBe 3
+                distanceMonths.captured shouldBe 3
+                placesMonths.captured shouldBe 3
+            }
+        }
     })
