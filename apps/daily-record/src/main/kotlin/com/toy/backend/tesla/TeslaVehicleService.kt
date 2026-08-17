@@ -66,6 +66,31 @@ class TeslaVehicleService(
     }
 
     /**
+     * 쿼리 한 번이 전부다. **중앙값·월 경계(KST)·표본 조건은 SQL이 하고**, 여기서는 행을
+     * 표본으로 옮기고 오래된 것부터로 못 박기만 한다.
+     *
+     * 표본이 없는 달의 자리를 채우지 않는다 — `summary`의 `trend`와 반대다. 그쪽은
+     * 「그 달에 안 탔다」와 「기록이 없다」를 구분해야 하지만, 열화는 월 경계가 의미를 갖는
+     * 값이 아니다. 선을 이을지 끊을지는 앱이 정한다.
+     */
+    fun batteryHealth(): TeslaBatteryHealthResponse =
+        TeslaBatteryHealthResponse(
+            samples =
+                vehicleRepository
+                    .batteryHealthMonthly()
+                    .sortedBy { it.month }
+                    .map {
+                        BatteryHealthSample(
+                            yearMonth = it.month,
+                            fullRangeKm = it.fullRangeKm,
+                            capacityKwh = it.capacityKwh,
+                            sampleCount = it.sampleCount,
+                            capacitySampleCount = it.capacitySampleCount,
+                        )
+                    },
+        )
+
+    /**
      * `states` 테이블에는 `online`·`offline`·`asleep` 셋뿐이다
      * (`CREATE TYPE states_status AS ENUM (...)`). `charging`·`driving`은 열린 행에서 파생시킨다 —
      * 테이블 값만 내면 **충전 중에도 online으로만 나온다.**
