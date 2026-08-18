@@ -132,6 +132,46 @@ class JdbcTeslaChargeRepository(
                 )
             }.list()
 
+    override fun findTotals(): ChargeTotalsRow =
+        teslaMateJdbcClient
+            .sql(TOTALS_SQL)
+            .query { rs, _ ->
+                ChargeTotalsRow(
+                    chargeCount = rs.getInt("charge_count"),
+                    energyAddedKwh = rs.getBigDecimal("energy_added_kwh"),
+                    energyUsedKwh = rs.getBigDecimal("energy_used_kwh"),
+                    cost = rs.getBigDecimal("cost"),
+                    costMissingCount = rs.getInt("cost_missing_count"),
+                    costMissingEnergyUsedKwh = rs.getBigDecimal("cost_missing_energy_used_kwh"),
+                    firstChargedUtc = rs.getObject("first_charged_at", LocalDateTime::class.java),
+                    fastChargeCount = rs.getInt("fast_charge_count"),
+                    fastEnergyAddedKwh = rs.getBigDecimal("fast_energy_added_kwh"),
+                    fastEnergyUsedKwh = rs.getBigDecimal("fast_energy_used_kwh"),
+                    fastCost = rs.getBigDecimal("fast_cost"),
+                    fastCostMissingCount = rs.getInt("fast_cost_missing_count"),
+                    fastCostMissingEnergyUsedKwh = rs.getBigDecimal("fast_cost_missing_energy_used_kwh"),
+                )
+            }.single()
+
+    override fun findCurve(id: Long): List<ChargeCurveSampleRow> =
+        teslaMateJdbcClient
+            .sql(CURVE_SQL)
+            .param("id", id)
+            .query { rs, _ ->
+                ChargeCurveSampleRow(
+                    dateUtc = rs.getObject("date", LocalDateTime::class.java),
+                    powerKw = rs.nullableInt("charger_power"),
+                    batteryLevel = rs.nullableInt("battery_level"),
+                )
+            }.list()
+
+    override fun existsCompleted(id: Long): Boolean =
+        teslaMateJdbcClient
+            .sql(EXISTS_COMPLETED_SQL)
+            .param("id", id)
+            .query { rs, _ -> rs.getBoolean("found") }
+            .single()
+
     private fun ResultSet.nullableInt(column: String): Int? = getObject(column) as Int?
 
     companion object {
@@ -265,6 +305,98 @@ class JdbcTeslaChargeRepository(
                AND cp.start_date >= :start
                AND cp.start_date <  :end
              ORDER BY cp.start_date DESC
+        """
+
+        /**
+         * 두 SQL이 공유하는 **모집단 정의**다. 지표별 조건이 아니다 —
+         * 「무엇을 한 건의 충전으로 셀 것인가」이고, 두 응답의 건수가 서로 말이 되려면 같아야 한다.
+         *
+         * `charge_energy_added > 0 OR cost IS NOT NULL`인 이유: 케이블만 꽂았다 뺀 축퇴 세션은
+         * SoC가 그대로이고 kWh가 0이라 누적에 낄 이유가 없다(실측 2026-08-18로 11건).
+         * 다만 그중 `id=15`는 TeslaMate가 데이터를 통째로 잃었는데 **10,360원은 실제로 낸 돈**이라
+         * 남긴다 — 빼면 누적 비용이 실제 지출과 어긋난다.
+         */
+        private const val CHARGE_POPULATION = """
+                   cp.end_date IS NOT NULL
+               AND (cp.charge_energy_added > 0 OR cp.cost IS NOT NULL)
+        """
+
+        /**
+         * 세션 평균 전력(kW). **`charges`를 조인하지 않고 급속을 파생하는 식이다.**
+         *
+         * `charges`가 485,830행이라 세션마다 LATERAL로 `bool_or(fast_charger_present)`를 보면
+         * **실측 877ms**이고, 이 파생은 **9.6ms**다. 그러면서 474건 중 `fast_charger_present`와
+         * 어긋난 건이 **0건**이었다.
+         *
+         * 임계값 15kW가 안전한 이유: 실측 분포에 골이 있다 — 완속 432건이 전부 0~9.3kW이고
+         * 급속은 20.8kW부터다. 15는 그 한가운데다.
+         *
+         * `COALESCE(..., 0)`이 **평균을 못 내는 세션을 완속으로 보낸다.** `duration_min`이 null인
+         * `id=15` 하나뿐이고, 그래야 `급속 + 완속 = 합계` 불변식이 선다.
+         */
+        private const val FAST_CHARGE = """
+            COALESCE(cp.charge_energy_added / NULLIF(cp.duration_min, 0) * 60, 0) >= 15
+        """
+
+        /**
+         * 전 기간 누적. **한 번 훑어 합계와 급속분을 함께 낸다** — 완속은 서비스가 뺄셈으로 만든다.
+         *
+         * **급속/미입력을 WHERE로 깎지 않고 `FILTER`로 가른다.** 1단계에서 공통 WHERE에 두 지표의
+         * 조건을 섞어 같은 계열 지적을 세 번 받았다. `FILTER`는 모집단을 줄이지 않으므로 어느
+         * 지표가 다른 지표의 표본을 깎을 길이 구조적으로 없다.
+         *
+         * `cost`에 `SUM`을 그냥 거는 것이 맞다 — null을 건너뛰므로 **실제로 낸 돈**이 된다.
+         * 미입력분의 크기는 `cost_missing_*`이 따로 낸다.
+         *
+         * `charge_energy_added`·`charge_energy_used`·`cost`는 `numeric`이라 그대로 `ROUND` 한다.
+         */
+        private const val TOTALS_SQL = """
+            SELECT COUNT(*)                                                                AS charge_count,
+                   ROUND(SUM(cp.charge_energy_added), 1)                                   AS energy_added_kwh,
+                   ROUND(SUM(cp.charge_energy_used), 1)                                    AS energy_used_kwh,
+                   ROUND(SUM(cp.cost), 0)                                                  AS cost,
+                   COUNT(*) FILTER (WHERE cp.cost IS NULL)                                 AS cost_missing_count,
+                   ROUND(SUM(cp.charge_energy_used) FILTER (WHERE cp.cost IS NULL), 1)     AS cost_missing_energy_used_kwh,
+                   MIN(cp.start_date)                                                      AS first_charged_at,
+                   COUNT(*) FILTER (WHERE $FAST_CHARGE)                                    AS fast_charge_count,
+                   ROUND(SUM(cp.charge_energy_added) FILTER (WHERE $FAST_CHARGE), 1)       AS fast_energy_added_kwh,
+                   ROUND(SUM(cp.charge_energy_used)  FILTER (WHERE $FAST_CHARGE), 1)       AS fast_energy_used_kwh,
+                   ROUND(SUM(cp.cost)                FILTER (WHERE $FAST_CHARGE), 0)       AS fast_cost,
+                   COUNT(*) FILTER (WHERE $FAST_CHARGE AND cp.cost IS NULL)                AS fast_cost_missing_count,
+                   ROUND(SUM(cp.charge_energy_used)
+                         FILTER (WHERE $FAST_CHARGE AND cp.cost IS NULL), 1)               AS fast_cost_missing_energy_used_kwh
+              FROM charging_processes cp
+             WHERE $CHARGE_POPULATION
+        """
+
+        /**
+         * 세션 하나의 kW 샘플. `charges_charging_process_id_index`(B-tree)가 있어 즉시다.
+         *
+         * **줄이지 않는다.** 급속은 250~360개, 완속은 700~1,700개다(실측). 사용자 2명·하루 수십 건
+         * 규모에서 1,700행 JSON은 수십 KB이고, 서버가 줄이면 「어느 점을 버릴지」를 서버가 정하게
+         * 된다 — 이 저장소가 나눗셈을 앱에 맡겨 온 것과 같은 계열이다.
+         */
+        private const val CURVE_SQL = """
+            SELECT c.date,
+                   c.charger_power,
+                   c.battery_level
+              FROM charges c
+             WHERE c.charging_process_id = :id
+             ORDER BY c.date
+        """
+
+        /**
+         * 곡선의 404 판정. **`findCurve`가 빈 리스트를 주는 이유가 둘이라** 따로 본다 —
+         * 「없는 id·진행 중」과 「샘플이 없는 세션」이다. 앞은 404, 뒤는 빈 배열이어야 한다.
+         *
+         * 모집단 조건을 걸지 않는다 — 축퇴 세션이라도 그 id의 곡선을 물으면 「없다」가 아니라
+         * 「샘플이 없다」가 맞다.
+         */
+        private const val EXISTS_COMPLETED_SQL = """
+            SELECT EXISTS (SELECT 1
+                             FROM charging_processes cp
+                            WHERE cp.id = :id
+                              AND cp.end_date IS NOT NULL) AS found
         """
     }
 }
