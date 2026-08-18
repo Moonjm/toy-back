@@ -94,9 +94,27 @@ data class ChargeCostRequest(
  * **주유비 대비 절감액을 싣지 않는다** — 유가 상수가 필요한데 서버에 두지 않는다(신차 기준선과 같은 이유).
  */
 data class TeslaChargeTotalsResponse(
+    /**
+     * `/tesla/summary`의 `MonthlyStat.chargeCount`·`cost`와도 다른 수다 — 그쪽은
+     * `end_date IS NOT NULL`만 걸어 축퇴 세션을 포함하고(484 기준), 이쪽은 모집단에서 뺀다
+     * (474 기준). `missing-cost` 목록·배지에도 축퇴 세션이 올라올 수 있지만 이 `costMissingCount`
+     * 에는 없다.
+     */
     val chargeCount: Int,
     val energyAddedKwh: BigDecimal?,
-    /** 벽에서 뽑아쓴 양. **kWh당 단가의 분모는 이쪽이다** — `ChargeListItem`이 정해 둔 규칙이다. */
+    /**
+     * 벽에서 뽑아쓴 양. **kWh당 단가의 분모는 이쪽이다** — `ChargeListItem`이 정해 둔 규칙이다.
+     *
+     * **`fast.energyUsedKwh`(1329.0)가 `fast.energyAddedKwh`(1358.4)보다 작게 나올 수 있다.**
+     * 벽에서 뽑아쓴 양이 배터리에 들어간 양보다 작은 것은 물리적으로 불가능한데, 응답이 그렇게
+     * 나간다 — 원인은 `used`가 NULL인 세션 2건(`id=14`·`id=29`, 2021년 급속)의 `added`만 합에
+     * 들어가서다(2026-08-18 실측). 개별 행이 뒤집힌 것은 42건 중 0건이고, 그 둘을 빼면 급속도
+     * 4.8% 손실로 완속(4.9%)과 같다 — TeslaMate가 급속을 과소 기록하는 것이 아니라 NULL 2건 때문에
+     * 분자·분모의 모집단이 어긋난 것이다.
+     *
+     * **그러니 이 값들로 「충전 효율」(added ÷ used)을 내지 마라.** 급속 카드가 102.2%를 표시하게
+     * 된다.
+     */
     val energyUsedKwh: BigDecimal?,
     /** **실제로 낸 돈이다.** `SUM`이 null을 건너뛰므로 금액이 빈 세션은 여기 없다. */
     val cost: BigDecimal?,
@@ -111,12 +129,21 @@ data class TeslaChargeTotalsResponse(
     val costMissingCount: Int,
     /**
      * 금액이 빈 세션들의 `energyUsedKwh` 합. **앱이 단가를 옳게 내는 분모다:**
-     * `cost ÷ (energyUsedKwh − costMissingEnergyUsedKwh)`.
+     * `cost ÷ (energyUsedKwh − costMissingEnergyUsedKwh)`. **분모가 0일 수 있다** —
+     * 전부 무료 충전이면 `energyUsedKwh == costMissingEnergyUsedKwh`다. 0으로 나누는 처리는
+     * 서버가 정하지 않는다 — 앱이 정한다.
      *
      * 이 값을 빼지 않으면 단가가 낮게 나온다 — 실측(2026-08-18)으로 200.3 vs 211.6원/kWh, 5.6% 차이다.
+     *
+     * **이 공식의 분모는 대수적으로 `SUM(used) FILTER (cost IS NOT NULL)`과 같은데, `cost`는 있고
+     * `used`가 NULL인 세션은 분자에만 들어가고 분모에는 0으로 들어간다.** 즉 이 공식으로도 단가
+     * 분모가 완전히 정확하지는 않다 — 실측(2026-08-18)으로 그런 세션이 1건(`id=15`, 10,360원)이고,
+     * 단가는 211.64 vs 211.04원/kWh로 0.28% 차이다. 이 저장소는 분모 처리를 앱에 맡겨 왔고
+     * 0.28%는 계약을 바꿀 크기가 아니라 코드는 그대로 둔다.
      */
     val costMissingEnergyUsedKwh: BigDecimal?,
-    /** 「언제부터의 누적인가」. KST 날짜다. 기록이 없으면 null이다. */
+    /** 「언제부터의 누적인가」. **모집단(474건) 기준 MIN이다** — 생애 첫 플러그인이 축퇴 세션이었다면
+     *  그만큼 밀린다. KST 날짜다. 기록이 없으면 null이다. */
     val firstChargedAt: LocalDate?,
     /** 세션 평균 전력 15kW 이상. 충전기 종류가 아니라 **그 세션의 결과**로 가른 값이다. */
     val fast: ChargeTotalsBreakdown,

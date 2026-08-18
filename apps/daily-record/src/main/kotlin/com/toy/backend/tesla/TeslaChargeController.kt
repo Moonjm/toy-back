@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController
  * 인증은 기본 SecurityConfig가 요구한다. `PublicEndpoint`를 두지 않는다 —
  * 충전 시각·장소·금액은 생활 패턴이 그대로 드러나는 값이다.
  */
-@Tag(name = "충전 내역", description = "TeslaMate 충전 누적과 곡선 조회 API")
+@Tag(name = "충전 내역", description = "TeslaMate 충전 내역·누적·곡선 API")
 @RestController
 @RequestMapping("/tesla/charges")
 class TeslaChargeController(

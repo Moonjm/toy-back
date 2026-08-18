@@ -315,6 +315,14 @@ class JdbcTeslaChargeRepository(
          * SoC가 그대로이고 kWh가 0이라 누적에 낄 이유가 없다(실측 2026-08-18로 11건).
          * 다만 그중 `id=15`는 TeslaMate가 데이터를 통째로 잃었는데 **10,360원은 실제로 낸 돈**이라
          * 남긴다 — 빼면 누적 비용이 실제 지출과 어긋난다.
+         *
+         * **이 조건은 문법상 `charge_energy_added`(지표 A)의 컬럼으로 쓰여 있어서, 원리상 다른
+         * 지표(`charge_energy_used`, 지표 B)의 표본을 깎을 수 있는 모양이다.** 실측으로 그렇지
+         * 않다는 것을 확인했다(2026-08-18) — 이 조건으로 제외되는 10건 중 `charge_energy_used > 0`인
+         * 것이 0건이고, 그로 인한 손실이 0.00 kWh다. 즉 이 조건은 문법상 `charge_energy_added`의
+         * 조건이지만 실제로 `charge_energy_used` 표본을 깎지 않는다. 이걸 적어 두는 이유는 1단계에서
+         * 「지표 A의 조건이 지표 B의 표본을 깎는다」로 같은 계열 지적을 세 번 받았고, 이 자리가 그
+         * 지적이 다시 발화할 수 있는 모양이라 재 봤기 때문이다.
          */
         private const val CHARGE_POPULATION = """
                    cp.end_date IS NOT NULL
