@@ -345,7 +345,11 @@ SQL은 합계와 급속분만 낸다. 완속은 서비스가 **뺄셈으로** �
 
 ## 실측 (2026-08-18)
 
-전량 실 DB(psql)에서 확인한 값이다. 상세 과정은 `.superpowers/sdd/2026-08-18-tesla-charge-totals-curve/task-4-report.md` 참고.
+전량 실 DB(psql)에서 확인한 값이다.
+
+**`GET /tesla/charges/{id}/curve`는 배포 후 실호출로도 확인했다(2026-08-18).** `/tesla/charges/409/curve` 응답을 DB와 대 보니 샘플 **1,084개**(줄이지 않았다), 첫 샘플 `2025-10-18T09:42:41.359`·끝 샘플 `2025-10-18T15:54:20.931`이 DB의 KST 값과 밀리초까지 같고 SoC 8→55도 일치한다. **이 한 번이 닫은 것은 JDBC 매핑이다** — SQL은 psql로 검증했지만 `charges.date`를 `getObject(LocalDateTime)`로, `charger_power`·`battery_level`을 `getObject as Int?`로 읽는 경로는 그때까지 안 돌았다. 특히 **마지막 샘플의 `powerKw`가 `0`으로 나온 것**이 `getObject`를 쓴 판단의 증거다 — 이 세션은 `charger_power`가 NULL인 샘플이 0건이고 0인 샘플이 정확히 1건인데, `rs.getInt`였다면 둘이 구분되지 않았다.
+
+**`GET /tesla/charges/totals`는 아직 실호출로 확인하지 않았다.** 값은 psql로 대조됐고, 남은 것은 `fast.chargeCount + slow.chargeCount == chargeCount` 불변식이 실응답에서도 서는지 한 번 보는 것뿐이다.
 
 | 필드 | 값 |
 |---|---|

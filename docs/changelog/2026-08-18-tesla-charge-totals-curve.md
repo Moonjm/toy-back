@@ -140,8 +140,7 @@ NULL 2건 때문에 급속 그룹의 분자·분모 모집단이 어긋난 것�
 
 ## 실측(2026-08-18, `psql`로 실 DB에 직접 확인)
 
-배포 전 실 DB에서 두 SQL을 코드에서 그대로 가져와 돌려 결과를 눈으로 봤다(자세한 과정은
-`.superpowers/sdd/2026-08-18-tesla-charge-totals-curve/task-4-report.md` 참고).
+배포 전 실 DB에서 두 SQL을 코드에서 그대로 가져와 돌려 결과를 눈으로 봤다. 아래 값이 그때 본 것이다.
 
 - **`TOTALS_SQL`이 기대값과 정확히 일치했다.** `charge_count` 474, `energy_added_kwh`/
   `energy_used_kwh` 17442.0/18197.2, `cost` 3644562, `cost_missing_count`/
@@ -158,9 +157,21 @@ NULL 2건 때문에 급속 그룹의 분자·분모 모집단이 어긋난 것�
 - **`EXISTS_COMPLETED_SQL`이 세 경우 모두 기대와 일치했다.** 없는 id(999999) → false, 완속 세션
   (490) → true, **`id=15` → true**. `id=15`가 true이므로 「세션은 있는데 샘플이 없다」가 빈 배열로
   나가고 404가 되지 않는다는 설계 전제가 확인됐다.
-- **엔드포인트 실호출은 이번에도 못 했다.** 로컬 `daily-record` DB·스키마는 이미 있고 계정(`admin`,
-  `id=1`)도 있으나, 비밀번호를 몰라 정상 로그인으로 JWT를 발급받을 수 없었다. 인증 우회나 계정
-  신규 생성은 하지 않았다 — 1·2단계와 같은 사유로 배포 후 확인할 일로 남긴다.
+- **`GET /tesla/charges/{id}/curve`는 배포 후 실호출로 확인됐다(2026-08-18).** 검증 단계에서는
+  로컬 계정 비밀번호를 몰라 JWT를 못 받아 psql로만 돌렸는데, 그 뒤 차주가 `/tesla/charges/409/curve`를
+  직접 호출해 응답을 받았다. 그 응답을 DB와 대 보니 전부 맞는다 — 샘플 **1,084개**(줄이지 않았다),
+  첫 샘플 `2025-10-18T09:42:41.359`·끝 샘플 `2025-10-18T15:54:20.931`이 DB의 KST 값과 밀리초까지
+  같고, SoC 8→55도 일치한다.
+
+  **이 한 번이 닫은 것은 JDBC 매핑이다.** SQL은 psql로 검증했지만 `charges.date`를
+  `getObject(LocalDateTime)`로, `charger_power`·`battery_level`을 `getObject as Int?`로 읽는 경로는
+  그때까지 한 번도 안 돌았다. 특히 **마지막 샘플의 `powerKw`가 `0`으로 나온 것**이 `getObject`를 쓴
+  판단의 증거다 — 이 세션은 `charger_power`가 NULL인 샘플이 0건이고 0인 샘플이 정확히 1건(충전이
+  끝나는 시점)인데, `rs.getInt`였다면 둘이 구분되지 않았다.
+
+- **`GET /tesla/charges/totals`는 아직 실호출로 확인하지 않았다.** 확인할 것은 하나다 —
+  `fast.chargeCount + slow.chargeCount == chargeCount` 불변식이 실응답에서도 서는지. 값 자체는
+  psql로 이미 대조됐다.
 
 ## 보류 — `positions`: 인덱스는 풀렸고 다운샘플링이 새 선행 조건이다
 

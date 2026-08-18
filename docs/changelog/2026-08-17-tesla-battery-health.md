@@ -82,8 +82,7 @@
 
 ## 실측(2026-08-17, `psql`로 실 DB에 직접 확인)
 
-배포 전 실 DB에서 설계의 SQL을 그대로 돌려 결과를 눈으로 봤다(자세한 과정은
-`.superpowers/sdd/2026-08-17-tesla-battery-health/task-4-report.md` 참고).
+배포 전 실 DB에서 설계의 SQL을 그대로 돌려 결과를 눈으로 봤다. 아래 값이 그때 본 것이다.
 
 - **60개월 행이 나온다(2021-09 ~ 2026-08).** 최근 달(2026-08)은 `fullRangeKm = 525.5`,
   `capacityKwh = 71.8`, `sampleCount = 5`, `capacitySampleCount = 4` — 설계 문서가 잡은 실측
