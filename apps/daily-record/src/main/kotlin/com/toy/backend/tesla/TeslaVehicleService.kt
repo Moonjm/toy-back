@@ -3,6 +3,7 @@ package com.toy.backend.tesla
 import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.exception.CustomException
 import org.springframework.stereotype.Service
+import java.math.BigDecimal
 import java.time.YearMonth
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -91,6 +92,56 @@ class TeslaVehicleService(
         )
 
     /**
+     * 쿼리 다섯 번이 전부다. **한 SQL에 몰지 않는다** — 서로 다른 GROUP BY 넷을 UNION으로
+     * 붙였다가 다시 갈라 읽어야 한다. `drives`는 5,000행대라 다섯 번 훑어도 싸다.
+     *
+     * 서비스가 하는 일은 **빈 버킷 자리 채움과 행→DTO 변환뿐**이다. 합계·KST 변환·정렬은
+     * SQL이 한다.
+     */
+    fun driveInsights(months: Int): TeslaDriveInsightsResponse {
+        if (months !in MIN_MONTHS..MAX_MONTHS) {
+            throw CustomException(ErrorCode.INVALID_REQUEST, "months는 $MIN_MONTHS~$MAX_MONTHS 사이여야 합니다")
+        }
+
+        val temperatures = vehicleRepository.driveTemperatureBuckets(months).associateBy { it.bucket }
+        val distances = vehicleRepository.driveDistanceBuckets(months).associateBy { it.bucket }
+
+        return TeslaDriveInsightsResponse(
+            months = months,
+            efficiencyKwhPerKm = vehicleRepository.carEfficiency(),
+            temperatureBuckets =
+                TEMPERATURE_BUCKETS.map { (bucket, bounds) ->
+                    val row = temperatures[bucket]
+                    TemperatureBucket(
+                        fromC = bounds.first,
+                        toC = bounds.second,
+                        driveCount = row?.driveCount ?: 0,
+                        distanceKm = row?.distanceKm ?: BigDecimal.ZERO,
+                        ratedRangeUsedKm = row?.ratedRangeUsedKm ?: BigDecimal.ZERO,
+                    )
+                },
+            driveTimes =
+                vehicleRepository.driveTimes(months).map {
+                    DriveTime(weekday = it.weekday, hour = it.hour, count = it.count)
+                },
+            distanceBuckets =
+                DISTANCE_BUCKETS.map { (bucket, bounds) ->
+                    val row = distances[bucket]
+                    DistanceBucket(
+                        fromKm = bounds.first,
+                        toKm = bounds.second,
+                        driveCount = row?.driveCount ?: 0,
+                        distanceKm = row?.distanceKm ?: BigDecimal.ZERO,
+                    )
+                },
+            places =
+                vehicleRepository.drivePlaces(months).map {
+                    DrivePlace(name = it.name, driveCount = it.driveCount, distanceKm = it.distanceKm)
+                },
+        )
+    }
+
+    /**
      * `states` 테이블에는 `online`·`offline`·`asleep` 셋뿐이다
      * (`CREATE TYPE states_status AS ENUM (...)`). `charging`·`driving`은 열린 행에서 파생시킨다 —
      * 테이블 값만 내면 **충전 중에도 online으로만 나온다.**
@@ -166,6 +217,43 @@ class TeslaVehicleService(
     companion object {
         /** 기준 달을 포함해 거슬러 세는 개월 수. */
         const val TREND_MONTHS = 12
+
+        /** `/tesla/drive-insights`의 창. 기본 12개월, 1~60. */
+        const val MIN_MONTHS = 1
+        const val MAX_MONTHS = 60
+
+        /**
+         * 온도 버킷의 **응답 라벨**이다(℃). `bucket` 번호 → (`fromC`, `toC`).
+         * 하한/상한이 없으면 null이고, 경계는 `from` 포함·`to` 미만이다.
+         *
+         * **`JdbcTeslaVehicleRepository.DRIVE_TEMPERATURE_BUCKETS_SQL`의 `CASE`와 같은 숫자여야
+         * 한다** — 거기는 임계값으로, 여기는 라벨로 쓴다. 한쪽만 고치면 응답의 라벨과 실제
+         * 집계가 어긋난다. 다섯 개인 이유는 계절이 갈리는 최소 단위라서고, 앱이 버킷을 정하면
+         * 서버가 원자료를 통째로 보내야 한다.
+         */
+        private val TEMPERATURE_BUCKETS: List<Pair<Int, Pair<Int?, Int?>>> =
+            listOf(
+                1 to (null to 0),
+                2 to (0 to 10),
+                3 to (10 to 20),
+                4 to (20 to 30),
+                5 to (30 to null),
+            )
+
+        /**
+         * 거리 버킷의 **응답 라벨**이다(km). `bucket` 번호 → (`fromKm`, `toKm`).
+         *
+         * **`JdbcTeslaVehicleRepository.DRIVE_DISTANCE_BUCKETS_SQL`의 `CASE`와 같은 숫자여야
+         * 한다.**
+         */
+        private val DISTANCE_BUCKETS: List<Pair<Int, Pair<Int, Int?>>> =
+            listOf(
+                1 to (0 to 5),
+                2 to (5 to 20),
+                3 to (20 to 50),
+                4 to (50 to 100),
+                5 to (100 to null),
+            )
         private const val EARTH_RADIUS_M = 6_371_000.0
     }
 }

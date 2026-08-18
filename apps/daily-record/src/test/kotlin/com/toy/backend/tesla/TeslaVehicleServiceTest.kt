@@ -385,4 +385,156 @@ class TeslaVehicleServiceTest :
                 response.samples.size shouldBe 3
             }
         }
+
+        // 서비스가 하는 일은 버킷 자리 채움과 행→DTO 변환뿐이다. 합계·KST 변환은 SQL이 한다.
+        Given("주행 인사이트를 조회할 때 리포지토리가 아무 행도 주지 않으면") {
+            every { vehicleRepository.driveTemperatureBuckets(any()) } returns emptyList()
+            every { vehicleRepository.driveTimes(any()) } returns emptyList()
+            every { vehicleRepository.driveDistanceBuckets(any()) } returns emptyList()
+            every { vehicleRepository.drivePlaces(any()) } returns emptyList()
+            every { vehicleRepository.carEfficiency() } returns BigDecimal("0.1367")
+
+            val response = service.driveInsights(12)
+
+            // 비교하려고 보는 차트라 자리가 비면 축이 흔들린다. 빈 버킷도 다섯 개가 온다.
+            Then("온도 버킷 다섯 개가 자리를 지킨다") {
+                response.temperatureBuckets.size shouldBe 5
+                response.temperatureBuckets.map { it.fromC } shouldBe listOf(null, 0, 10, 20, 30)
+                response.temperatureBuckets.map { it.toC } shouldBe listOf(0, 10, 20, 30, null)
+                response.temperatureBuckets.all { it.driveCount == 0 } shouldBe true
+            }
+
+            // 빈 버킷의 숫자는 0이다. null이 아니다 — 「그 온도대에 안 탔다」는 사실이지
+            // 「기록이 없다」가 아니다.
+            Then("빈 버킷의 합은 0이다") {
+                response.temperatureBuckets.first().distanceKm shouldBe BigDecimal.ZERO
+                response.temperatureBuckets.first().ratedRangeUsedKm shouldBe BigDecimal.ZERO
+            }
+
+            Then("거리 버킷 다섯 개가 자리를 지킨다") {
+                response.distanceBuckets.map { it.fromKm } shouldBe listOf(0, 5, 20, 50, 100)
+                response.distanceBuckets.map { it.toKm } shouldBe listOf(5, 20, 50, 100, null)
+                response.distanceBuckets.all { it.driveCount == 0 } shouldBe true
+            }
+
+            // 168칸 중 대부분이 0이라 히트맵은 없는 칸을 빈칸으로 그린다. 자리를 채우지 않는다.
+            Then("driveTimes는 자리를 채우지 않는다") {
+                response.driveTimes shouldBe emptyList()
+            }
+
+            // 이 DB에는 지오펜스가 0개다. 빈 배열이어야 한다(null이 아니다).
+            Then("places가 빈 배열이다") {
+                response.places shouldBe emptyList()
+            }
+
+            Then("months를 되돌려 실어 앱이 무엇을 받았는지 알 수 있다") {
+                response.months shouldBe 12
+            }
+        }
+
+        Given("일부 버킷에만 주행이 있을 때") {
+            every { vehicleRepository.driveTemperatureBuckets(any()) } returns
+                listOf(
+                    DriveTemperatureBucketRow(1, 82, BigDecimal("2424.8"), BigDecimal("2939.2")),
+                    DriveTemperatureBucketRow(5, 118, BigDecimal("2494.6"), BigDecimal("2551.5")),
+                )
+            every { vehicleRepository.driveTimes(any()) } returns
+                listOf(DriveTimeRow(1, 8, 43), DriveTimeRow(2, 17, 41))
+            every { vehicleRepository.driveDistanceBuckets(any()) } returns
+                listOf(DriveDistanceBucketRow(5, 3, BigDecimal("412.0")))
+            every { vehicleRepository.drivePlaces(any()) } returns
+                listOf(DrivePlaceRow("집", 124, BigDecimal("812.4")))
+            every { vehicleRepository.carEfficiency() } returns BigDecimal("0.1367")
+
+            val response = service.driveInsights(12)
+
+            Then("온 버킷은 값이 실리고 안 온 버킷은 0으로 채워진다") {
+                val below = response.temperatureBuckets.first { it.fromC == null }
+                below.driveCount shouldBe 82
+                below.distanceKm shouldBe BigDecimal("2424.8")
+                below.ratedRangeUsedKm shouldBe BigDecimal("2939.2")
+
+                val middle = response.temperatureBuckets.first { it.fromC == 10 }
+                middle.driveCount shouldBe 0
+                middle.distanceKm shouldBe BigDecimal.ZERO
+            }
+
+            Then("거리 버킷도 같은 방식으로 채워진다") {
+                response.distanceBuckets.first { it.fromKm == 100 }.driveCount shouldBe 3
+                response.distanceBuckets.first { it.fromKm == 0 }.driveCount shouldBe 0
+            }
+
+            // dow는 0이 일요일이다. 서버가 번역하지 않고 그대로 올린다.
+            Then("driveTimes는 온 것만 그대로 나간다") {
+                response.driveTimes.size shouldBe 2
+                response.driveTimes.first().weekday shouldBe 1
+                response.driveTimes.first().hour shouldBe 8
+                response.driveTimes.first().count shouldBe 43
+            }
+
+            Then("places는 온 것만 그대로 나간다") {
+                response.places.single().name shouldBe "집"
+                response.places.single().driveCount shouldBe 124
+            }
+        }
+
+        // TeslaMate가 efficiency를 아직 못 채운 경우다. 그때 앱은 전비 카드를 감춘다.
+        Given("cars.efficiency가 null일 때") {
+            every { vehicleRepository.driveTemperatureBuckets(any()) } returns emptyList()
+            every { vehicleRepository.driveTimes(any()) } returns emptyList()
+            every { vehicleRepository.driveDistanceBuckets(any()) } returns emptyList()
+            every { vehicleRepository.drivePlaces(any()) } returns emptyList()
+            every { vehicleRepository.carEfficiency() } returns null
+
+            val response = service.driveInsights(12)
+
+            Then("efficiencyKwhPerKm이 null이다") {
+                response.efficiencyKwhPerKm shouldBe null
+            }
+        }
+
+        Given("months가 범위 경계일 때") {
+            every { vehicleRepository.driveTemperatureBuckets(any()) } returns emptyList()
+            every { vehicleRepository.driveTimes(any()) } returns emptyList()
+            every { vehicleRepository.driveDistanceBuckets(any()) } returns emptyList()
+            every { vehicleRepository.drivePlaces(any()) } returns emptyList()
+            every { vehicleRepository.carEfficiency() } returns null
+
+            Then("1과 60은 통과한다") {
+                service.driveInsights(1).months shouldBe 1
+                service.driveInsights(60).months shouldBe 60
+            }
+
+            Then("0과 61은 400이다") {
+                shouldThrow<CustomException> { service.driveInsights(0) }
+                    .errorCode shouldBe ErrorCode.INVALID_REQUEST
+                shouldThrow<CustomException> { service.driveInsights(61) }
+                    .errorCode shouldBe ErrorCode.INVALID_REQUEST
+            }
+        }
+
+        // months는 이 엔드포인트의 유일한 파라미터다. 스텁을 전부 any()로 두면 서비스가
+        // driveTimes(12)처럼 값을 하드코딩해도 테스트가 초록으로 남는다 — 12가 아닌 값으로
+        // 불러 네 리포지토리 메서드가 그 값을 그대로 받는지 캡처로 확인한다.
+        // `carEfficiency()`는 파라미터가 없어 대상이 아니다.
+        Given("months=3으로 조회할 때") {
+            val temperatureMonths = slot<Int>()
+            val timesMonths = slot<Int>()
+            val distanceMonths = slot<Int>()
+            val placesMonths = slot<Int>()
+            every { vehicleRepository.driveTemperatureBuckets(capture(temperatureMonths)) } returns emptyList()
+            every { vehicleRepository.driveTimes(capture(timesMonths)) } returns emptyList()
+            every { vehicleRepository.driveDistanceBuckets(capture(distanceMonths)) } returns emptyList()
+            every { vehicleRepository.drivePlaces(capture(placesMonths)) } returns emptyList()
+            every { vehicleRepository.carEfficiency() } returns null
+
+            service.driveInsights(3)
+
+            Then("months를 받는 네 리포지토리 메서드가 3을 그대로 받는다") {
+                temperatureMonths.captured shouldBe 3
+                timesMonths.captured shouldBe 3
+                distanceMonths.captured shouldBe 3
+                placesMonths.captured shouldBe 3
+            }
+        }
     })

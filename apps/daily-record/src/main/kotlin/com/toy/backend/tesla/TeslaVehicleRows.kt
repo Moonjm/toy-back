@@ -86,3 +86,46 @@ data class BatteryHealthMonthRow(
     val sampleCount: Int,
     val capacitySampleCount: Int,
 )
+
+/*
+ * 아래 넷은 `/tesla/drive-insights`의 행 타입이다. **집계는 전부 SQL이 하고 여기 오는 것은
+ * 이미 합쳐진 값이다** — 서비스가 하는 일은 버킷 자리를 채우고 DTO로 옮기는 것뿐이다.
+ */
+
+/**
+ * 온도 버킷 하나의 합. `bucket`은 1..5이고 그 경계는 `TeslaVehicleService.TEMPERATURE_BUCKETS`가
+ * 라벨로 갖는다 — **SQL의 `CASE`와 그 목록이 같은 숫자를 써야 한다.**
+ *
+ * `ratedRangeUsedKm`은 `start_rated_range_km - end_rated_range_km`의 합이다. kWh 환산
+ * (`× cars.efficiency`)과 전비 나눗셈은 앱이 한다.
+ */
+data class DriveTemperatureBucketRow(
+    val bucket: Int,
+    val driveCount: Int,
+    val distanceKm: BigDecimal,
+    val ratedRangeUsedKm: BigDecimal,
+)
+
+/** `weekday`는 **0이 일요일**이다(PostgreSQL `dow` 그대로). KST 기준으로 뽑는다. */
+data class DriveTimeRow(
+    val weekday: Int,
+    val hour: Int,
+    val count: Int,
+)
+
+/**
+ * 거리 버킷 하나의 합. `bucket`은 1..5이고 경계는
+ * `TeslaVehicleService.DISTANCE_BUCKETS`가 갖는다.
+ */
+data class DriveDistanceBucketRow(
+    val bucket: Int,
+    val driveCount: Int,
+    val distanceKm: BigDecimal,
+)
+
+/** 도착 지오펜스별 합. **주소는 내지 않는다** — 이름을 붙인 곳만 센다. */
+data class DrivePlaceRow(
+    val name: String,
+    val driveCount: Int,
+    val distanceKm: BigDecimal,
+)

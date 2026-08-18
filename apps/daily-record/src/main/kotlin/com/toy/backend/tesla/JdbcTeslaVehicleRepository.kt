@@ -3,6 +3,7 @@ package com.toy.backend.tesla
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
+import java.math.BigDecimal
 import java.sql.ResultSet
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -98,6 +99,62 @@ class JdbcTeslaVehicleRepository(
                     capacitySampleCount = rs.getInt("capacity_row_count"),
                 )
             }.list()
+
+    override fun driveTemperatureBuckets(months: Int): List<DriveTemperatureBucketRow> =
+        teslaMateJdbcClient
+            .sql(DRIVE_TEMPERATURE_BUCKETS_SQL)
+            .param("months", months)
+            .query { rs, _ ->
+                DriveTemperatureBucketRow(
+                    bucket = rs.getInt("bucket"),
+                    driveCount = rs.getInt("drive_count"),
+                    distanceKm = rs.getBigDecimal("distance_km"),
+                    ratedRangeUsedKm = rs.getBigDecimal("rated_range_used_km"),
+                )
+            }.list()
+
+    override fun driveTimes(months: Int): List<DriveTimeRow> =
+        teslaMateJdbcClient
+            .sql(DRIVE_TIMES_SQL)
+            .param("months", months)
+            .query { rs, _ ->
+                DriveTimeRow(
+                    weekday = rs.getInt("weekday"),
+                    hour = rs.getInt("hour"),
+                    count = rs.getInt("row_count"),
+                )
+            }.list()
+
+    override fun driveDistanceBuckets(months: Int): List<DriveDistanceBucketRow> =
+        teslaMateJdbcClient
+            .sql(DRIVE_DISTANCE_BUCKETS_SQL)
+            .param("months", months)
+            .query { rs, _ ->
+                DriveDistanceBucketRow(
+                    bucket = rs.getInt("bucket"),
+                    driveCount = rs.getInt("drive_count"),
+                    distanceKm = rs.getBigDecimal("distance_km"),
+                )
+            }.list()
+
+    override fun drivePlaces(months: Int): List<DrivePlaceRow> =
+        teslaMateJdbcClient
+            .sql(DRIVE_PLACES_SQL)
+            .param("months", months)
+            .query { rs, _ ->
+                DrivePlaceRow(
+                    name = rs.getString("name"),
+                    driveCount = rs.getInt("drive_count"),
+                    distanceKm = rs.getBigDecimal("distance_km"),
+                )
+            }.list()
+
+    override fun carEfficiency(): BigDecimal? =
+        teslaMateJdbcClient
+            .sql(CAR_EFFICIENCY_SQL)
+            .query { rs, _ -> rs.getBigDecimal("efficiency") }
+            .optional()
+            .orElse(null)
 
     private fun ResultSet.toPositionRow() =
         PositionRow(
@@ -198,6 +255,145 @@ class JdbcTeslaVehicleRepository(
               FROM sample
              GROUP BY month_start
              ORDER BY month_start
+        """
+
+        /**
+         * **기간 창의 기준을 `(now() AT TIME ZONE 'UTC')`로 맞춘다.** `end_date`는 타임존 없는
+         * 컬럼에 든 UTC 값이라 `now()`(timestamptz)와 그냥 비교하면 세션 타임존만큼(KST면
+         * 9시간) 창이 어긋난다 — `ACTIVITY_SQL`이 같은 이유로 같은 꼴을 쓴다.
+         *
+         * 네 주행 쿼리가 이 한 줄을 함께 쓴다.
+         */
+        private const val DRIVE_WINDOW = """
+                   AND d.end_date >= (now() AT TIME ZONE 'UTC') - (:months * interval '1 month')
+        """
+
+        /**
+         * **버킷 경계는 `TeslaVehicleService.TEMPERATURE_BUCKETS`와 같은 숫자여야 한다** —
+         * 여기는 임계값으로, 거기는 응답 라벨(`fromC`·`toC`)로 쓴다. 한쪽만 고치면 응답의
+         * 라벨과 실제 집계가 어긋난다.
+         *
+         * **자기 지표가 쓰는 조건만 건다.** `outside_temp_avg IS NOT NULL`은 어느 버킷에도
+         * 넣을 수 없어서고, `ΔratedRange > 0`은 넣으면 전비가 무한대가 되기 때문이다.
+         * 실측(2026-08-17)으로 후자에 걸리는 주행이 5,055건 중 447건인데 431건이 차이가
+         * 정확히 0이고 평균 거리가 0.2km다 — 주행가능거리 표시가 움직이지 않을 만큼 짧은
+         * 주행이라 거리 손실은 사실상 없다.
+         *
+         * **`ELSE 5`는 `outside_temp_avg IS NOT NULL`이 앞에서 걸러 준다는 것에 기대고 있다.**
+         * 지금은 WHERE가 온도 미상 주행을 이미 뺐으니 `ELSE`는 「30℃ 이상」만 받는다. 나중에
+         * 누군가 「ELSE가 다 받으니 이 필터는 필요 없다」고 판단해 그 줄을 지우면, 온도 미상
+         * 주행이 전부 「30℃ 이상」 버킷으로 조용히 들어간다 — 값이 틀리는데 행 수는 늘어
+         * 정상처럼 보인다.
+         *
+         * `distance`는 `double precision`이라 `::numeric`으로 올려 반올림한다. 주행가능거리는
+         * 이미 `numeric`이라 그대로 `ROUND`한다.
+         */
+        private const val DRIVE_TEMPERATURE_BUCKETS_SQL = """
+            SELECT CASE WHEN d.outside_temp_avg <  0 THEN 1
+                        WHEN d.outside_temp_avg < 10 THEN 2
+                        WHEN d.outside_temp_avg < 20 THEN 3
+                        WHEN d.outside_temp_avg < 30 THEN 4
+                        ELSE 5
+                   END                                                          AS bucket,
+                   COUNT(*)                                                     AS drive_count,
+                   ROUND(SUM(d.distance)::numeric, 1)                           AS distance_km,
+                   ROUND(SUM(d.start_rated_range_km - d.end_rated_range_km), 1) AS rated_range_used_km
+              FROM drives d
+             WHERE d.end_date IS NOT NULL
+               AND d.distance > 0
+               $DRIVE_WINDOW
+               AND d.outside_temp_avg IS NOT NULL
+               AND d.start_rated_range_km - d.end_rated_range_km > 0
+             GROUP BY bucket
+             ORDER BY bucket
+        """
+
+        /**
+         * 차량이 1대다(`cars` 1행). 두 대가 되면 두 차의 값이 조용히 섞이는데, 그것은
+         * `/tesla/summary`·`/tesla/status`의 모든 SQL이 이미 안고 있는 전제와 같다.
+         */
+        private const val CAR_EFFICIENCY_SQL = """
+            SELECT c.efficiency
+              FROM cars c
+             ORDER BY c.id
+             LIMIT 1
+        """
+
+        /**
+         * **KST로 옮긴 뒤 뽑는다.** UTC로 뽑으면 아침 8시 출근이 밤 11시로 찍힌다 —
+         * 실측(2026-08-17)으로 최근 12개월 상위 칸이 월 08시·화 17시·월 17시·화 08시라
+         * 출퇴근이 그대로 보인다.
+         *
+         * `dow`는 **0이 일요일**이다. 앱도 그대로 읽는다.
+         *
+         * **0인 칸은 행이 오지 않는다.** 168칸 중 대부분이 0이고, 히트맵은 없는 칸을 빈칸으로
+         * 그리면 된다 — 온도·거리 버킷이 빈 자리를 지키는 것과 반대다. 그쪽은 축이 흔들리지만
+         * 히트맵은 그렇지 않다.
+         *
+         * **시각은 `start_date`로 뽑지만 기간 창은 `end_date`로 건다** — 창에 드는 기준을 네
+         * 쿼리가 같이 쓰게 하려는 것이고, 자정을 걸친 주행 한 건의 차이일 뿐이다.
+         *
+         * **온도·주행가능거리 조건을 걸지 않는다.** 시간대는 둘 다 쓰지 않는다.
+         */
+        private const val DRIVE_TIMES_SQL = """
+            SELECT EXTRACT(dow  FROM d.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')::int AS weekday,
+                   EXTRACT(hour FROM d.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')::int AS hour,
+                   COUNT(*)                                                                          AS row_count
+              FROM drives d
+             WHERE d.end_date IS NOT NULL
+               AND d.distance > 0
+               $DRIVE_WINDOW
+             GROUP BY weekday, hour
+             ORDER BY weekday, hour
+        """
+
+        /**
+         * **버킷 경계는 `TeslaVehicleService.DISTANCE_BUCKETS`와 같은 숫자여야 한다.**
+         *
+         * **온도·주행가능거리 조건을 걸지 않는다.** 거리 분포는 둘 다 쓰지 않는다.
+         */
+        private const val DRIVE_DISTANCE_BUCKETS_SQL = """
+            SELECT CASE WHEN d.distance <   5 THEN 1
+                        WHEN d.distance <  20 THEN 2
+                        WHEN d.distance <  50 THEN 3
+                        WHEN d.distance < 100 THEN 4
+                        ELSE 5
+                   END                                AS bucket,
+                   COUNT(*)                           AS drive_count,
+                   ROUND(SUM(d.distance)::numeric, 1) AS distance_km
+              FROM drives d
+             WHERE d.end_date IS NOT NULL
+               AND d.distance > 0
+               $DRIVE_WINDOW
+             GROUP BY bucket
+             ORDER BY bucket
+        """
+
+        /**
+         * `end_geofence_id`로 묶어 이름을 낸다. **주소는 내지 않는다** — 지오펜스가 없는
+         * 도착지는 `JOIN`에서 아예 빠진다. `/tesla/status`가 좌표와 주소를 싣지 않는 방침과 같다.
+         *
+         * **이 DB에는 `geofences`가 0행이라 오늘은 항상 빈 결과다.** 등록하는 순간 살아난다.
+         *
+         * 이름이 아니라 **id로 묶는다** — 같은 이름의 지오펜스가 둘일 수 있다.
+         *
+         * **`ORDER BY`의 마지막 열로 `g.name`을 둔다.** 건수·거리가 모두 같은 지오펜스가
+         * `LIMIT 10` 경계에 걸리면 tie-breaker 없이는 어느 것이 잘릴지 실행마다 달라질 수 있다.
+         *
+         * `geofences`는 수십 행이고 `drives`는 수천 행이라 해시 조인으로 즉시 끝난다.
+         */
+        private const val DRIVE_PLACES_SQL = """
+            SELECT g.name                            AS name,
+                   COUNT(*)                          AS drive_count,
+                   ROUND(SUM(d.distance)::numeric, 1) AS distance_km
+              FROM drives d
+              JOIN geofences g ON g.id = d.end_geofence_id
+             WHERE d.end_date IS NOT NULL
+               AND d.distance > 0
+               $DRIVE_WINDOW
+             GROUP BY g.id, g.name
+             ORDER BY drive_count DESC, distance_km DESC, g.name
+             LIMIT 10
         """
 
         private const val POSITION_COLUMNS = """
