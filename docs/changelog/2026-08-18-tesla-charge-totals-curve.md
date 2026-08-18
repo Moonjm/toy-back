@@ -89,6 +89,36 @@ SQL은 합계와 급속분만 낸다. 완속은 서비스가 **뺄셈으로** �
 | `costMissingCount` | 35 − 24 | 11 |
 | `costMissingEnergyUsedKwh` | 977.0 − 833.9 | 143.1 |
 
+## 최종 리뷰 실측(2026-08-18) — 응답이 사실과 안 맞아 보이는 네 자리
+
+브랜치 전체 최종 코드 리뷰가 Important 3건을 냈다. SQL과 로직은 실측으로 옳다고 확인됐고, 응답을
+읽을 때 오해할 수 있는 자리 넷을 여기 적는다(전부 2026-08-18 실측).
+
+**① `fast.energyUsedKwh`(1329.0)가 `fast.energyAddedKwh`(1358.4)보다 작다 — TeslaMate가 급속을
+과소 기록하는 것이 아니다.** 벽에서 뽑아쓴 양이 배터리에 들어간 양보다 작은 것은 물리적으로
+불가능한데, 응답이 그렇게 나간다. 원인은 `used`가 NULL인 세션 2건(`id=14`·`id=29`, 2021년 급속)의
+`added`(합 90.5kWh)만 합에 들어가고 `used`에는 안 들어가서다. **개별 행이 뒤집힌 것은 42건 중
+0건이다.** 그 둘을 빼면 나머지 40건은 `added` 1267.9kWh, `used` 1329.0kWh로 **4.8% 손실**이고,
+완속(`added` 16083.6, `used` 16868.2)의 **4.9% 손실과 같다.** 즉 급속이 유별나게 나쁜 것이 아니라
+NULL 2건 때문에 급속 그룹의 분자·분모 모집단이 어긋난 것이다.
+
+**② 단가 분모가 1건(10,360원)만큼 오염돼 있다.** `costMissingEnergyUsedKwh`로 뺀 분모
+(`cost ÷ (energyUsedKwh − costMissingEnergyUsedKwh)`)는 대수적으로
+`SUM(used) FILTER (cost IS NOT NULL)`과 같은데, `cost`는 있고 `used`가 NULL인 세션(`id=15`,
+10,360원)은 분자에만 들어가고 분모에는 0으로 들어간다. 실측 단가는 **211.64 vs 211.04원/kWh로
+0.28% 차이**다 — 이 저장소가 분모 처리를 앱에 맡겨 온 방침을 바꿀 크기가 아니라 SQL은 그대로 둔다.
+
+**③ `totals`는 `/tesla/summary`와 모집단이 다르다.** `/tesla/summary`가 쓰는
+`CHARGE_MONTHLY_SQL`·`MISSING_COST_SQL`은 WHERE가 `end_date IS NOT NULL`뿐이라 축퇴 11건을 그대로
+센다(**484 기준**). `totals`는 축퇴를 모집단에서 뺀다(**474 기준**). 두 응답의 건수·비용을 같은
+숫자로 기대하면 안 된다 — 월별 집계가 축퇴를 세는 것은 「그 달에 뭐가 있었나」라 그것대로 말이 된다.
+
+**④ 모집단 조건이 `charge_energy_used` 표본을 깎지 않는다는 것을 확인했다.**
+`CHARGE_POPULATION`(`charge_energy_added > 0 OR cost IS NOT NULL`)은 문법상
+`charge_energy_added`(지표 A)의 조건이라, 원리상 다른 지표(`charge_energy_used`, 지표 B)의 표본을
+깎을 수 있는 모양이다. 실측으로 그렇지 않다 — 이 조건으로 제외되는 10건 중 `charge_energy_used > 0`인
+것이 **0건**이고, 손실이 **0.00 kWh**다.
+
 ## 곡선을 줄이지 않은 이유
 
 완속 세션은 최대 1,704개(2026-08-18 실측, `id=490`)까지 간다. 「어느 점을 버릴지」를 서버가 정하면
