@@ -3,6 +3,7 @@ package com.toy.backend.tesla
 import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.exception.CustomException
 import org.springframework.stereotype.Service
+import java.math.BigDecimal
 
 /**
  * **`@Transactional`을 붙이지 않는다.** 기본 트랜잭션 매니저는 daily-record 커넥션의 것이라
@@ -63,6 +64,70 @@ class TeslaChargeService(
             items = repository.findMissingCost(limit).map { it.toItem() },
         )
     }
+
+    /**
+     * 쿼리 한 번이 전부다. **완속을 SQL로 따로 세지 않고 합계에서 급속을 뺀다** —
+     * 그래야 `급속 + 완속 = 합계`가 어긋날 길이 없고, `charging_processes`를 두 번 훑지도 않는다.
+     */
+    fun totals(): TeslaChargeTotalsResponse {
+        val row = repository.findTotals()
+        return TeslaChargeTotalsResponse(
+            chargeCount = row.chargeCount,
+            energyAddedKwh = row.energyAddedKwh,
+            energyUsedKwh = row.energyUsedKwh,
+            cost = row.cost,
+            costMissingCount = row.costMissingCount,
+            costMissingEnergyUsedKwh = row.costMissingEnergyUsedKwh,
+            firstChargedAt = row.firstChargedUtc?.let { TeslaTime.toKst(it).toLocalDate() },
+            fast =
+                ChargeTotalsBreakdown(
+                    chargeCount = row.fastChargeCount,
+                    energyAddedKwh = row.fastEnergyAddedKwh,
+                    energyUsedKwh = row.fastEnergyUsedKwh,
+                    cost = row.fastCost,
+                    costMissingCount = row.fastCostMissingCount,
+                    costMissingEnergyUsedKwh = row.fastCostMissingEnergyUsedKwh,
+                ),
+            slow =
+                ChargeTotalsBreakdown(
+                    chargeCount = row.chargeCount - row.fastChargeCount,
+                    energyAddedKwh = minus(row.energyAddedKwh, row.fastEnergyAddedKwh),
+                    energyUsedKwh = minus(row.energyUsedKwh, row.fastEnergyUsedKwh),
+                    cost = minus(row.cost, row.fastCost),
+                    costMissingCount = row.costMissingCount - row.fastCostMissingCount,
+                    costMissingEnergyUsedKwh = minus(row.costMissingEnergyUsedKwh, row.fastCostMissingEnergyUsedKwh),
+                ),
+        )
+    }
+
+    /**
+     * **존재 확인이 먼저다.** `findCurve`가 빈 리스트를 주는 이유가 둘이라
+     * (「없는 id·진행 중」과 「샘플이 없는 세션」) 그것만으로는 404를 가릴 수 없다.
+     */
+    fun curve(id: Long): TeslaChargeCurveResponse {
+        if (!repository.existsCompleted(id)) {
+            throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
+        }
+        return TeslaChargeCurveResponse(
+            samples =
+                repository.findCurve(id).map {
+                    ChargeCurveSample(
+                        at = TeslaTime.toKst(it.dateUtc),
+                        powerKw = it.powerKw,
+                        batteryLevel = it.batteryLevel,
+                    )
+                },
+        )
+    }
+
+    /**
+     * 합계 − 급속. **합계가 null이면 결과도 null이다** — 그 구간에 기록이 없다는 뜻이지 0이 아니다.
+     * 급속만 null인 경우는 「합계는 있는데 급속이 없다」이므로 합계를 그대로 돌려준다.
+     */
+    private fun minus(
+        total: BigDecimal?,
+        fast: BigDecimal?,
+    ): BigDecimal? = total?.subtract(fast ?: BigDecimal.ZERO)
 
     companion object {
         private const val MIN_LIMIT = 1

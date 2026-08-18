@@ -4,6 +4,7 @@ import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.Digits
 import jakarta.validation.constraints.NotNull
 import java.math.BigDecimal
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 /**
@@ -81,4 +82,71 @@ data class ChargeCostRequest(
     @field:DecimalMin("0")
     @field:Digits(integer = 8, fraction = 2)
     val cost: BigDecimal?,
+)
+
+/**
+ * 전 기간 충전 누적. 파라미터가 없다.
+ *
+ * **`fast + slow = 최상위` 불변식이 선다.** 최상위 중복은 의도된 것이다 — 헤드라인과 내역이다.
+ * 서비스가 완속을 뺄셈으로 만들기 때문에 이 불변식이 코드로 강제된다.
+ *
+ * **누적 주행거리를 싣지 않는다** — `/tesla/status`의 odometer가 이미 낸다.
+ * **주유비 대비 절감액을 싣지 않는다** — 유가 상수가 필요한데 서버에 두지 않는다(신차 기준선과 같은 이유).
+ */
+data class TeslaChargeTotalsResponse(
+    val chargeCount: Int,
+    val energyAddedKwh: BigDecimal?,
+    /** 벽에서 뽑아쓴 양. **kWh당 단가의 분모는 이쪽이다** — `ChargeListItem`이 정해 둔 규칙이다. */
+    val energyUsedKwh: BigDecimal?,
+    /** **실제로 낸 돈이다.** `SUM`이 null을 건너뛰므로 금액이 빈 세션은 여기 없다. */
+    val cost: BigDecimal?,
+    /**
+     * 금액이 비어 있는 건수. **`/tesla/charges/missing-cost`의 `totalCount`와 다른 수다** —
+     * 그쪽은 최근 한 달 창이고 이쪽은 전 기간이다. 앱이 두 값을 같은 배지로 쓰면 어긋난다.
+     *
+     * **서버는 이것을 「무료 충전」이라고 부르지 않는다.** DB에 기록된 것은 「금액 없음」이지
+     * 「0원」이 아니다. 해석은 앱이 붙인다 — 신차 기준값·유가 상수를 서버에 두지 않는 것과 같은 계열이고,
+     * 유료 충전을 깜빡 안 적었을 때 서버가 그것을 「무료」로 단정해 버리는 것도 막는다.
+     */
+    val costMissingCount: Int,
+    /**
+     * 금액이 빈 세션들의 `energyUsedKwh` 합. **앱이 단가를 옳게 내는 분모다:**
+     * `cost ÷ (energyUsedKwh − costMissingEnergyUsedKwh)`.
+     *
+     * 이 값을 빼지 않으면 단가가 낮게 나온다 — 실측(2026-08-18)으로 200.3 vs 211.6원/kWh, 5.6% 차이다.
+     */
+    val costMissingEnergyUsedKwh: BigDecimal?,
+    /** 「언제부터의 누적인가」. KST 날짜다. 기록이 없으면 null이다. */
+    val firstChargedAt: LocalDate?,
+    /** 세션 평균 전력 15kW 이상. 충전기 종류가 아니라 **그 세션의 결과**로 가른 값이다. */
+    val fast: ChargeTotalsBreakdown,
+    val slow: ChargeTotalsBreakdown,
+)
+
+/** 최상위와 같은 다섯 값. 합이 null인 것은 그 구간에 기록이 없다는 뜻이지 0이 아니다. */
+data class ChargeTotalsBreakdown(
+    val chargeCount: Int,
+    val energyAddedKwh: BigDecimal?,
+    val energyUsedKwh: BigDecimal?,
+    val cost: BigDecimal?,
+    val costMissingCount: Int,
+    val costMissingEnergyUsedKwh: BigDecimal?,
+)
+
+/**
+ * 한 세션의 kW 곡선. **줄이지 않고 그대로 낸다** — 완속은 1,700개까지 간다.
+ *
+ * 지난 기록이라 「실시간을 내지 않는다」는 방침과 부딪히지 않는다.
+ */
+data class TeslaChargeCurveResponse(
+    /** 시각순. 샘플이 하나도 없으면 **빈 배열이다**(null이 아니다). */
+    val samples: List<ChargeCurveSample>,
+)
+
+data class ChargeCurveSample(
+    /** KST. **경과 분을 서버가 내지 않는다** — x축을 무엇으로 할지는 앱이 정한다. */
+    val at: LocalDateTime,
+    /** null일 수 있다. **0kW와 구분된다.** */
+    val powerKw: Int?,
+    val batteryLevel: Int?,
 )
