@@ -42,7 +42,7 @@ class CardCancelNoticeParser : MessageParser {
             kind = ParsedKind.CANCEL,
             amount = BigDecimal(amount.replace(",", "")),
             currency = "KRW",
-            merchant = rawMerchant.substringAfter(PG_SEPARATOR).trim(),
+            merchant = stripPgPrefix(rawMerchant),
             occurredAt =
                 ParserDates
                     .resolveYear(month.toInt(), day.toInt(), 0, 0, receivedAt)
@@ -52,6 +52,26 @@ class CardCancelNoticeParser : MessageParser {
         )
     }
 
+    /**
+     * 가맹점 이름 앞의 PG사를 뗀다. **앞이 PG로 확인된 것일 때만 뗀다.**
+     *
+     * 「구분자가 있으면 무조건 앞을 버린다」로 두면 `공차 - 강남점`처럼 이름 자체에 ` - `가
+     * 든 가맹점이 `강남점`이 되어, 전체 이름으로 저장된 승인 건과 어긋난다 — 매칭이 실패해
+     * 승인 건이 남은 채 음수 건이 따로 쌓인다.
+     *
+     * 모르는 PG는 떼지 않는다. 그래도 결과는 「매칭 실패 → 음수 건」이라 합계는 맞고,
+     * 잘못 떼는 쪽과 대가가 같다. 새 PG가 보이면 [PG_NAMES]에 더하면 된다.
+     */
+    private fun stripPgPrefix(rawMerchant: String): String {
+        val head = rawMerchant.substringBefore(PG_SEPARATOR, missingDelimiterValue = "")
+        if (head.isEmpty()) return rawMerchant.trim()
+        return if (PG_NAMES.any { head.contains(it, ignoreCase = true) }) {
+            rawMerchant.substringAfter(PG_SEPARATOR).trim()
+        } else {
+            rawMerchant.trim()
+        }
+    }
+
     companion object {
         /**
          * **PG사와 실가맹점을 가르는 구분자.** 문자에는 `(주)이니시스 - (주)공영홈쇼핑`처럼
@@ -59,12 +79,16 @@ class CardCancelNoticeParser : MessageParser {
          * 싣는다. 떼지 않으면 가맹점이 달라 **취소 매칭이 실패하고 음수 건이 따로 쌓인다**
          * (`InboundService.cancel`은 가맹점이 정확히 같은 승인 건만 찾는다).
          *
-         * `substringAfter`는 구분자가 없으면 원본을 그대로 준다 — PG를 안 거친 결제는
-         * 가맹점이 하나만 오므로 그때는 자르지 않는다. **뒤에서부터 찾지 않는 이유**는
-         * 가맹점 이름 자체에 ` - `가 들어 있을 때 이름을 잘라 먹기 때문이다. PG는 늘 맨
-         * 앞이므로 앞에서 한 번만 자른다.
+         * 앞에서 한 번만 자른다 — PG는 맨 앞에 온다.
          */
         private const val PG_SEPARATOR = " - "
+
+        /**
+         * 구분자 앞이 PG사인지 가리는 이름들. **실측된 것은 `이니시스`뿐이고**(2026-08-19),
+         * 나머지는 국내에서 널리 쓰이는 PG다. 여기 없는 PG는 떼지 않는다 — [stripPgPrefix]
+         * 참고.
+         */
+        private val PG_NAMES = listOf("이니시스", "토스페이먼츠", "나이스페이", "KCP", "다날")
 
         /**
          * `08/10 (주)이니시스 - (주)공영홈쇼핑 사용 22,320원 취소처리` 를 한 번에 뽑는다.

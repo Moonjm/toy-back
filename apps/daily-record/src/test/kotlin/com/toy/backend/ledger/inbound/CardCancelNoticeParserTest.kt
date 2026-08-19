@@ -74,6 +74,20 @@ class CardCancelNoticeParserTest :
             }
         }
 
+        /*
+         * **PG가 아닌데 이름에 ` - `가 든 가맹점을 잘라 먹으면 안 된다.** 승인 문자는 전체
+         * 이름을 싣고 있으므로, 앞부분을 버리면 가맹점이 달라져 매칭이 실패하고 음수 건이
+         * 따로 쌓인다. 「구분자가 있으면 무조건 자른다」가 아니라 앞이 PG인지 가려야 한다.
+         */
+        Given("PG가 아닌데 이름에 구분자가 든 가맹점") {
+            val text = cancelNoticeText.replace("(주)이니시스 - (주)공영홈쇼핑", "공차 - 강남점")
+            When("parse") {
+                Then("이름을 통째로 유지한다") {
+                    parser.parse(text, receivedAt).merchant shouldBe "공차 - 강남점"
+                }
+            }
+        }
+
         Given("연도 경계") {
             When("1월에 12월 거래의 취소 알림을 받으면") {
                 val text = cancelNoticeText.replace("08/10", "12/31")

@@ -141,6 +141,30 @@ class CardApprovalParserTest :
         // **거절 문자를 지출로 저장하면 안 된다.** 「승인」을 접미사로 품은 낱말이 걸리면
         // 금액·일시 줄이 정상이라 그대로 승인 건이 된다 — 금액이 틀리는 쪽이라 조용히 새어도
         // 알아채기 어렵다.
+        // 옛 패턴 `카드\s*(승인|취소)`는 「카드」 뒤 공백을 요구하지 않았다. 공백만 경계로
+        // 삼으면 이 형태가 조용히 PARSE_FAILED가 된다 — 되던 것이 안 되는 회귀다.
+        Given("「카드」에 붙여 쓴 승인 문자") {
+            val compact = approvalText.replace("대한항공카드 승인", "대한항공카드승인")
+            When("supports") {
+                Then("처리 가능") { parser.supports(compact).shouldBeTrue() }
+            }
+            When("취소도 붙여 쓰면") {
+                val compactCancel = cancelText.replace("대한항공카드 취소", "대한항공카드취소")
+                Then("CANCEL로 판별") {
+                    parser.supports(compactCancel).shouldBeTrue()
+                    parser.parse(compactCancel, receivedAt).kind shouldBe ParsedKind.CANCEL
+                }
+            }
+        }
+
+        // 「카드」를 경계로 인정해도 「카드미승인」은 거절이다.
+        Given("「카드」에 붙여 쓴 거절 문자") {
+            val compactDeclined = approvalText.replace("대한항공카드 승인", "대한항공카드미승인")
+            When("supports") {
+                Then("처리 불가") { parser.supports(compactDeclined).shouldBeFalse() }
+            }
+        }
+
         Given("「미승인」으로 끝나는 거절 문자") {
             val declined = approvalTextWithoutCardWord.replace("030 승인", "030 미승인")
             When("supports") {
