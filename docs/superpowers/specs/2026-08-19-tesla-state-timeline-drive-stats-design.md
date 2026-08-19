@@ -1,12 +1,19 @@
 # TeslaMate 상태 타임라인·주행 통계 설계
 
-**한 줄 요약.** 차량이 최근 며칠을 어떤 상태로 보냈는지 **구간**으로 내는 `GET /tesla/state-timeline`을 새로 두고, 기존 `GET /tesla/drive-insights`에 역대 최고 속도와 이번 달·올해 주행거리를 더한다.
+**한 줄 요약.** 차량이 최근 몇 시간을 어떤 상태로 보냈는지 **구간**으로 내는 `GET /tesla/state-timeline`을 두고, 기존 `GET /tesla/drive-insights`에 역대 최고 속도와 평균 주행거리의 재료를 더한다.
+
+> **개정 (2026-08-19).** 초판은 `0e2b8a9`(#44)로 구현됐고, 그 뒤 화면 쪽에서 두 가지가 바뀌어 계약을 고친다. **아래 본문은 개정된 계약을 적은 것이고, 이 블록이 무엇이 바뀌었는지를 남긴다.**
+>
+> - **범위가 「최근 N일, KST 자정 정렬」에서 「지금부터 거꾸로 N시간」이 됐다.** 화면이 7일 격자를 버리고 24시간 한 줄로 바뀌었다. 하루 한 행씩 그릴 때는 범위가 자정에서 시작해야 첫 행과 마지막 행이 반쪽이 되지 않았지만, 한 줄로 그리면 그 정렬이 오히려 「지금」을 오른쪽 끝에 두지 못하게 막는다. `days` 파라미터가 `hours`로 바뀌고 `TeslaTime.timelineWindowKst`의 자정 스냅이 사라진다.
+> - **「이번 달·올해 주행거리」가 「평균 월·연 주행거리」가 됐다.** 그런데 이 저장소는 나눗셈을 서버가 하지 않으므로, 평균 자체가 아니라 **분자와 분모**(총 주행거리, 기록이 있는 달 수)를 낸다. `monthDistanceKm`·`yearDistanceKm`가 `totalDistanceKm`·`recordedMonths`로 바뀐다.
+>
+> 초판이 세웠던 나머지 결정(세 배열을 겹친 채로 낸다, 유령 24시간 룰, `maxSpeedAt`을 두지 않는다, KST 되돌리기)은 그대로다.
 
 ## 배경
 
 `/tesla/status`는 **한 시점**만 낸다 — 지금 오프라인이고 3시간째라는 것까지는 알지만, 어제 몇 시간 깨어 있었는지는 알 길이 없다. TeslaMate의 Grafana 대시보드는 그 답을 시간축 띠로 그리는데, 앱에는 그 재료가 없다.
 
-`/tesla/drive-insights`도 마찬가지로 **창(`months`) 안의 분포**만 낸다. 온도별 전비·시간대·거리 분포·자주 가는 곳은 「어떻게 탔나」에는 답하지만 「지금까지 얼마나」에는 답하지 않는다.
+`/tesla/drive-insights`도 마찬가지로 **범위(`months`) 안의 분포**만 낸다. 온도별 전비·시간대·거리 분포·자주 가는 곳은 「어떻게 탔나」에는 답하지만 「지금까지 얼마나」에는 답하지 않는다.
 
 ### `states`에 `driving`·`charging`이 없다
 
@@ -48,7 +55,7 @@ CREATE TYPE states_status AS ENUM ('online', 'offline', 'asleep')
 
 ### `asleep`이 최근 7일에 0인 것은 정상이다
 
-2026년에도 2월 1건·4월 2건·5월 1건·6월 1건·7월 4건이 있었다. 창에 안 잡히는 것뿐이므로 **색 팔레트에서 빼지 않는다.**
+2026년에도 2월 1건·4월 2건·5월 1건·6월 1건·7월 4건이 있었다. 범위에 안 잡히는 것뿐이므로 **색 팔레트에서 빼지 않는다.**
 
 ## 목표
 
@@ -69,26 +76,28 @@ CREATE TYPE states_status AS ENUM ('online', 'offline', 'asleep')
 ## API 1 — `GET /tesla/state-timeline`
 
 ```
-GET /tesla/state-timeline?days=7
+GET /tesla/state-timeline?hours=24
 ```
 
 | 파라미터 | 범위 | 기본 | 비고 |
 |---|---|---|---|
-| `days` | 1~30 | 7 | 범위 밖은 400 `ErrorCode.INVALID_REQUEST` |
+| `hours` | 1~168 | 24 | 범위 밖은 400 `ErrorCode.INVALID_REQUEST` |
 
 ```json
 { "data": {
-  "days": 7,
-  "from": "2026-08-13T00:00:00",
-  "to":   "2026-08-19T12:34:56",
+  "hours": 24,
+  "from": "2026-08-18T13:05:00",
+  "to":   "2026-08-19T13:05:00",
   "states": [
-    { "state": "offline", "from": "2026-08-13T00:00:00", "to": "2026-08-13T06:14:22" },
-    { "state": "online",  "from": "2026-08-13T06:14:22", "to": "2026-08-13T06:26:31" }
+    { "state": "offline", "from": "2026-08-18T13:05:00", "to": "2026-08-18T19:14:22" },
+    { "state": "online",  "from": "2026-08-18T19:14:22", "to": "2026-08-18T19:26:31" }
   ],
-  "drives":  [ { "from": "2026-08-13T06:18:02", "to": "2026-08-13T06:36:44" } ],
-  "charges": [ { "from": "2026-08-15T22:11:03", "to": "2026-08-16T05:40:19" } ]
+  "drives":  [ { "from": "2026-08-18T19:18:02", "to": "2026-08-18T19:36:44" } ],
+  "charges": [ { "from": "2026-08-18T22:11:03", "to": "2026-08-19T05:40:19" } ]
 }}
 ```
+
+상한을 168시간(7일)으로 둔 이유는 초판의 30일 상한과 같다 — 화면이 지금 쓰는 값(24)보다 넉넉하되, 한 응답에 담기는 구간 수가 손댈 만한 크기를 넘지 않는 선이다.
 
 ### 세 배열을 그대로 내는 이유
 
@@ -96,26 +105,26 @@ GET /tesla/state-timeline?days=7
 
 겹침 우선순위는 서버의 관심사가 아니지만, 앱이 쓸 순서를 여기 적어 둔다: **상태 → 주행 → 충전** 순으로 덧칠한다. 주행과 충전이 동시에 열리는 일은 없다.
 
-### 창의 경계는 KST 자정에 맞춘다
-
-앱이 하루에 한 행씩 그리므로, 창이 임의 시각에서 시작하면 첫 행과 마지막 행이 둘 다 잘린 반쪽이 된다.
+### 범위는 지금부터 거꾸로 센다 — 자정에 맞추지 않는다
 
 - `to` = 요청 시각(KST)
-- `from` = **KST 오늘 자정 − (`days` − 1)일**
+- `from` = **`to` − `hours`시간**
 
-`days=7`이면 온전한 6일 + 오늘 부분 = 7행이 된다. 이 계산은 `TeslaTime`이 한다.
+**자정 스냅을 두지 않는다.** 초판은 앱이 하루 한 행씩 그렸기 때문에 범위가 임의 시각에서 시작하면 첫 행과 마지막 행이 반쪽이 되는 문제가 있었고, 그래서 `from`을 KST 자정에 맞췄다. 지금 앱은 24시간을 **한 줄로** 그리고 오른쪽 끝이 「지금」이다 — 자정에 맞추면 그 끝이 「지금」이 아니게 되므로, 정렬이 문제를 만들던 자리에서 문제를 푸는 자리로 바뀌었다.
+
+이 계산은 `TeslaTime`이 한다.
 
 ### 유령 세션을 여기서 막는다
 
-**창 안에 열린 유령 행이 하나라도 들어오면 창 전체가 주행이나 충전으로 칠해진다.** `8cb61d9`가 `/tesla/status`에서 고친 것과 같은 결함이 타임라인에서는 훨씬 크게 드러난다.
+**범위 안에 열린 유령 행이 하나라도 들어오면 범위 전체가 주행이나 충전으로 칠해진다.** `8cb61d9`가 `/tesla/status`에서 고친 것과 같은 결함이 타임라인에서는 훨씬 크게 드러난다.
 
 `drives`·`charging_processes`의 **열린 행은 `start_date >= now − 24h`인 것만** 「지금 진행 중」으로 인정하고, 그보다 오래된 열린 행은 결과에서 **버린다.** 기존 `ACTIVITY_SQL`과 같은 규칙이고, 같은 이유로 24시간이다 — 완속 오버나이트가 10시간쯤이고 24시간 연속 주행은 없다. **새로 생긴 유령도 하루면 스스로 낫는다.**
 
 `states`에는 이 규칙을 적용하지 않는다. 유니크 인덱스가 열린 행을 차당 하나로 강제하므로 그것은 현재 상태다.
 
-### 구간은 서버가 창에 맞춰 자른다
+### 구간은 서버가 범위에 맞춰 자른다
 
-앱이 창 밖 값을 받아 스스로 자르게 두지 않는다 — 자르는 규칙이 두 곳에 생긴다.
+앱이 범위 밖 값을 받아 스스로 자르게 두지 않는다 — 자르는 규칙이 두 곳에 생긴다.
 
 ```sql
 GREATEST(start_date, :windowStart)                        AS from_utc
@@ -153,7 +162,7 @@ SELECT GREATEST(d.start_date, :windowStart)                 AS from_utc,
 
 ### 응답 크기
 
-실측 최근 7일은 상태 145 + 주행 22 + 충전 1 = **168 구간**이다. `days=30`이면 상태 600 안팎으로 추정된다. 페이지네이션도 다운샘플링도 두지 않는다 — 상한이 30일이고, 그 크기는 한 응답으로 충분하다.
+실측 최근 **24시간**은 상태 21 + 주행 1 + 충전 0 = **22 구간**이다(최근 7일은 168 구간이었다). 상한인 168시간이라도 그 수준이므로 페이지네이션도 다운샘플링도 두지 않는다.
 
 ---
 
@@ -162,14 +171,27 @@ SELECT GREATEST(d.start_date, :windowStart)                 AS from_utc,
 새 엔드포인트를 만들지 않는다. 주행 탭이 이미 이 응답 **하나로** 카드 넷을 그리고 있고, 「네 카드를 한 응답에 싣는다」는 기존 컨트롤러 주석의 논리가 그대로 적용된다.
 
 ```kotlin
-val maxSpeedKmh: Int?              // 역대 최고. months 창과 무관하다
-val monthDistanceKm: BigDecimal    // 이번 달, KST 경계. 0을 낸다
-val yearDistanceKm: BigDecimal     // 올해, KST 경계. 0을 낸다
+val maxSpeedKmh: Int?              // 역대 최고. months 범위와 무관하다
+val totalDistanceKm: BigDecimal    // 전 기간 총 주행거리. 0을 낸다
+val recordedMonths: Int            // 주행 기록이 있는 달 수 — 평균의 분모다
 ```
 
-### 최고 속도만 `months` 창을 따르지 않는다
+### 평균을 서버가 내지 않는다 — 분자와 분모를 준다
 
-창이 바뀔 때마다 바뀌면 기록이 아니다. 실측 138 km/h는 2024~2025년 것이라 12개월 창으로 자르면 **134**가 나온다. 앱은 이 값의 라벨을 **「역대 최고」**로 적어 옆 두 타일과 범위가 다름을 글자로 드러낸다.
+화면이 원하는 것은 「평균 월 주행거리」와 「평균 연 주행거리」다. 그런데 이 저장소에는 **「나눗셈을 서버가 하지 않는다 — 서버는 앱이 옳게 나눌 수 있는 분모를 함께 준다」**는 규칙이 서 있고(단가·전비가 모두 그렇다), 평균도 나눗셈이다. 서버가 평균을 내 버리면 분모 정의가 응답에서 사라져 화면이 그 뜻을 설명할 수 없다.
+
+앱이 낸다:
+
+```
+월 평균 = totalDistanceKm / recordedMonths
+연 평균 = 월 평균 × 12
+```
+
+**분모는 「주행 기록이 있는 달 수」다.** 실측 기준 2021-09부터 60개월이고 빈 달이 없어 경과 기간과 사실상 같지만, 빈 달이 생기더라도 뜻이 명확하다 — 「탄 달의 평균」이다. 진행 중인 달도 분모에 든다(그 달의 부분 거리도 분자에 들어 있으므로 짝이 맞는다).
+
+### 최고 속도만 `months` 범위를 따르지 않는다
+
+범위가 바뀔 때마다 바뀌면 기록이 아니다. 실측 138 km/h는 2024~2025년 것이라 12개월 범위로 자르면 **134**가 나온다. 앱은 이 값의 라벨을 **「역대 최고」**로 적어 옆 두 타일과 범위가 다름을 글자로 드러낸다.
 
 ### `maxSpeedAt`을 두지 않는다
 
@@ -181,9 +203,9 @@ val yearDistanceKm: BigDecimal     // 올해, KST 경계. 0을 낸다
 
 `maxSpeedKmh`는 반대로 nullable이다 — 주행이 하나도 없으면 「역대 최고」라는 값 자체가 존재하지 않는다.
 
-### 요약과 같은 숫자가 나와야 한다
+### 요약과 같은 모집단을 쓴다
 
-`monthDistanceKm`은 `/tesla/summary`의 이번 달 `distanceKm`과 **같은 값이어야 한다.** 두 화면에 다른 숫자가 뜨면 어느 쪽도 못 믿는다. 그래서 모집단 조건과 반올림을 `DRIVE_MONTHLY_SQL`과 정확히 맞춘다.
+`totalDistanceKm`은 `/tesla/summary`가 달마다 내는 `distanceKm`을 **전부 더한 값과 같아야 한다.** 한쪽이 거르는 주행을 다른 쪽이 세면 「월 평균」이 요약 화면의 어느 숫자와도 맞지 않는다. 그래서 모집단 조건과 반올림을 `DRIVE_MONTHLY_SQL`과 정확히 맞춘다. `recordedMonths`도 같은 모집단 위에서 세므로 분자와 분모가 같은 주행 집합을 본다.
 
 | 항목 | 값 |
 |---|---|
@@ -196,20 +218,20 @@ val yearDistanceKm: BigDecimal     // 올해, KST 경계. 0을 낸다
 
 ```sql
 -- DRIVE_STATS_SQL
-SELECT MAX(d.speed_max)                                          AS max_speed_kmh,
-       ROUND(COALESCE(SUM(d.distance) FILTER (
-           WHERE date_trunc('month', d.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')
-               = date_trunc('month', now() AT TIME ZONE 'Asia/Seoul')), 0)::numeric, 1) AS month_distance_km,
-       ROUND(COALESCE(SUM(d.distance) FILTER (
-           WHERE date_trunc('year',  d.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')
-               = date_trunc('year',  now() AT TIME ZONE 'Asia/Seoul')), 0)::numeric, 1) AS year_distance_km
+SELECT MAX(d.speed_max)                              AS max_speed_kmh,
+       ROUND(COALESCE(SUM(d.distance), 0)::numeric, 1) AS total_distance_km,
+       COUNT(DISTINCT date_trunc(
+           'month', d.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul'
+       ))                                            AS recorded_months
   FROM drives d
  WHERE d.end_date IS NOT NULL
 ```
 
-`GROUP BY`가 없으므로 `drives`가 비어도 한 행이 온다 — `max_speed_kmh`는 null, 거리 둘은 0이다. 이것이 위 nullable 결정과 그대로 맞물린다.
+`GROUP BY`가 없으므로 `drives`가 비어도 한 행이 온다 — `max_speed_kmh`는 null, `total_distance_km`는 0, `recorded_months`는 0이다. **분모가 0으로 올 수 있다는 뜻이므로 앱이 나누기 전에 막아야 한다**(0으로 나누면 화면이 무너진다). 서버가 그 자리를 대신 정하지 않는 이유는 위와 같다.
 
-**`months` 파라미터를 쓰지 않는다.** 이 쿼리는 기존 네 쿼리와 창을 공유하지 않으므로, 나중에 `months`를 바꿔도 이 셋은 흔들리지 않는다.
+실측(2026-08-19): `total_distance_km = 107257.8`, `recorded_months = 60` → 월 평균 1,787.6km, 연 평균 21,451.6km.
+
+**`months` 파라미터를 쓰지 않는다.** 이 쿼리는 기존 네 쿼리와 범위를 공유하지 않으므로, 나중에 `months`를 바꿔도 이 셋은 흔들리지 않는다.
 
 ---
 
@@ -217,11 +239,11 @@ SELECT MAX(d.speed_max)                                          AS max_speed_km
 
 | 상황 | 처리 |
 |---|---|
-| `days`가 1~30 밖 | 400 `ErrorCode.INVALID_REQUEST` — 기존 `limit` 검증과 같은 방식 |
-| 창 안에 상태 행이 하나도 없음 | `states: []`. 404가 아니다 — 「없는 리소스」가 아니라 「그 기간에 기록이 없다」 |
+| `hours`가 1~168 밖 | 400 `ErrorCode.INVALID_REQUEST` — 기존 `limit` 검증과 같은 방식 |
+| 범위 안에 상태 행이 하나도 없음 | `states: []`. 404가 아니다 — 「없는 리소스」가 아니라 「그 기간에 기록이 없다」 |
 | 열린 유령 주행/충전 | 결과에서 제외 (24시간 룰) |
-| 진행 중인 진짜 주행/충전 | `to`를 창 끝(`windowEnd`)으로 막아 포함 |
-| `drives`가 비어 있음 | `maxSpeedKmh: null`, 거리 둘은 `0` |
+| 진행 중인 진짜 주행/충전 | `to`를 범위 끝(`windowEnd`)으로 막아 포함 |
+| `drives`가 비어 있음 | `maxSpeedKmh: null`, `totalDistanceKm: 0`, `recordedMonths: 0` — **앱이 0으로 나누지 않게 막는다** |
 | `speed_max`가 null인 주행 | `MAX`가 무시한다. 실측 null 0건이지만 계약은 유지 |
 
 ## 테스트
@@ -230,23 +252,24 @@ kotest `BehaviorSpec` + mockk, 격리 모드 `InstancePerLeaf`. 컨트롤러 단
 
 **`TeslaVehicleService` — 타임라인**
 
-- `days` 기본값이 7이다
-- `days`가 0·31이면 `CustomException(INVALID_REQUEST)`를 던진다
-- 창 시작이 **KST 자정 − (days−1)일**로 계산된다 (`days=7`, 요청 시각 2026-08-19 12:34 KST → `from` = 2026-08-13T00:00)
+- `hours` 기본값이 24다
+- `hours`가 0·169면 `CustomException(INVALID_REQUEST)`를 던진다
+- 범위가 **`to` − `hours`시간**으로 계산되고 **자정에 맞춰지지 않는다** (요청 시각 2026-08-19 13:05 KST, `hours=24` → `from` = 2026-08-18T13:05, `to` = 2026-08-19T13:05)
 - 리포지토리가 준 UTC 시각이 응답에서 KST로 바뀐다
 - 세 배열이 각각 비어도 응답이 성립한다
 
 **`TeslaVehicleService` — 주행 통계**
 
 - `maxSpeedKmh`가 null이면 그대로 null로 나간다
-- 거리 둘은 리포지토리가 준 0을 그대로 낸다 (서비스가 null로 바꾸지 않는다)
+- `totalDistanceKm`·`recordedMonths`는 리포지토리가 준 값을 그대로 낸다 — **서비스가 나누지 않는다**
+- 주행이 하나도 없으면 `recordedMonths`가 0으로 나간다(서비스가 1로 보정하지 않는다)
 
-**리포지토리 통합 테스트를 새로 만들지 않는다.** 이 저장소에 TeslaMate DB를 띄우는 테스트가 없다. 대신 위 SQL은 **실측 DB에서 손으로 돌려 본 값**을 이 문서에 남겼다(이번 달 1,331.3 / 올해 13,440.4 / 최고 138).
+**리포지토리 통합 테스트를 새로 만들지 않는다.** 이 저장소에 TeslaMate DB를 띄우는 테스트가 없다. 대신 위 SQL은 **실측 DB에서 손으로 돌려 본 값**을 이 문서에 남겼다(총 107,257.8km / 60개월 / 최고 138).
 
 ## 앱 저장소
 
 `../woori-haru`의 `docs/superpowers/specs/2026-08-19-vehicle-state-timeline-design.md`가 이 API를 쓰는 화면 설계다. 화면이 정한 것 중 이 문서에 영향을 주는 것은 셋이다.
 
 - 겹침 우선순위: 상태 → 주행 → 충전
-- 「역대 최고」라는 라벨 (창이 다름을 글자로 드러냄)
+- 「역대 최고」라는 라벨 (범위가 다름을 글자로 드러냄)
 - 타임라인은 **매번 새로 받는다** — 「최근 7일」이 계속 움직이므로 캐시하지 않는다

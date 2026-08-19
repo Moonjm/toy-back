@@ -188,8 +188,8 @@ class JdbcTeslaVehicleRepository(
             .query { rs, _ ->
                 DriveStatsRow(
                     maxSpeedKmh = rs.nullableInt("max_speed_kmh"),
-                    monthDistanceKm = rs.getBigDecimal("month_distance_km"),
-                    yearDistanceKm = rs.getBigDecimal("year_distance_km"),
+                    totalDistanceKm = rs.getBigDecimal("total_distance_km"),
+                    recordedMonths = rs.getInt("recorded_months"),
                 )
             }.single()
 
@@ -604,29 +604,36 @@ class JdbcTeslaVehicleRepository(
         """
 
         /**
-         * **`/tesla/summary`의 이번 달 `distanceKm`과 같은 숫자가 나와야 한다.** 두 화면에
-         * 다른 숫자가 뜨면 어느 쪽도 못 믿는다 — 그래서 모집단(`end_date IS NOT NULL`,
-         * 거리 조건 없음)·경계 컬럼(`start_date`)·시간대(KST)·반올림(소수 한 자리)을
-         * `DRIVE_MONTHLY_SQL`과 정확히 맞춘다. 한쪽을 고치면 다른 쪽도 고쳐야 한다.
+         * **`/tesla/summary`와 같은 모집단을 쓴다.** `total_distance_km`은 요약이 달마다 내는
+         * `distanceKm`을 전부 더한 값과 같아야 한다 — 한쪽이 거르는 주행을 다른 쪽이 세면
+         * 「월 평균」이 요약 화면의 어느 숫자와도 맞지 않는다. 그래서 모집단
+         * (`end_date IS NOT NULL`, 거리 조건 없음)·경계 컬럼(`start_date`)·시간대(KST)·
+         * 반올림(소수 한 자리)을 `DRIVE_MONTHLY_SQL`과 정확히 맞춘다. 한쪽을 고치면 다른
+         * 쪽도 고쳐야 한다. `recorded_months`도 같은 모집단 위에서 세므로 **분자와 분모가
+         * 같은 주행 집합을 본다.**
          *
-         * **최고 속도만 범위가 없다.** 범위가 바뀔 때마다 바뀌면 기록이 아니다. 실측 138 km/h는
-         * 2024~2025년 것이라 12개월 범위로 자르면 134가 된다 — 앱이 라벨을 「역대 최고」로
-         * 적어 옆 두 타일과 범위가 다름을 글자로 드러낸다.
+         * **평균을 서버가 내지 않는다 — 분자와 분모를 준다.** 이 저장소는 나눗셈을 앱에
+         * 맡긴다(단가·전비가 모두 그렇다). 앱이 `total / months`로 월 평균을, `× 12`로 연
+         * 평균을 낸다.
          *
-         * **거리 둘은 `COALESCE(…, 0)`으로 0을 낸다.** 기간이 못박힌 합계라 그 기간에 주행이
-         * 없으면 「0km 탔다」가 사실이다. null로 두면 **매달 1일 새벽마다 화면에 「—」가 뜬다.**
+         * **달 세기는 KST 기준이다.** `date_trunc`를 UTC로 돌리면 KST 1일 새벽 주행이 앞 달로
+         * 세어져, 그 달의 주행이 그것뿐일 때 달 수가 한 칸 어긋난다.
+         *
+         * **최고 속도만 범위가 없는 것이 아니라 셋 다 전 기간이다.** 초판은 거리 둘이 월·연
+         * 경계였는데, 평균의 재료로 바뀌면서 경계가 사라졌다.
          *
          * `GROUP BY`가 없어 `drives`가 비어도 한 행이 온다 — `max_speed_kmh`는 null,
-         * 거리 둘은 0이다.
+         * `total_distance_km`는 0, `recorded_months`는 0이다. **분모가 0으로 올 수 있다는
+         * 뜻이라 앱이 나누기 전에 막아야 한다.**
+         *
+         * 실측(2026-08-19): 총 107,257.8km / 60개월 / 최고 138 km/h.
          */
         private const val DRIVE_STATS_SQL = """
-            SELECT MAX(d.speed_max) AS max_speed_kmh,
-                   ROUND(COALESCE(SUM(d.distance) FILTER (
-                       WHERE date_trunc('month', d.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')
-                           = date_trunc('month', now() AT TIME ZONE 'Asia/Seoul')), 0)::numeric, 1) AS month_distance_km,
-                   ROUND(COALESCE(SUM(d.distance) FILTER (
-                       WHERE date_trunc('year',  d.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')
-                           = date_trunc('year',  now() AT TIME ZONE 'Asia/Seoul')), 0)::numeric, 1) AS year_distance_km
+            SELECT MAX(d.speed_max)                                AS max_speed_kmh,
+                   ROUND(COALESCE(SUM(d.distance), 0)::numeric, 1) AS total_distance_km,
+                   COUNT(DISTINCT date_trunc(
+                       'month', d.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul'
+                   ))                                              AS recorded_months
               FROM drives d
              WHERE d.end_date IS NOT NULL
         """

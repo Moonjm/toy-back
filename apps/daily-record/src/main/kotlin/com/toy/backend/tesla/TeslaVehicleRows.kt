@@ -158,14 +158,23 @@ data class SegmentRow(
 )
 
 /**
- * 역대 최고 속도와 이번 달·올해 주행거리. **셋의 범위가 서로 다르다** —
- * 최고 속도는 전 기간이고 거리 둘은 KST 월·연 경계다.
+ * 역대 최고 속도와 **평균 주행거리의 재료**. 셋 다 전 기간을 본다.
+ *
+ * **평균을 여기서 내지 않는다 — 분자와 분모를 그대로 올린다.** 이 저장소는 나눗셈을 서버가
+ * 하지 않는다(단가·전비가 모두 그렇다). 평균도 나눗셈이라, 서버가 내 버리면 분모 정의가
+ * 응답에서 사라져 화면이 그 뜻을 설명할 수 없다.
  *
  * `maxSpeedKmh`만 nullable이다. 주행이 하나도 없으면 「역대 최고」라는 값 자체가 없지만,
- * 거리 둘은 기간이 못박힌 합계라 그 기간에 안 탔으면 **0이 사실이다**.
+ * 나머지 둘은 세어서 나온 값이라 **0이 사실이다**.
  */
 data class DriveStatsRow(
     val maxSpeedKmh: Int?,
-    val monthDistanceKm: BigDecimal,
-    val yearDistanceKm: BigDecimal,
+    /** 전 기간 총 주행거리(km). `/tesla/summary`가 달마다 내는 `distanceKm`의 합과 같다. */
+    val totalDistanceKm: BigDecimal,
+    /**
+     * 주행 기록이 있는 달 수 — **평균의 분모다.**
+     *
+     * **0으로 올 수 있다**(주행이 하나도 없을 때). 앱이 나누기 전에 막아야 한다.
+     */
+    val recordedMonths: Int,
 )

@@ -5,14 +5,14 @@ import com.toy.backend.common.exception.CustomException
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import java.math.BigDecimal
-import java.time.LocalDate
+import java.time.Duration
 import java.time.LocalDateTime
 import java.time.YearMonth
-import java.time.ZoneId
 
 /**
  * **12개월 추이·이번 달·직전 달이 한 벌의 그룹 집계에서 나온다** — 직전 달이 12개월 범위 안에 든다.
@@ -20,7 +20,6 @@ import java.time.ZoneId
  */
 class TeslaVehicleServiceTest :
     BehaviorSpec({
-        val kst = ZoneId.of("Asia/Seoul")
         val vehicleRepository = mockk<TeslaVehicleRepository>()
         val chargeRepository = mockk<TeslaChargeRepository>()
         val service = TeslaVehicleService(vehicleRepository, chargeRepository)
@@ -396,7 +395,7 @@ class TeslaVehicleServiceTest :
             every { vehicleRepository.driveDistanceBuckets(any()) } returns emptyList()
             every { vehicleRepository.drivePlaces(any()) } returns emptyList()
             every { vehicleRepository.carEfficiency() } returns BigDecimal("0.1367")
-            every { vehicleRepository.driveStats() } returns DriveStatsRow(138, BigDecimal("1331.3"), BigDecimal("13440.4"))
+            every { vehicleRepository.driveStats() } returns DriveStatsRow(138, BigDecimal("107257.8"), 60)
 
             val response = service.driveInsights(12)
 
@@ -454,7 +453,7 @@ class TeslaVehicleServiceTest :
                     DrivePlaceRow("Goyang-daero", 69, BigDecimal("774.0")),
                 )
             every { vehicleRepository.carEfficiency() } returns BigDecimal("0.1367")
-            every { vehicleRepository.driveStats() } returns DriveStatsRow(138, BigDecimal("1331.3"), BigDecimal("13440.4"))
+            every { vehicleRepository.driveStats() } returns DriveStatsRow(138, BigDecimal("107257.8"), 60)
 
             val response = service.driveInsights(12)
 
@@ -495,7 +494,7 @@ class TeslaVehicleServiceTest :
             every { vehicleRepository.driveDistanceBuckets(any()) } returns emptyList()
             every { vehicleRepository.drivePlaces(any()) } returns emptyList()
             every { vehicleRepository.carEfficiency() } returns null
-            every { vehicleRepository.driveStats() } returns DriveStatsRow(138, BigDecimal("1331.3"), BigDecimal("13440.4"))
+            every { vehicleRepository.driveStats() } returns DriveStatsRow(138, BigDecimal("107257.8"), 60)
 
             val response = service.driveInsights(12)
 
@@ -510,7 +509,7 @@ class TeslaVehicleServiceTest :
             every { vehicleRepository.driveDistanceBuckets(any()) } returns emptyList()
             every { vehicleRepository.drivePlaces(any()) } returns emptyList()
             every { vehicleRepository.carEfficiency() } returns null
-            every { vehicleRepository.driveStats() } returns DriveStatsRow(138, BigDecimal("1331.3"), BigDecimal("13440.4"))
+            every { vehicleRepository.driveStats() } returns DriveStatsRow(138, BigDecimal("107257.8"), 60)
 
             Then("1과 60은 통과한다") {
                 service.driveInsights(1).months shouldBe 1
@@ -539,7 +538,7 @@ class TeslaVehicleServiceTest :
             every { vehicleRepository.driveDistanceBuckets(capture(distanceMonths)) } returns emptyList()
             every { vehicleRepository.drivePlaces(capture(placesMonths)) } returns emptyList()
             every { vehicleRepository.carEfficiency() } returns null
-            every { vehicleRepository.driveStats() } returns DriveStatsRow(138, BigDecimal("1331.3"), BigDecimal("13440.4"))
+            every { vehicleRepository.driveStats() } returns DriveStatsRow(138, BigDecimal("107257.8"), 60)
 
             service.driveInsights(3)
 
@@ -551,8 +550,8 @@ class TeslaVehicleServiceTest :
             }
         }
 
-        // 셋의 범위가 서로 다르다 — 최고 속도는 전 기간이고 거리 둘은 KST 월·연 경계다.
-        // 서비스는 그것을 해석하지 않고 그대로 올린다.
+        // 평균은 나눗셈이고 이 저장소는 나눗셈을 앱에 맡긴다. 서비스는 분자와 분모를
+        // 해석하지 않고 그대로 올린다.
         Given("주행 통계가 올 때") {
             every { vehicleRepository.driveTemperatureBuckets(any()) } returns emptyList()
             every { vehicleRepository.driveTimes(any()) } returns emptyList()
@@ -560,34 +559,41 @@ class TeslaVehicleServiceTest :
             every { vehicleRepository.drivePlaces(any()) } returns emptyList()
             every { vehicleRepository.carEfficiency() } returns null
             every { vehicleRepository.driveStats() } returns
-                DriveStatsRow(138, BigDecimal("1331.3"), BigDecimal("13440.4"))
+                DriveStatsRow(138, BigDecimal("107257.8"), 60)
 
             val response = service.driveInsights(12)
 
             Then("세 값이 그대로 실린다") {
                 response.maxSpeedKmh shouldBe 138
-                response.monthDistanceKm shouldBe BigDecimal("1331.3")
-                response.yearDistanceKm shouldBe BigDecimal("13440.4")
+                response.totalDistanceKm shouldBe BigDecimal("107257.8")
+                response.recordedMonths shouldBe 60
+            }
+
+            // 서버가 평균을 내면 분모 정의가 응답에서 사라져 화면이 그 뜻을 설명할 수 없다.
+            // 여기서 확인하는 것은 서비스가 나눈 값을 내지 **않는다**는 것이다.
+            Then("서비스가 평균을 내지 않는다") {
+                response.totalDistanceKm shouldNotBe BigDecimal("1787.6")
             }
         }
 
         // 주행이 하나도 없는 경우다. 「역대 최고」는 값 자체가 없지만(null),
-        // 거리 둘은 기간이 못박힌 합계라 0이 사실이다 — 서비스가 null로 바꾸지 않는다.
+        // 나머지 둘은 세어서 나온 값이라 0이 사실이다 — 서비스가 보정하지 않는다.
         Given("주행이 하나도 없을 때") {
             every { vehicleRepository.driveTemperatureBuckets(any()) } returns emptyList()
             every { vehicleRepository.driveTimes(any()) } returns emptyList()
             every { vehicleRepository.driveDistanceBuckets(any()) } returns emptyList()
             every { vehicleRepository.drivePlaces(any()) } returns emptyList()
             every { vehicleRepository.carEfficiency() } returns null
-            every { vehicleRepository.driveStats() } returns
-                DriveStatsRow(null, BigDecimal.ZERO, BigDecimal.ZERO)
+            every { vehicleRepository.driveStats() } returns DriveStatsRow(null, BigDecimal.ZERO, 0)
 
             val response = service.driveInsights(12)
 
-            Then("최고 속도는 null이고 거리 둘은 0이다") {
+            // **분모가 0으로 나간다.** 서비스가 1로 보정하면 앱이 0으로 나누는 것을 막을
+            // 기회를 잃고, 「탄 달이 없다」가 「한 달 탔다」로 조용히 바뀐다.
+            Then("최고 속도는 null이고 분모는 0으로 나간다") {
                 response.maxSpeedKmh shouldBe null
-                response.monthDistanceKm shouldBe BigDecimal.ZERO
-                response.yearDistanceKm shouldBe BigDecimal.ZERO
+                response.totalDistanceKm shouldBe BigDecimal.ZERO
+                response.recordedMonths shouldBe 0
             }
         }
 
@@ -598,12 +604,17 @@ class TeslaVehicleServiceTest :
             every { vehicleRepository.driveSegments(any(), any()) } returns emptyList()
             every { vehicleRepository.chargeSegments(any(), any()) } returns emptyList()
 
-            val response = service.stateTimeline(7)
+            val response = service.stateTimeline(24)
 
-            // 앱이 하루에 한 행씩 그린다. 범위가 임의 시각에서 시작하면 첫 행이 반쪽이 된다.
-            // 고정 시각 검증은 `TeslaTimeTest`가 한다 — 여기서는 자정에 맞았는지만 본다.
-            Then("범위 시작이 KST 자정에서 6일을 뺀 자정이다") {
-                response.from shouldBe LocalDate.now(kst).minusDays(6).atStartOfDay()
+            // 고정 시각 검증은 `TeslaTimeTest`가 한다 — 여기서는 폭과 정렬만 본다.
+            Then("범위 폭이 요청한 시간만큼이다") {
+                Duration.between(response.from, response.to) shouldBe Duration.ofHours(24)
+            }
+
+            // **자정 스냅이 없다.** 앱이 24시간을 한 줄로 그리고 오른쪽 끝이 「지금」이라,
+            // 자정에 맞추면 그 끝이 「지금」이 아니게 된다.
+            Then("범위 시작이 자정으로 당겨지지 않는다") {
+                response.from.toLocalTime() shouldBe response.to.toLocalTime()
             }
 
             // KST 자정을 UTC로 옮기면 전날 15시다. 리포지토리는 UTC로 받아야 한다 —
@@ -615,7 +626,7 @@ class TeslaVehicleServiceTest :
 
             // 「그 기간에 기록이 없다」는 404가 아니다.
             Then("세 배열이 비어도 응답이 성립한다") {
-                response.days shouldBe 7
+                response.hours shouldBe 24
                 response.states shouldBe emptyList()
                 response.drives shouldBe emptyList()
                 response.charges shouldBe emptyList()
@@ -633,7 +644,7 @@ class TeslaVehicleServiceTest :
             every { vehicleRepository.chargeSegments(any(), any()) } returns
                 listOf(SegmentRow(LocalDateTime.of(2026, 8, 15, 13, 11), LocalDateTime.of(2026, 8, 15, 20, 40)))
 
-            val response = service.stateTimeline(7)
+            val response = service.stateTimeline(24)
 
             // UTC + 9h = KST. 빠뜨리면 새벽 6시 출발이 밤 9시로 찍힌다.
             Then("세 배열의 시각이 전부 KST로 바뀐다") {
@@ -649,20 +660,20 @@ class TeslaVehicleServiceTest :
             }
         }
 
-        Given("days가 범위 경계일 때") {
+        Given("hours가 범위 경계일 때") {
             every { vehicleRepository.stateSegments(any(), any()) } returns emptyList()
             every { vehicleRepository.driveSegments(any(), any()) } returns emptyList()
             every { vehicleRepository.chargeSegments(any(), any()) } returns emptyList()
 
-            Then("1과 30은 통과한다") {
-                service.stateTimeline(1).days shouldBe 1
-                service.stateTimeline(30).days shouldBe 30
+            Then("1과 168은 통과한다") {
+                service.stateTimeline(1).hours shouldBe 1
+                service.stateTimeline(168).hours shouldBe 168
             }
 
-            Then("0과 31은 400이다") {
+            Then("0과 169는 400이다") {
                 shouldThrow<CustomException> { service.stateTimeline(0) }
                     .errorCode shouldBe ErrorCode.INVALID_REQUEST
-                shouldThrow<CustomException> { service.stateTimeline(31) }
+                shouldThrow<CustomException> { service.stateTimeline(169) }
                     .errorCode shouldBe ErrorCode.INVALID_REQUEST
             }
         }

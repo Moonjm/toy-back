@@ -67,17 +67,17 @@ class TeslaVehicleController(
      * 그중 둘은 나머지 하나를 기다린다 — `/tesla/drive-insights`가 네 카드를 함께 싣는 것과
      * 같은 이유다.
      *
-     * 앱은 이 응답을 캐시하지 않는다 — 「최근 7일」이 계속 움직인다.
+     * 앱은 이 응답을 캐시하지 않는다 — 「최근 24시간」이 계속 움직인다.
      */
     @GetMapping("/state-timeline")
-    @Operation(summary = "상태 타임라인 — 최근 며칠의 상태·주행·충전 구간")
+    @Operation(summary = "상태 타임라인 — 최근 몇 시간의 상태·주행·충전 구간")
     fun stateTimeline(
-        @Parameter(description = "거슬러 볼 일수(1~30)", example = DEFAULT_DAYS)
-        @RequestParam(defaultValue = DEFAULT_DAYS)
-        days: Int,
-    ): ResponseEntity<DataResponseBody<TeslaStateTimelineResponse>> = ResponseEntity.ok(DataResponseBody(service.stateTimeline(days)))
+        @Parameter(description = "거슬러 볼 시간(1~168)", example = DEFAULT_HOURS)
+        @RequestParam(defaultValue = DEFAULT_HOURS)
+        hours: Int,
+    ): ResponseEntity<DataResponseBody<TeslaStateTimelineResponse>> = ResponseEntity.ok(DataResponseBody(service.stateTimeline(hours)))
 }
 
 /** 애너테이션 인자라 컴파일 상수여야 해서 문자열이다. */
 private const val DEFAULT_MONTHS = "12"
-private const val DEFAULT_DAYS = "7"
+private const val DEFAULT_HOURS = "24"
