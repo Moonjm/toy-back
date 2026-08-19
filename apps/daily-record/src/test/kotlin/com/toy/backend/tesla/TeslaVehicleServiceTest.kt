@@ -9,10 +9,33 @@ import io.kotest.matchers.shouldNotBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.mockk.verify
 import java.math.BigDecimal
 import java.time.Duration
 import java.time.LocalDateTime
 import java.time.YearMonth
+
+/** 좌표 말고는 볼 것이 없는 위치 행. 지오펜스 판정 테스트가 쓴다. */
+private fun positionAt(
+    latitude: BigDecimal,
+    longitude: BigDecimal,
+) = PositionRow(
+    dateUtc = LocalDateTime.of(2026, 8, 13, 5, 2),
+    latitude = latitude,
+    longitude = longitude,
+    batteryLevel = 72,
+    usableBatteryLevel = 70,
+    ratedRangeKm = null,
+    estRangeKm = null,
+    odometerKm = null,
+    insideTempC = null,
+    outsideTempC = null,
+    climateOn = null,
+    tpmsFl = null,
+    tpmsFr = null,
+    tpmsRl = null,
+    tpmsRr = null,
+)
 
 /**
  * **12개월 추이·이번 달·직전 달이 한 벌의 그룹 집계에서 나온다** — 직전 달이 12개월 범위 안에 든다.
@@ -168,6 +191,7 @@ class TeslaVehicleServiceTest :
             every { vehicleRepository.findOpenState() } returns
                 StateRow("online", LocalDateTime.of(2026, 8, 13, 0, 30))
             every { vehicleRepository.findActivity() } returns ActivityRow(charging = true, driving = false)
+            every { vehicleRepository.findLastDriveDestination() } returns null
             every { vehicleRepository.findGeofences() } returns emptyList()
 
             val status = service.status()
@@ -196,6 +220,7 @@ class TeslaVehicleServiceTest :
             every { vehicleRepository.findLatestPosition() } returns null
             every { vehicleRepository.findOpenState() } returns null
             every { vehicleRepository.findActivity() } returns ActivityRow(charging = true, driving = true)
+            every { vehicleRepository.findLastDriveDestination() } returns null
             every { vehicleRepository.findGeofences() } returns emptyList()
 
             val status = service.status()
@@ -211,6 +236,7 @@ class TeslaVehicleServiceTest :
             every { vehicleRepository.findOpenState() } returns
                 StateRow("online", LocalDateTime.of(2026, 8, 13, 0, 30))
             every { vehicleRepository.findActivity() } returns ActivityRow(charging = false, driving = true)
+            every { vehicleRepository.findLastDriveDestination() } returns null
             every { vehicleRepository.findGeofences() } returns emptyList()
 
             val status = service.status()
@@ -225,6 +251,7 @@ class TeslaVehicleServiceTest :
             every { vehicleRepository.findOpenState() } returns
                 StateRow("asleep", LocalDateTime.of(2026, 8, 13, 0, 30))
             every { vehicleRepository.findActivity() } returns ActivityRow(charging = false, driving = false)
+            every { vehicleRepository.findLastDriveDestination() } returns null
             every { vehicleRepository.findGeofences() } returns emptyList()
 
             val status = service.status()
@@ -239,6 +266,7 @@ class TeslaVehicleServiceTest :
             every { vehicleRepository.findLatestPosition() } returns null
             every { vehicleRepository.findOpenState() } returns null
             every { vehicleRepository.findActivity() } returns ActivityRow(charging = false, driving = false)
+            every { vehicleRepository.findLastDriveDestination() } returns null
             every { vehicleRepository.findGeofences() } returns emptyList()
 
             val status = service.status()
@@ -274,6 +302,7 @@ class TeslaVehicleServiceTest :
                 )
             every { vehicleRepository.findOpenState() } returns null
             every { vehicleRepository.findActivity() } returns ActivityRow(charging = false, driving = false)
+            every { vehicleRepository.findLastDriveDestination() } returns null
             every { vehicleRepository.findGeofences() } returns
                 listOf(
                     // 약 3km 떨어진 것 — 반경 100m 밖이다.
@@ -315,14 +344,73 @@ class TeslaVehicleServiceTest :
                 )
             every { vehicleRepository.findOpenState() } returns null
             every { vehicleRepository.findActivity() } returns ActivityRow(charging = false, driving = false)
+            every { vehicleRepository.findLastDriveDestination() } returns null
             every { vehicleRepository.findGeofences() } returns
                 listOf(GeofenceRow("집", BigDecimal("37.56650"), BigDecimal("126.97800"), 100))
 
             val status = service.status()
 
-            // 주소는 내지 않는다 — positions에 주소 참조가 없고 역지오코딩을 붙이지 않는다.
+            // 지오펜스로 못 찾고 마지막 주행 도착지도 없으면 그때는 null이다.
             Then("위치 이름이 null이다") {
                 status.locationName shouldBe null
+            }
+        }
+
+        /*
+         * 이 DB는 `geofences`가 0행이라 옛 방침(「주소는 내지 않는다」)의 실제 효과는
+         * **상태 카드의 위치가 영원히 비는 것**이었다. `/tesla/drive-insights`의 「자주 가는 곳」이
+         * 같은 이유로 주소까지 쓰도록 바뀐 것과 같은 자리다.
+         */
+        Given("지오펜스로 못 찾고 마지막 주행 도착지가 있을 때") {
+            every { vehicleRepository.findLatestPosition() } returns positionAt(BigDecimal("35.16650"), BigDecimal("129.07800"))
+            every { vehicleRepository.findOpenState() } returns null
+            every { vehicleRepository.findActivity() } returns ActivityRow(charging = false, driving = false)
+            every { vehicleRepository.findGeofences() } returns emptyList()
+            every { vehicleRepository.findLastDriveDestination() } returns "Goyang-daero"
+
+            val status = service.status()
+
+            Then("마지막 주행 도착지 이름으로 떨어진다") {
+                status.locationName shouldBe "Goyang-daero"
+            }
+        }
+
+        // 지오펜스가 이겼으면 주소를 볼 이유가 없다. 쿼리 한 번을 아끼는 것이기도 하지만,
+        // 두 값이 섞일 여지를 아예 없애는 쪽이 읽기 쉽다.
+        Given("지오펜스 반경 안에 있을 때 주소 조회") {
+            every { vehicleRepository.findLatestPosition() } returns positionAt(BigDecimal("37.56650"), BigDecimal("126.97800"))
+            every { vehicleRepository.findOpenState() } returns null
+            every { vehicleRepository.findActivity() } returns ActivityRow(charging = false, driving = false)
+            every { vehicleRepository.findGeofences() } returns
+                listOf(GeofenceRow("집", BigDecimal("37.56650"), BigDecimal("126.97800"), 500))
+            every { vehicleRepository.findLastDriveDestination() } returns "Goyang-daero"
+
+            val status = service.status()
+
+            Then("지오펜스 이름이 이기고 주소는 조회하지 않는다") {
+                status.locationName shouldBe "집"
+                verify(exactly = 0) { vehicleRepository.findLastDriveDestination() }
+            }
+        }
+
+        /*
+         * **주행 중에는 마지막 완료 주행의 도착지가 현재 위치가 아니라 출발지다.**
+         * `locationName`은 「지금 어디」를 뜻하므로, 그때 직전 도착지를 내면 틀린 위치를
+         * 자신 있게 표시하게 된다. `state=driving`이 따로 나가므로 앱이 상황을 안다.
+         */
+        Given("주행 중이고 지오펜스로 못 찾을 때") {
+            every { vehicleRepository.findLatestPosition() } returns positionAt(BigDecimal("35.16650"), BigDecimal("129.07800"))
+            every { vehicleRepository.findOpenState() } returns null
+            every { vehicleRepository.findActivity() } returns ActivityRow(charging = false, driving = true)
+            every { vehicleRepository.findGeofences() } returns emptyList()
+            every { vehicleRepository.findLastDriveDestination() } returns "Goyang-daero"
+
+            val status = service.status()
+
+            Then("주소로 대체하지 않는다") {
+                status.state shouldBe "driving"
+                status.locationName shouldBe null
+                verify(exactly = 0) { vehicleRepository.findLastDriveDestination() }
             }
         }
 

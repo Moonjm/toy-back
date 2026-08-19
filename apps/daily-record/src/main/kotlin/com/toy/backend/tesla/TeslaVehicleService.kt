@@ -49,9 +49,10 @@ class TeslaVehicleService(
         val position = vehicleRepository.findLatestPosition()
         val openState = vehicleRepository.findOpenState()
         val activity = vehicleRepository.findActivity()
+        val state = resolveState(activity, openState)
         return TeslaStatusResponse(
             asOf = position?.dateUtc?.let { TeslaTime.toKst(it) },
-            state = resolveState(activity, openState),
+            state = state,
             stateSince = openState?.startDateUtc?.let { TeslaTime.toKst(it) },
             batteryLevel = position?.batteryLevel,
             usableBatteryLevel = position?.usableBatteryLevel,
@@ -61,7 +62,7 @@ class TeslaVehicleService(
             insideTempC = position?.insideTempC,
             outsideTempC = position?.outsideTempC,
             climateOn = position?.climateOn,
-            locationName = position?.let { geofenceNameAt(it) },
+            locationName = locationNameOf(position, state),
             tpmsBar = position?.let { TpmsBar(it.tpmsFl, it.tpmsFr, it.tpmsRl, it.tpmsRr) },
         )
     }
@@ -190,10 +191,34 @@ class TeslaVehicleService(
         openState: StateRow?,
     ): String? =
         when {
-            activity.charging -> "charging"
-            activity.driving -> "driving"
+            activity.charging -> CHARGING
+            activity.driving -> DRIVING
             else -> openState?.state
         }
+
+    /**
+     * 지오펜스 이름, 없으면 **마지막 주행 도착지 이름**으로 떨어진다.
+     *
+     * 옛 방침은 「주소는 내지 않는다」였는데, 그 근거로 든 것이 「지금 좌표를 반경으로 판정하는
+     * 값이라 주소를 낼 자리가 없다」였다. 그런데 이 DB는 `geofences`가 **0행**이라 실제 효과는
+     * **위치가 영원히 비는 것**뿐이었다 — `/tesla/drive-insights`의 「자주 가는 곳」이 같은
+     * 이유로 주소까지 쓰도록 바뀐 것과 같은 자리다.
+     *
+     * **주행 중에는 대체하지 않는다.** 마지막 완료 주행의 도착지는 그때 현재 위치가 아니라
+     * 출발지다. `locationName`은 「지금 어디」를 뜻하므로 그것을 내면 틀린 위치를 자신 있게
+     * 표시하게 된다. 앱은 `state`로 주행 중임을 안다.
+     *
+     * 지오펜스가 이기면 주소를 **조회하지 않는다** — 쿼리 한 번을 아끼는 것이기도 하지만,
+     * 두 값이 섞일 여지를 없애는 쪽이 읽기 쉽다.
+     */
+    private fun locationNameOf(
+        position: PositionRow?,
+        state: String?,
+    ): String? {
+        position?.let { geofenceNameAt(it) }?.let { return it }
+        if (state == DRIVING) return null
+        return vehicleRepository.findLastDriveDestination()
+    }
 
     /**
      * 반경 안에 드는 것 중 가장 가까운 하나. 없으면 null이다.
@@ -250,6 +275,13 @@ class TeslaVehicleService(
     private fun SegmentRow.toSegment() = TimeSegment(from = TeslaTime.toKst(fromUtc), to = TeslaTime.toKst(toUtc))
 
     companion object {
+        /**
+         * 열린 행에서 파생하는 상태 둘. `states` 테이블에는 없는 값이다
+         * (`CREATE TYPE states_status AS ENUM ('online', 'offline', 'asleep')`).
+         */
+        private const val CHARGING = "charging"
+        private const val DRIVING = "driving"
+
         /** 기준 달을 포함해 거슬러 세는 개월 수. */
         const val TREND_MONTHS = 12
 
