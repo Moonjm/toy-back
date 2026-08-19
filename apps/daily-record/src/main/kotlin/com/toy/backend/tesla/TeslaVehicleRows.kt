@@ -129,3 +129,43 @@ data class DrivePlaceRow(
     val driveCount: Int,
     val distanceKm: BigDecimal,
 )
+
+/*
+ * 아래 셋은 `/tesla/state-timeline`과 주행 통계의 행 타입이다.
+ */
+
+/**
+ * `states`의 한 구간. **창에 맞춰 이미 잘려서 온다** — 자르는 규칙을 서버 한 곳에만 두려는
+ * 것이다(앱이 창 밖 값을 받아 스스로 자르면 규칙이 두 곳에 생긴다).
+ *
+ * `state`는 `online`·`offline`·`asleep`이다. `StateRow`와 같은 이유로 **번역하지 않는다**.
+ */
+data class StateSegmentRow(
+    val state: String,
+    val fromUtc: LocalDateTime,
+    val toUtc: LocalDateTime,
+)
+
+/**
+ * 주행·충전의 한 구간. 둘이 같은 모양이라 타입을 함께 쓴다 — 응답에서도 배열만 다르다.
+ *
+ * **마감되지 않은 유령 세션은 여기 오지 않는다.** 리포지토리 SQL의 24시간 창이 거른다
+ * (`ActivityRow`와 같은 규칙이다). 진행 중인 진짜 세션은 `toUtc`가 창 끝으로 막혀 온다.
+ */
+data class SegmentRow(
+    val fromUtc: LocalDateTime,
+    val toUtc: LocalDateTime,
+)
+
+/**
+ * 역대 최고 속도와 이번 달·올해 주행거리. **셋의 창이 서로 다르다** —
+ * 최고 속도는 전 기간이고 거리 둘은 KST 월·연 경계다.
+ *
+ * `maxSpeedKmh`만 nullable이다. 주행이 하나도 없으면 「역대 최고」라는 값 자체가 없지만,
+ * 거리 둘은 기간이 못박힌 합계라 그 기간에 안 탔으면 **0이 사실이다**.
+ */
+data class DriveStatsRow(
+    val maxSpeedKmh: Int?,
+    val monthDistanceKm: BigDecimal,
+    val yearDistanceKm: BigDecimal,
+)

@@ -83,6 +83,44 @@ interface TeslaVehicleRepository {
     fun drivePlaces(months: Int): List<DrivePlaceRow>
 
     /**
+     * 창에 걸치는 `states` 구간. **창 경계로 잘라서 준다.**
+     *
+     * 열린 행(`end_date IS NULL`)에 최근성 조건을 걸지 않는다 —
+     * 유니크 인덱스(`states_car_id__end_date_IS_NULL_index`)가 차당 하나를 보장하므로
+     * 그것은 유령이 아니라 **현재 상태**다. `drives`·`charging_processes`와 다른 점이다.
+     */
+    fun stateSegments(
+        windowStartUtc: LocalDateTime,
+        windowEndUtc: LocalDateTime,
+    ): List<StateSegmentRow>
+
+    /**
+     * 창에 걸치는 주행 구간. **마감되지 않은 유령을 여기서 막는다.**
+     *
+     * 열린 행은 `start_date >= now − 24h`인 것만 「진행 중」으로 인정하고 나머지는 버린다.
+     * 이 DB에는 2022~2024년에 시작된 열린 주행이 12건 있다 — 조건이 없으면 그중 하나가
+     * **창 전체를 주행으로 칠한다.**
+     */
+    fun driveSegments(
+        windowStartUtc: LocalDateTime,
+        windowEndUtc: LocalDateTime,
+    ): List<SegmentRow>
+
+    /** 창에 걸치는 충전 구간. 유령 규칙은 `driveSegments`와 같다(열린 행 6건, 2021~2025년). */
+    fun chargeSegments(
+        windowStartUtc: LocalDateTime,
+        windowEndUtc: LocalDateTime,
+    ): List<SegmentRow>
+
+    /**
+     * 역대 최고 속도와 이번 달·올해 주행거리. **`months` 창을 쓰지 않는다** —
+     * 창이 바뀔 때마다 바뀌면 기록이 아니고, 월·연은 그 자체가 경계다.
+     *
+     * `GROUP BY`가 없어 `drives`가 비어도 한 행이 온다.
+     */
+    fun driveStats(): DriveStatsRow
+
+    /**
      * `cars.efficiency`(kWh/km) 그대로. 차량이 1대라 파라미터가 없다.
      *
      * **null일 수 있다** — TeslaMate가 아직 못 채운 경우다. 그때 앱은 전비 카드를 감춘다.
