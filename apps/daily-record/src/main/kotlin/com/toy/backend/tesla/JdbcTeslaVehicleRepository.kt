@@ -370,29 +370,45 @@ class JdbcTeslaVehicleRepository(
         """
 
         /**
-         * `end_geofence_id`로 묶어 이름을 낸다. **주소는 내지 않는다** — 지오펜스가 없는
-         * 도착지는 `JOIN`에서 아예 빠진다. `/tesla/status`가 좌표와 주소를 싣지 않는 방침과 같다.
+         * 도착지 이름을 낸다. **지오펜스가 없으면 주소로 떨어진다.**
          *
-         * **이 DB에는 `geofences`가 0행이라 오늘은 항상 빈 결과다.** 등록하는 순간 살아난다.
+         * 원래는 `end_geofence_id`만 보고 「주소는 내지 않는다」로 두었다. 그 근거로 든 것이
+         * `/tesla/status`였는데, **비교 대상을 잘못 골랐다.** 상태의 `locationName`은 지금 이
+         * 순간의 좌표를 반경으로 판정하는 값이라 이름이 붙거나 안 붙거나 둘 중 하나이고,
+         * 주소를 낼 자리가 애초에 없다. 반면 **이미 지나간 도착지를 세는** 충전 목록·충전 상세는
+         * `COALESCE(g.name, a.name, a.display_name)`으로 주소까지 쓴다 — 여기가 같은 부류다.
+         * 게다가 이 DB는 `geofences`가 0행이라 옛 방침의 실제 효과는 **카드가 영원히 비는 것**뿐이었다.
          *
-         * 이름이 아니라 **id로 묶는다** — 같은 이름의 지오펜스가 둘일 수 있다.
+         * **COALESCE 순서가 표시 품질을 정한다**(실측 2026-08-19, 최근 12개월 958건):
+         * `a.name`이 819건(85.5%)을 짧은 이름으로 덮고, 나머지 139건은 `a.road`가 거의 다
+         * 채운다. `a.display_name`으로 바로 떨어뜨리면 「Goyang-daero, 일산2동, Ilsanseo-gu,
+         * Goyang-si, 10360, South Korea」 같은 한 줄이 목록에 들어온다 — 그래서 `road`·`city`를
+         * 사이에 끼운다. `display_name`은 마지막 수단이다.
          *
-         * **`ORDER BY`의 마지막 열로 `g.name`을 둔다.** 건수·거리가 모두 같은 지오펜스가
+         * **id가 아니라 표시 이름으로 묶는다.** 주소는 재지오코딩 결과마다 행이 갈리는데,
+         * 사람이 같은 곳으로 읽는 것을 두 줄로 내면 목록이 무너진다. 실측으로 상위 12개 중
+         * 갈려 있던 것은 하나뿐이었다(53+2 → 55). 묶고 나면 이름이 결과 안에서 유일해져
+         * 앱의 행 식별도 함께 안정된다.
+         *
+         * **`ORDER BY`의 마지막 열로 이름을 둔다.** 건수·거리가 모두 같은 도착지가
          * `LIMIT 10` 경계에 걸리면 tie-breaker 없이는 어느 것이 잘릴지 실행마다 달라질 수 있다.
          *
-         * `geofences`는 수십 행이고 `drives`는 수천 행이라 해시 조인으로 즉시 끝난다.
+         * `addresses`는 1,084행, `geofences`는 수십 행이고 `drives`는 수천 행이라
+         * 해시 조인으로 즉시 끝난다.
          */
         private const val DRIVE_PLACES_SQL = """
-            SELECT g.name                            AS name,
+            SELECT COALESCE(g.name, a.name, a.road, a.city, a.display_name) AS name,
                    COUNT(*)                          AS drive_count,
                    ROUND(SUM(d.distance)::numeric, 1) AS distance_km
               FROM drives d
-              JOIN geofences g ON g.id = d.end_geofence_id
+              LEFT JOIN geofences g ON g.id = d.end_geofence_id
+              LEFT JOIN addresses a ON a.id = d.end_address_id
              WHERE d.end_date IS NOT NULL
                AND d.distance > 0
+               AND COALESCE(g.name, a.name, a.road, a.city, a.display_name) IS NOT NULL
                $DRIVE_WINDOW
-             GROUP BY g.id, g.name
-             ORDER BY drive_count DESC, distance_km DESC, g.name
+             GROUP BY 1
+             ORDER BY drive_count DESC, distance_km DESC, name
              LIMIT 10
         """
 
