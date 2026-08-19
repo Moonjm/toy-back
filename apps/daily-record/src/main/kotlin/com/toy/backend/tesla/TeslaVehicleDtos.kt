@@ -122,7 +122,7 @@ data class BatteryHealthSample(
  * 정한다. 1단계의 예외(중앙값)와 달리 여기는 합이라 나눌 이유가 없다.
  */
 data class TeslaDriveInsightsResponse(
-    /** 받은 창을 되돌려 싣는다 — 앱이 무엇을 받았는지 알 수 있게. */
+    /** 받은 범위를 되돌려 싣는다 — 앱이 무엇을 받았는지 알 수 있게. */
     val months: Int,
     /**
      * `cars.efficiency` 그대로(kWh/km). **null일 수 있다** — TeslaMate가 아직 못 채운
@@ -142,6 +142,30 @@ data class TeslaDriveInsightsResponse(
      * 써도 안전하다. 좌표는 내지 않는다.
      */
     val places: List<DrivePlace>,
+    /**
+     * 역대 최고 속도(km/h). **`months` 범위를 따르지 않는다** — 범위가 바뀔 때마다 바뀌면
+     * 기록이 아니다. 앱은 이 값의 라벨을 **「역대 최고」**로 적어 옆 두 타일과 범위가
+     * 다름을 글자로 드러낸다.
+     *
+     * 주행이 하나도 없으면 null이다 — 「역대 최고」라는 값 자체가 존재하지 않는다.
+     * 아래 거리 둘과 반대다.
+     *
+     * **그 주행의 날짜(`maxSpeedAt`)를 함께 내지 않는다.** 실측 138 km/h가 최소 3건
+     * 동률이라(2025-09-13, 2025-03-22, 2024-03-09) 하나를 골라 「그날 기록했다」고 하면
+     * 거짓이 된다. 어느 것을 고를지 규칙을 만들 값어치가 없다.
+     */
+    val maxSpeedKmh: Int?,
+    /**
+     * 이번 달 주행거리(km, KST 경계). **`/tesla/summary`의 이번 달 `distanceKm`과 같은
+     * 값이다** — 두 화면에 다른 숫자가 뜨면 어느 쪽도 못 믿는다.
+     *
+     * **0을 낸다. null이 아니다.** 이 저장소의 규칙은 「0은 안 탔다, null은 기록이 없다」인데
+     * 이것은 기간이 못박힌 합계라 그 달에 주행이 없으면 「0km 탔다」가 사실이다. null로
+     * 두면 매달 1일 새벽마다 화면에 「—」가 뜬다.
+     */
+    val monthDistanceKm: BigDecimal,
+    /** 올해 주행거리(km, KST 경계). `monthDistanceKm`과 같은 이유로 0을 낸다. */
+    val yearDistanceKm: BigDecimal,
 )
 
 /**
@@ -151,10 +175,10 @@ data class TeslaDriveInsightsResponse(
  * **빈 버킷의 숫자는 0이지 null이 아니다.** `MonthlyStat`이 「기록이 없다」를 null로 내는 것과
  * 반대인데 뜻이 다르기 때문이다 — 여기서 0은 「그 온도대에 실제로 안 탔다」는 사실이다.
  *
- * **`DistanceBucket`과 달리, 창 안의 모든 주행이 어느 한 버킷에 들어가는 것은 아니다.**
+ * **`DistanceBucket`과 달리, 범위 안의 모든 주행이 어느 한 버킷에 들어가는 것은 아니다.**
  * `outside_temp_avg IS NULL`이거나 `ΔratedRange <= 0`인 주행은 `driveCount`에서 빠진 뒤 집계되므로
  * (아래 참고) 어느 버킷에도 들어가지 않는다 — 온도 버킷 다섯 개의 합이 거리 버킷 다섯 개의 합보다
- * 작을 수 있다. `months=1`처럼 표본이 적은 창에서는 「그 온도대에 탔지만 전부 Δrated≤0로 걸러진」
+ * 작을 수 있다. `months=1`처럼 표본이 적은 범위에서는 「그 온도대에 탔지만 전부 Δrated≤0로 걸러진」
  * 버킷이 `driveCount: 0`으로 보일 수 있다 — 그 온도대에 «기록이 없다»는 뜻이 아니다.
  */
 data class TemperatureBucket(
@@ -186,4 +210,55 @@ data class DrivePlace(
     val name: String,
     val driveCount: Int,
     val distanceKm: BigDecimal,
+)
+
+/**
+ * 최근 며칠의 차량 상태를 시간축 구간으로 낸다. **시각은 전부 KST다.**
+ *
+ * **세 계열을 그대로 낸다 — 하나의 띠로 합치지 않는다.** 합치려면 구간 산술(빼기·쪼개기)이
+ * 필요하다: `online` 구간 하나가 주행 둘에 걸치면 셋으로 갈라져야 하고, 그 로직은 SQL로도
+ * 코틀린으로도 만만치 않다. 세 계열을 그대로 내면 서버는 단순 조회 셋으로 끝나고, 겹칠 때
+ * 무엇이 이기는지는 화면이 정한다(TeslaMate의 Grafana 대시보드가 세 계열을 레이어로 겹쳐
+ * 그리는 것과 같은 구조다).
+ *
+ * 앱이 쓰는 순서는 **상태 → 주행 → 충전**으로 덧칠하는 것이다. 주행과 충전이 동시에
+ * 열리는 일은 없다.
+ */
+data class TeslaStateTimelineResponse(
+    /** 받은 범위를 되돌려 싣는다 — 앱이 무엇을 받았는지 알 수 있게. */
+    val days: Int,
+    /** 범위 시작(KST). **자정에 맞춰져 있다** — 앱이 하루에 한 행씩 그린다. */
+    val from: LocalDateTime,
+    /** 범위 끝(KST) = 요청 시각. 진행 중인 구간의 `to`가 이 값이다. */
+    val to: LocalDateTime,
+    /**
+     * `states`의 구간, 오래된 것부터. **범위 밖은 잘려서 온다.**
+     *
+     * 그 기간에 기록이 없으면 빈 배열이다 — 404가 아니다(「없는 리소스」가 아니라
+     * 「그 기간에 기록이 없다」).
+     */
+    val states: List<StateSegment>,
+    /** 주행 구간. **마감되지 않은 유령 세션은 빠진다.** */
+    val drives: List<TimeSegment>,
+    /** 충전 구간. 유령 규칙은 `drives`와 같다. */
+    val charges: List<TimeSegment>,
+)
+
+/**
+ * `state`는 `online`·`offline`·`asleep`이다. **`/tesla/status`와 달리 `charging`·`driving`이
+ * 여기 오지 않는다** — 그 둘은 `states` 테이블에 없고, 이 응답에서는 별도 배열로 나간다.
+ *
+ * `asleep`이 최근 며칠에 하나도 없을 수 있다(실측 최근 7일 0개). **그래도 앱의 색 팔레트에서
+ * 빼지 않는다** — 2026년에도 2월·4월·5월·6월·7월에 있었고, 범위에 안 잡히는 것뿐이다.
+ */
+data class StateSegment(
+    val state: String,
+    val from: LocalDateTime,
+    val to: LocalDateTime,
+)
+
+/** 주행·충전 구간. 둘이 같은 모양이라 타입을 함께 쓴다. */
+data class TimeSegment(
+    val from: LocalDateTime,
+    val to: LocalDateTime,
 )

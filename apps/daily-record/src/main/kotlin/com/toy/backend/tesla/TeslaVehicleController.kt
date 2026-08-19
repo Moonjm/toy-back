@@ -14,13 +14,13 @@ import java.time.YearMonth
 
 /**
  * 충전(`/tesla/charges` 하위)과 차량(`/tesla/summary`·`/tesla/status`·`/tesla/battery-health`·
- * `/tesla/drive-insights`)을 갈라 둔다 —
- * 읽는 테이블도 갱신 주기도 다르다. 한 파일에 다섯 엔드포인트를 두면 그 경계가 안 보인다.
+ * `/tesla/drive-insights`·`/tesla/state-timeline`)을 갈라 둔다 —
+ * 읽는 테이블도 갱신 주기도 다르다. 한 파일에 여섯 엔드포인트를 두면 그 경계가 안 보인다.
  *
  * 인증은 기존 SecurityConfig가 요구한다. `PublicEndpoint`를 두지 않는다 —
  * 주행 거리·위치·차량 상태는 충전 시각보다 더 직접적으로 생활을 드러낸다.
  */
-@Tag(name = "차량", description = "TeslaMate 차량 요약·상태·배터리 건강·주행 인사이트 API")
+@Tag(name = "차량", description = "TeslaMate 차량 요약·상태·배터리 건강·주행 인사이트·상태 타임라인 API")
 @RestController
 @RequestMapping("/tesla")
 class TeslaVehicleController(
@@ -61,7 +61,23 @@ class TeslaVehicleController(
         @RequestParam(defaultValue = DEFAULT_MONTHS)
         months: Int,
     ): ResponseEntity<DataResponseBody<TeslaDriveInsightsResponse>> = ResponseEntity.ok(DataResponseBody(service.driveInsights(months)))
+
+    /**
+     * **세 계열을 한 응답에 싣는다.** 상태·주행·충전을 나누면 같은 화면이 세 번 부르고
+     * 그중 둘은 나머지 하나를 기다린다 — `/tesla/drive-insights`가 네 카드를 함께 싣는 것과
+     * 같은 이유다.
+     *
+     * 앱은 이 응답을 캐시하지 않는다 — 「최근 7일」이 계속 움직인다.
+     */
+    @GetMapping("/state-timeline")
+    @Operation(summary = "상태 타임라인 — 최근 며칠의 상태·주행·충전 구간")
+    fun stateTimeline(
+        @Parameter(description = "거슬러 볼 일수(1~30)", example = DEFAULT_DAYS)
+        @RequestParam(defaultValue = DEFAULT_DAYS)
+        days: Int,
+    ): ResponseEntity<DataResponseBody<TeslaStateTimelineResponse>> = ResponseEntity.ok(DataResponseBody(service.stateTimeline(days)))
 }
 
 /** 애너테이션 인자라 컴파일 상수여야 해서 문자열이다. */
 private const val DEFAULT_MONTHS = "12"
+private const val DEFAULT_DAYS = "7"

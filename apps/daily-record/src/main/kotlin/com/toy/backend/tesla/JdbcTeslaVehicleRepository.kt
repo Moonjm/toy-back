@@ -35,10 +35,10 @@ class JdbcTeslaVehicleRepository(
             }.list()
 
     /**
-     * 7일 창을 먼저 돌린다 — 실측 123ms다. 창 없는 `ORDER BY date DESC`는 3,000만 행에
+     * 7일 범위를 먼저 돌린다 — 실측 123ms다. 범위 없는 `ORDER BY date DESC`는 3,000만 행에
      * Parallel Seq Scan이 걸려 **실측 11.7초**다.
      *
-     * 창이 비면 PK 역순으로 폴백한다. `positions.id`는 serial이고 PK B-tree가 있어 즉시이며,
+     * 범위가 비면 PK 역순으로 폴백한다. `positions.id`는 serial이고 PK B-tree가 있어 즉시이며,
      * TeslaMate가 시간 순으로 append만 하므로 최대 id가 최신 행이다.
      */
     override fun findLatestPosition(): PositionRow? =
@@ -156,6 +156,60 @@ class JdbcTeslaVehicleRepository(
             .optional()
             .orElse(null)
 
+    override fun stateSegments(
+        windowStartUtc: LocalDateTime,
+        windowEndUtc: LocalDateTime,
+    ): List<StateSegmentRow> =
+        teslaMateJdbcClient
+            .sql(STATE_SEGMENTS_SQL)
+            .param("windowStart", windowStartUtc)
+            .param("windowEnd", windowEndUtc)
+            .query { rs, _ ->
+                StateSegmentRow(
+                    state = rs.getString("state"),
+                    fromUtc = rs.getObject("from_utc", LocalDateTime::class.java),
+                    toUtc = rs.getObject("to_utc", LocalDateTime::class.java),
+                )
+            }.list()
+
+    override fun driveSegments(
+        windowStartUtc: LocalDateTime,
+        windowEndUtc: LocalDateTime,
+    ): List<SegmentRow> = segments(DRIVE_SEGMENTS_SQL, windowStartUtc, windowEndUtc)
+
+    override fun chargeSegments(
+        windowStartUtc: LocalDateTime,
+        windowEndUtc: LocalDateTime,
+    ): List<SegmentRow> = segments(CHARGE_SEGMENTS_SQL, windowStartUtc, windowEndUtc)
+
+    override fun driveStats(): DriveStatsRow =
+        teslaMateJdbcClient
+            .sql(DRIVE_STATS_SQL)
+            .query { rs, _ ->
+                DriveStatsRow(
+                    maxSpeedKmh = rs.nullableInt("max_speed_kmh"),
+                    monthDistanceKm = rs.getBigDecimal("month_distance_km"),
+                    yearDistanceKm = rs.getBigDecimal("year_distance_km"),
+                )
+            }.single()
+
+    /** 주행·충전이 같은 모양이라 매핑을 함께 쓴다. 다른 것은 SQL의 테이블 이름뿐이다. */
+    private fun segments(
+        sql: String,
+        windowStartUtc: LocalDateTime,
+        windowEndUtc: LocalDateTime,
+    ): List<SegmentRow> =
+        teslaMateJdbcClient
+            .sql(sql)
+            .param("windowStart", windowStartUtc)
+            .param("windowEnd", windowEndUtc)
+            .query { rs, _ ->
+                SegmentRow(
+                    fromUtc = rs.getObject("from_utc", LocalDateTime::class.java),
+                    toUtc = rs.getObject("to_utc", LocalDateTime::class.java),
+                )
+            }.list()
+
     private fun ResultSet.toPositionRow() =
         PositionRow(
             dateUtc = getObject("date", LocalDateTime::class.java),
@@ -225,7 +279,7 @@ class JdbcTeslaVehicleRepository(
          * 용량 쪽 `CASE`가 이미 null-safe다 — start가 null이면 `NULL >= 40`이 NULL이라 `WHEN`이
          * 참이 되지 않고 `capacity_kwh`가 NULL로 떨어져 `COUNT`가 건너뛴다.
          *
-         * `charging_processes`는 수백 행이라 전체 스캔이라도 즉시 끝난다 — 창을 두지 않는다.
+         * `charging_processes`는 수백 행이라 전체 스캔이라도 즉시 끝난다 — 범위를 두지 않는다.
          */
         private const val BATTERY_HEALTH_MONTHLY_SQL = """
             WITH sample AS (
@@ -258,9 +312,9 @@ class JdbcTeslaVehicleRepository(
         """
 
         /**
-         * **기간 창의 기준을 `(now() AT TIME ZONE 'UTC')`로 맞춘다.** `end_date`는 타임존 없는
+         * **조회 범위의 기준을 `(now() AT TIME ZONE 'UTC')`로 맞춘다.** `end_date`는 타임존 없는
          * 컬럼에 든 UTC 값이라 `now()`(timestamptz)와 그냥 비교하면 세션 타임존만큼(KST면
-         * 9시간) 창이 어긋난다 — `ACTIVITY_SQL`이 같은 이유로 같은 꼴을 쓴다.
+         * 9시간) 범위가 어긋난다 — `ACTIVITY_SQL`이 같은 이유로 같은 꼴을 쓴다.
          *
          * 네 주행 쿼리가 이 한 줄을 함께 쓴다.
          */
@@ -330,7 +384,7 @@ class JdbcTeslaVehicleRepository(
          * 그리면 된다 — 온도·거리 버킷이 빈 자리를 지키는 것과 반대다. 그쪽은 축이 흔들리지만
          * 히트맵은 그렇지 않다.
          *
-         * **시각은 `start_date`로 뽑지만 기간 창은 `end_date`로 건다** — 창에 드는 기준을 네
+         * **시각은 `start_date`로 뽑지만 조회 범위는 `end_date`로 건다** — 범위에 드는 기준을 네
          * 쿼리가 같이 쓰게 하려는 것이고, 자정을 걸친 주행 한 건의 차이일 뿐이다.
          *
          * **온도·주행가능거리 조건을 걸지 않는다.** 시간대는 둘 다 쓰지 않는다.
@@ -455,14 +509,14 @@ class JdbcTeslaVehicleRepository(
          * 배포 이후 한 번도 맞은 적이 없었다.
          *
          * 24시간인 이유: 완속 오버나이트 충전이 10시간쯤이고 한 번에 24시간 연속 주행은 없다.
-         * 진짜 세션은 이 창을 넘지 않고, **새로 생긴 유령도 하루면 스스로 낫는다.**
+         * 진짜 세션은 이 범위를 넘지 않고, **새로 생긴 유령도 하루면 스스로 낫는다.**
          *
          * `charges`·`positions`에 최근 샘플이 들어왔는지 보는 편이 더 정밀하지만,
          * `positions.drive_id`에 인덱스가 있는지 확인되지 않아 3,000만 행을 잘못 훑을 수 있다.
          * 유령이 전부 8개월 이상 된 이 데이터에서는 시간 조건만으로 충분히 갈린다.
          *
          * `start_date`는 타임존 없는 컬럼에 든 UTC 값이라 `now() AT TIME ZONE 'UTC'`로 맞춘다 —
-         * `now()`(timestamptz)와 그냥 비교하면 세션 타임존만큼(KST면 9시간) 창이 짧아진다.
+         * `now()`(timestamptz)와 그냥 비교하면 세션 타임존만큼(KST면 9시간) 범위가 짧아진다.
          */
         private const val ACTIVITY_SQL = """
             SELECT EXISTS (SELECT 1
@@ -478,6 +532,103 @@ class JdbcTeslaVehicleRepository(
         private const val GEOFENCES_SQL = """
             SELECT g.name, g.latitude, g.longitude, g.radius
               FROM geofences g
+        """
+
+        /**
+         * **구간을 범위 경계로 자른다.** 앱이 범위 밖 값을 받아 스스로 자르게 두지 않는다 —
+         * 자르는 규칙이 두 곳에 생긴다.
+         *
+         * `:windowStart`·`:windowEnd`는 **UTC**로 온다. TeslaMate가 타임존 없는 컬럼에 UTC를
+         * 넣으므로 KST로 넘기면 9시간이 어긋난다.
+         *
+         * 열린 행은 `end_date`가 null이라 `COALESCE`로 범위 끝까지 열어 둔 뒤 `LEAST`로 막는다.
+         */
+        private const val SEGMENT_COLUMNS = """
+                   GREATEST(t.start_date, :windowStart)                AS from_utc,
+                   LEAST(COALESCE(t.end_date, :windowEnd), :windowEnd) AS to_utc
+        """
+
+        /**
+         * 범위에 **걸치기만 해도** 가져온다 — 안에 온전히 든 것만 뽑으면 범위를 가로지르는 긴
+         * 구간(오프라인 며칠)이 통째로 빠진다.
+         */
+        private const val SEGMENT_OVERLAP = """
+             WHERE t.start_date < :windowEnd
+               AND COALESCE(t.end_date, :windowEnd) > :windowStart
+        """
+
+        /**
+         * **마감되지 않은 유령을 여기서 막는다.** 열린 행은 최근 24시간에 시작된 것만
+         * 「진행 중」으로 인정한다 — `ACTIVITY_SQL`과 같은 규칙이고 같은 이유로 24시간이다
+         * (완속 오버나이트가 10시간쯤이고 24시간 연속 주행은 없다. **새 유령도 하루면 낫는다**).
+         *
+         * 이 조건이 없으면 2022년에 시작된 열린 주행 하나가 `COALESCE(end_date, :windowEnd)`를
+         * 타고 **범위 전체를 주행으로 칠한다.** `/tesla/status`에서 `8cb61d9`가 고친 것과 같은
+         * 결함인데, 타임라인에서는 한 칸이 아니라 띠 전체가 틀린다.
+         */
+        private const val SEGMENT_NOT_GHOST = """
+               AND (t.end_date IS NOT NULL
+                    OR t.start_date >= (now() AT TIME ZONE 'UTC') - interval '24 hours')
+        """
+
+        /**
+         * **`states`에는 유령 규칙을 적용하지 않는다.** 유니크 인덱스
+         * (`states_car_id__end_date_IS_NULL_index`)가 열린 행을 차당 하나로 강제하므로
+         * 그것은 유령이 아니라 현재 상태다.
+         *
+         * `state`는 enum이라 `::text`로 내린다. **번역하지 않는다** — 상류가 값을 늘리면
+         * 그대로 올라온다.
+         */
+        private const val STATE_SEGMENTS_SQL = """
+            SELECT t.state::text AS state,
+                   $SEGMENT_COLUMNS
+              FROM states t
+            $SEGMENT_OVERLAP
+             ORDER BY t.start_date
+        """
+
+        private const val DRIVE_SEGMENTS_SQL = """
+            SELECT $SEGMENT_COLUMNS
+              FROM drives t
+            $SEGMENT_OVERLAP
+            $SEGMENT_NOT_GHOST
+             ORDER BY t.start_date
+        """
+
+        private const val CHARGE_SEGMENTS_SQL = """
+            SELECT $SEGMENT_COLUMNS
+              FROM charging_processes t
+            $SEGMENT_OVERLAP
+            $SEGMENT_NOT_GHOST
+             ORDER BY t.start_date
+        """
+
+        /**
+         * **`/tesla/summary`의 이번 달 `distanceKm`과 같은 숫자가 나와야 한다.** 두 화면에
+         * 다른 숫자가 뜨면 어느 쪽도 못 믿는다 — 그래서 모집단(`end_date IS NOT NULL`,
+         * 거리 조건 없음)·경계 컬럼(`start_date`)·시간대(KST)·반올림(소수 한 자리)을
+         * `DRIVE_MONTHLY_SQL`과 정확히 맞춘다. 한쪽을 고치면 다른 쪽도 고쳐야 한다.
+         *
+         * **최고 속도만 범위가 없다.** 범위가 바뀔 때마다 바뀌면 기록이 아니다. 실측 138 km/h는
+         * 2024~2025년 것이라 12개월 범위로 자르면 134가 된다 — 앱이 라벨을 「역대 최고」로
+         * 적어 옆 두 타일과 범위가 다름을 글자로 드러낸다.
+         *
+         * **거리 둘은 `COALESCE(…, 0)`으로 0을 낸다.** 기간이 못박힌 합계라 그 기간에 주행이
+         * 없으면 「0km 탔다」가 사실이다. null로 두면 **매달 1일 새벽마다 화면에 「—」가 뜬다.**
+         *
+         * `GROUP BY`가 없어 `drives`가 비어도 한 행이 온다 — `max_speed_kmh`는 null,
+         * 거리 둘은 0이다.
+         */
+        private const val DRIVE_STATS_SQL = """
+            SELECT MAX(d.speed_max) AS max_speed_kmh,
+                   ROUND(COALESCE(SUM(d.distance) FILTER (
+                       WHERE date_trunc('month', d.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')
+                           = date_trunc('month', now() AT TIME ZONE 'Asia/Seoul')), 0)::numeric, 1) AS month_distance_km,
+                   ROUND(COALESCE(SUM(d.distance) FILTER (
+                       WHERE date_trunc('year',  d.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')
+                           = date_trunc('year',  now() AT TIME ZONE 'Asia/Seoul')), 0)::numeric, 1) AS year_distance_km
+              FROM drives d
+             WHERE d.end_date IS NOT NULL
         """
     }
 }
