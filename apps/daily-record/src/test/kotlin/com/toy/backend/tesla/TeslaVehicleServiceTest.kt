@@ -350,17 +350,13 @@ class TeslaVehicleServiceTest :
 
             val status = service.status()
 
-            // 지오펜스로 못 찾고 마지막 주행 도착지도 없으면 그때는 null이다.
+            // 마지막 주행 도착지도 없으면 그때는 null이다.
             Then("위치 이름이 null이다") {
                 status.locationName shouldBe null
             }
         }
 
-        /*
-         * 이 DB는 `geofences`가 0행이라 옛 방침(「주소는 내지 않는다」)의 실제 효과는
-         * **상태 카드의 위치가 영원히 비는 것**이었다. `/tesla/drive-insights`의 「자주 가는 곳」이
-         * 같은 이유로 주소까지 쓰도록 바뀐 것과 같은 자리다.
-         */
+        // 이 DB는 지오펜스가 0행이라, 폴백이 없으면 위치가 영원히 빈다.
         Given("지오펜스로 못 찾고 마지막 주행 도착지가 있을 때") {
             every { vehicleRepository.findLatestPosition() } returns positionAt(BigDecimal("35.16650"), BigDecimal("129.07800"))
             every { vehicleRepository.findOpenState() } returns null
@@ -375,8 +371,7 @@ class TeslaVehicleServiceTest :
             }
         }
 
-        // 지오펜스가 이겼으면 주소를 볼 이유가 없다. 쿼리 한 번을 아끼는 것이기도 하지만,
-        // 두 값이 섞일 여지를 아예 없애는 쪽이 읽기 쉽다.
+        // 지오펜스가 이겼으면 주소를 볼 이유가 없다.
         Given("지오펜스 반경 안에 있을 때 주소 조회") {
             every { vehicleRepository.findLatestPosition() } returns positionAt(BigDecimal("37.56650"), BigDecimal("126.97800"))
             every { vehicleRepository.findOpenState() } returns null
@@ -393,11 +388,7 @@ class TeslaVehicleServiceTest :
             }
         }
 
-        /*
-         * **주행 중에는 마지막 완료 주행의 도착지가 현재 위치가 아니라 출발지다.**
-         * `locationName`은 「지금 어디」를 뜻하므로, 그때 직전 도착지를 내면 틀린 위치를
-         * 자신 있게 표시하게 된다. `state=driving`이 따로 나가므로 앱이 상황을 안다.
-         */
+        // 주행 중이면 마지막 도착지는 현재 위치가 아니라 출발지다 — 내면 틀린 위치가 된다.
         Given("주행 중이고 지오펜스로 못 찾을 때") {
             every { vehicleRepository.findLatestPosition() } returns positionAt(BigDecimal("35.16650"), BigDecimal("129.07800"))
             every { vehicleRepository.findOpenState() } returns null

@@ -537,16 +537,10 @@ class JdbcTeslaVehicleRepository(
         """
 
         /**
-         * 가장 최근 완료 주행의 도착지 이름. **`/tesla/status`의 위치 폴백이다.**
+         * `/tesla/status`의 위치 폴백. COALESCE 순서는 `DRIVE_PLACES_SQL`과 같다.
          *
-         * COALESCE 순서는 `DRIVE_PLACES_SQL`과 같다 — `a.name`이 실측 85.5%를 짧은 이름으로
-         * 덮고, `display_name`으로 바로 떨어뜨리면 「Goyang-daero, 일산2동, Ilsanseo-gu,
-         * Goyang-si, 10360, South Korea」 같은 한 줄이 상태 카드에 들어온다.
-         *
-         * **이름이 없는 도착지는 건너뛴다.** `LIMIT 1`만 걸고 마지막 행을 집으면, 그 한 건이
-         * 이름 없는 도착지일 때 위치가 비어 버린다 — 그 앞의 이름 있는 주행을 쓰는 편이 낫다.
-         *
-         * `ORDER BY end_date DESC`가 인덱스를 못 타도 `drives`는 5,000행대라 즉시 끝난다.
+         * **최신 완료 주행 한 건만 본다.** 그 도착지에 이름이 없으면 null이다 — 이름 있는 옛
+         * 주행으로 거슬러 가면 **지나간 곳을 현재 위치로 내게 된다.**
          */
         private const val LAST_DRIVE_DESTINATION_SQL = """
             SELECT COALESCE(g.name, a.name, a.road, a.city, a.display_name) AS name
@@ -554,7 +548,6 @@ class JdbcTeslaVehicleRepository(
               LEFT JOIN geofences g ON g.id = d.end_geofence_id
               LEFT JOIN addresses a ON a.id = d.end_address_id
              WHERE d.end_date IS NOT NULL
-               AND COALESCE(g.name, a.name, a.road, a.city, a.display_name) IS NOT NULL
              ORDER BY d.end_date DESC
              LIMIT 1
         """

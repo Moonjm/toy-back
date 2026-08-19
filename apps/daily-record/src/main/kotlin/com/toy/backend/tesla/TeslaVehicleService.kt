@@ -197,19 +197,9 @@ class TeslaVehicleService(
         }
 
     /**
-     * 지오펜스 이름, 없으면 **마지막 주행 도착지 이름**으로 떨어진다.
+     * 지오펜스 이름, 없으면 마지막 주행 도착지로 떨어진다(이 DB는 지오펜스가 0행이다).
      *
-     * 옛 방침은 「주소는 내지 않는다」였는데, 그 근거로 든 것이 「지금 좌표를 반경으로 판정하는
-     * 값이라 주소를 낼 자리가 없다」였다. 그런데 이 DB는 `geofences`가 **0행**이라 실제 효과는
-     * **위치가 영원히 비는 것**뿐이었다 — `/tesla/drive-insights`의 「자주 가는 곳」이 같은
-     * 이유로 주소까지 쓰도록 바뀐 것과 같은 자리다.
-     *
-     * **주행 중에는 대체하지 않는다.** 마지막 완료 주행의 도착지는 그때 현재 위치가 아니라
-     * 출발지다. `locationName`은 「지금 어디」를 뜻하므로 그것을 내면 틀린 위치를 자신 있게
-     * 표시하게 된다. 앱은 `state`로 주행 중임을 안다.
-     *
-     * 지오펜스가 이기면 주소를 **조회하지 않는다** — 쿼리 한 번을 아끼는 것이기도 하지만,
-     * 두 값이 섞일 여지를 없애는 쪽이 읽기 쉽다.
+     * **주행 중에는 대체하지 않는다** — 그때 마지막 도착지는 현재 위치가 아니라 출발지다.
      */
     private fun locationNameOf(
         position: PositionRow?,
@@ -275,10 +265,7 @@ class TeslaVehicleService(
     private fun SegmentRow.toSegment() = TimeSegment(from = TeslaTime.toKst(fromUtc), to = TeslaTime.toKst(toUtc))
 
     companion object {
-        /**
-         * 열린 행에서 파생하는 상태 둘. `states` 테이블에는 없는 값이다
-         * (`CREATE TYPE states_status AS ENUM ('online', 'offline', 'asleep')`).
-         */
+        /** 열린 행에서 파생하는 상태 둘 — `states` 테이블에는 없는 값이다. */
         private const val CHARGING = "charging"
         private const val DRIVING = "driving"
 
