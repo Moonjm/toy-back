@@ -59,7 +59,12 @@ data class TeslaStatusResponse(
     val insideTempC: BigDecimal?,
     val outsideTempC: BigDecimal?,
     val climateOn: Boolean?,
-    /** 반경 안의 지오펜스 이름. 없으면 null이다(주소는 내지 않는다). */
+    /**
+     * 위치 이름. **지오펜스 → 마지막 주행 도착지** 순으로 떨어진다.
+     *
+     * **주행 중에는 null이다** — 그때 마지막 도착지는 현재 위치가 아니라 출발지다.
+     * 좌표는 싣지 않는다.
+     */
     val locationName: String?,
     /** 위치 기록이 없으면 통째로 null이다. */
     val tpmsBar: TpmsBar?,

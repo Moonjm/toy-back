@@ -49,9 +49,10 @@ class TeslaVehicleService(
         val position = vehicleRepository.findLatestPosition()
         val openState = vehicleRepository.findOpenState()
         val activity = vehicleRepository.findActivity()
+        val state = resolveState(activity, openState)
         return TeslaStatusResponse(
             asOf = position?.dateUtc?.let { TeslaTime.toKst(it) },
-            state = resolveState(activity, openState),
+            state = state,
             stateSince = openState?.startDateUtc?.let { TeslaTime.toKst(it) },
             batteryLevel = position?.batteryLevel,
             usableBatteryLevel = position?.usableBatteryLevel,
@@ -61,7 +62,7 @@ class TeslaVehicleService(
             insideTempC = position?.insideTempC,
             outsideTempC = position?.outsideTempC,
             climateOn = position?.climateOn,
-            locationName = position?.let { geofenceNameAt(it) },
+            locationName = locationNameOf(position, state),
             tpmsBar = position?.let { TpmsBar(it.tpmsFl, it.tpmsFr, it.tpmsRl, it.tpmsRr) },
         )
     }
@@ -190,10 +191,24 @@ class TeslaVehicleService(
         openState: StateRow?,
     ): String? =
         when {
-            activity.charging -> "charging"
-            activity.driving -> "driving"
+            activity.charging -> CHARGING
+            activity.driving -> DRIVING
             else -> openState?.state
         }
+
+    /**
+     * 지오펜스 이름, 없으면 마지막 주행 도착지로 떨어진다(이 DB는 지오펜스가 0행이다).
+     *
+     * **주행 중에는 대체하지 않는다** — 그때 마지막 도착지는 현재 위치가 아니라 출발지다.
+     */
+    private fun locationNameOf(
+        position: PositionRow?,
+        state: String?,
+    ): String? {
+        position?.let { geofenceNameAt(it) }?.let { return it }
+        if (state == DRIVING) return null
+        return vehicleRepository.findLastDriveDestination()
+    }
 
     /**
      * 반경 안에 드는 것 중 가장 가까운 하나. 없으면 null이다.
@@ -250,6 +265,10 @@ class TeslaVehicleService(
     private fun SegmentRow.toSegment() = TimeSegment(from = TeslaTime.toKst(fromUtc), to = TeslaTime.toKst(toUtc))
 
     companion object {
+        /** 열린 행에서 파생하는 상태 둘 — `states` 테이블에는 없는 값이다. */
+        private const val CHARGING = "charging"
+        private const val DRIVING = "driving"
+
         /** 기준 달을 포함해 거슬러 세는 개월 수. */
         const val TREND_MONTHS = 12
 

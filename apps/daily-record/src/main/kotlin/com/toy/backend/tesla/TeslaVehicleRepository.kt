@@ -38,6 +38,14 @@ interface TeslaVehicleRepository {
      */
     fun findActivity(): ActivityRow
 
+    /**
+     * 가장 최근 **완료** 주행의 도착지 이름. 없으면 null.
+     *
+     * `/tesla/status`가 지오펜스로 못 찾았을 때만 부른다. 이름은 지오펜스 → 주소 순이고,
+     * **최신 주행의 도착지에 이름이 없으면 null이다** — 옛 주행으로 거슬러 가지 않는다.
+     */
+    fun findLastDriveDestination(): String?
+
     /** 전부 읽는다 — 지오펜스는 몇 개 수준이라 반경 판정을 서버에서 한다. */
     fun findGeofences(): List<GeofenceRow>
 

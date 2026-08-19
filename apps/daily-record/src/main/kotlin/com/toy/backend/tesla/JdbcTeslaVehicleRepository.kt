@@ -87,6 +87,13 @@ class JdbcTeslaVehicleRepository(
                 )
             }.list()
 
+    override fun findLastDriveDestination(): String? =
+        teslaMateJdbcClient
+            .sql(LAST_DRIVE_DESTINATION_SQL)
+            .query { rs, _ -> rs.getString("name") }
+            .optional()
+            .orElse(null)
+
     override fun batteryHealthMonthly(): List<BatteryHealthMonthRow> =
         teslaMateJdbcClient
             .sql(BATTERY_HEALTH_MONTHLY_SQL)
@@ -527,6 +534,22 @@ class JdbcTeslaVehicleRepository(
                              FROM drives
                             WHERE end_date IS NULL
                               AND start_date >= (now() AT TIME ZONE 'UTC') - interval '24 hours') AS driving
+        """
+
+        /**
+         * `/tesla/status`의 위치 폴백. COALESCE 순서는 `DRIVE_PLACES_SQL`과 같다.
+         *
+         * **최신 완료 주행 한 건만 본다.** 그 도착지에 이름이 없으면 null이다 — 이름 있는 옛
+         * 주행으로 거슬러 가면 **지나간 곳을 현재 위치로 내게 된다.**
+         */
+        private const val LAST_DRIVE_DESTINATION_SQL = """
+            SELECT COALESCE(g.name, a.name, a.road, a.city, a.display_name) AS name
+              FROM drives d
+              LEFT JOIN geofences g ON g.id = d.end_geofence_id
+              LEFT JOIN addresses a ON a.id = d.end_address_id
+             WHERE d.end_date IS NOT NULL
+             ORDER BY d.end_date DESC
+             LIMIT 1
         """
 
         private const val GEOFENCES_SQL = """
