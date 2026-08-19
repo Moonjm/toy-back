@@ -422,7 +422,7 @@ class TeslaVehicleServiceTest :
                 response.driveTimes shouldBe emptyList()
             }
 
-            // 이 DB에는 지오펜스가 0개다. 빈 배열이어야 한다(null이 아니다).
+            // 도착지 이름이 하나도 없으면 빈 배열이어야 한다(null이 아니다).
             Then("places가 빈 배열이다") {
                 response.places shouldBe emptyList()
             }
@@ -443,7 +443,12 @@ class TeslaVehicleServiceTest :
             every { vehicleRepository.driveDistanceBuckets(any()) } returns
                 listOf(DriveDistanceBucketRow(5, 3, BigDecimal("412.0")))
             every { vehicleRepository.drivePlaces(any()) } returns
-                listOf(DrivePlaceRow("집", 124, BigDecimal("812.4")))
+                listOf(
+                    DrivePlaceRow("집", 124, BigDecimal("812.4")),
+                    // 지오펜스가 없어 주소로 떨어진 도착지도 그대로 나간다 —
+                    // 서비스는 이름이 어디서 왔는지 구분하지 않는다.
+                    DrivePlaceRow("Goyang-daero", 69, BigDecimal("774.0")),
+                )
             every { vehicleRepository.carEfficiency() } returns BigDecimal("0.1367")
 
             val response = service.driveInsights(12)
@@ -473,8 +478,8 @@ class TeslaVehicleServiceTest :
             }
 
             Then("places는 온 것만 그대로 나간다") {
-                response.places.single().name shouldBe "집"
-                response.places.single().driveCount shouldBe 124
+                response.places.map { it.name } shouldBe listOf("집", "Goyang-daero")
+                response.places.first().driveCount shouldBe 124
             }
         }
 

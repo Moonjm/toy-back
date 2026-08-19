@@ -135,7 +135,12 @@ data class TeslaDriveInsightsResponse(
     val driveTimes: List<DriveTime>,
     /** 다섯 개가 늘 온다. */
     val distanceBuckets: List<DistanceBucket>,
-    /** 지오펜스를 붙인 도착지만, 건수 많은 순 상위 10개. **주소는 내지 않는다.** */
+    /**
+     * 도착지, 건수 많은 순 상위 10개. 이름은 **지오펜스 → 주소** 순으로 떨어진다.
+     *
+     * **표시 이름으로 묶여 오므로 이 목록 안에서 `name`은 유일하다** — 앱이 이름을 행 식별에
+     * 써도 안전하다. 좌표는 내지 않는다.
+     */
     val places: List<DrivePlace>,
 )
 

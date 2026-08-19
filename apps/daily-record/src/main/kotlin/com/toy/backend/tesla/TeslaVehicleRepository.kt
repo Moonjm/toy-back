@@ -74,10 +74,11 @@ interface TeslaVehicleRepository {
     fun driveDistanceBuckets(months: Int): List<DriveDistanceBucketRow>
 
     /**
-     * 도착 지오펜스별 주행 합, 건수 많은 순 상위 10개.
+     * 도착지별 주행 합, 건수 많은 순 상위 10개.
      *
-     * **지오펜스가 없는 도착지는 아예 세지 않는다** — `/tesla/status`가 좌표와 주소를 싣지 않는
-     * 방침과 같다. 이 DB에는 지오펜스가 0개라 **오늘은 항상 빈 리스트다.**
+     * 이름은 **지오펜스 → 주소** 순으로 떨어진다. 이 DB에는 지오펜스가 0행이지만 최근 12개월
+     * 958건이 전부 도착지 주소를 갖고 있어(실측 2026-08-19) 목록이 채워진다.
+     * 이름이 끝내 없는 도착지는 세지 않는다 — 실측으로 0건이다.
      */
     fun drivePlaces(months: Int): List<DrivePlaceRow>
 
