@@ -105,6 +105,7 @@ class TeslaVehicleService(
 
         val temperatures = vehicleRepository.driveTemperatureBuckets(months).associateBy { it.bucket }
         val distances = vehicleRepository.driveDistanceBuckets(months).associateBy { it.bucket }
+        val stats = vehicleRepository.driveStats()
 
         return TeslaDriveInsightsResponse(
             months = months,
@@ -138,6 +139,38 @@ class TeslaVehicleService(
                 vehicleRepository.drivePlaces(months).map {
                     DrivePlace(name = it.name, driveCount = it.driveCount, distanceKm = it.distanceKm)
                 },
+            maxSpeedKmh = stats.maxSpeedKmh,
+            monthDistanceKm = stats.monthDistanceKm,
+            yearDistanceKm = stats.yearDistanceKm,
+        )
+    }
+
+    /**
+     * 쿼리 셋이 전부다. **서버는 세 계열을 그대로 내고 겹침 해소는 화면이 한다** —
+     * 하나의 띠로 합치려면 구간 산술이 필요한데 그 로직은 SQL로도 코틀린으로도 만만치 않다.
+     *
+     * 서비스가 하는 일은 **창 계산과 KST 되돌리기뿐**이다. 창 자르기(`GREATEST`/`LEAST`)와
+     * 유령 거르기(24시간 창)는 SQL이 한다.
+     */
+    fun stateTimeline(days: Int): TeslaStateTimelineResponse {
+        if (days !in MIN_DAYS..MAX_DAYS) {
+            throw CustomException(ErrorCode.INVALID_REQUEST, "days는 $MIN_DAYS~$MAX_DAYS 사이여야 합니다")
+        }
+
+        val (fromKst, toKst) = TeslaTime.timelineWindowKst(days)
+        val windowStart = TeslaTime.toUtc(fromKst)
+        val windowEnd = TeslaTime.toUtc(toKst)
+
+        return TeslaStateTimelineResponse(
+            days = days,
+            from = fromKst,
+            to = toKst,
+            states =
+                vehicleRepository.stateSegments(windowStart, windowEnd).map {
+                    StateSegment(state = it.state, from = TeslaTime.toKst(it.fromUtc), to = TeslaTime.toKst(it.toUtc))
+                },
+            drives = vehicleRepository.driveSegments(windowStart, windowEnd).map { it.toSegment() },
+            charges = vehicleRepository.chargeSegments(windowStart, windowEnd).map { it.toSegment() },
         )
     }
 
@@ -214,6 +247,8 @@ class TeslaVehicleService(
         )
     }
 
+    private fun SegmentRow.toSegment() = TimeSegment(from = TeslaTime.toKst(fromUtc), to = TeslaTime.toKst(toUtc))
+
     companion object {
         /** 기준 달을 포함해 거슬러 세는 개월 수. */
         const val TREND_MONTHS = 12
@@ -221,6 +256,13 @@ class TeslaVehicleService(
         /** `/tesla/drive-insights`의 창. 기본 12개월, 1~60. */
         const val MIN_MONTHS = 1
         const val MAX_MONTHS = 60
+
+        /**
+         * `/tesla/state-timeline`의 창. 기본 7일, 1~30. 상한이 30인 것은 응답 크기 때문이다 —
+         * 30일이면 상태 구간이 600개 안팎이고, 그 정도는 한 응답으로 충분하다.
+         */
+        const val MIN_DAYS = 1
+        const val MAX_DAYS = 30
 
         /**
          * 온도 버킷의 **응답 라벨**이다(℃). `bucket` 번호 → (`fromC`, `toC`).
