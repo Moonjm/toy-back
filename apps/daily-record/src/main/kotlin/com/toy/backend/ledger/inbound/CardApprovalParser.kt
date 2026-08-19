@@ -95,8 +95,13 @@ class CardApprovalParser : MessageParser {
          * 줄 끝으로 못 박는 이유는 다른 파서의 몫을 가로채지 않기 위해서다 — 자동납부
          * (`[현대카드] 자동납부 승인 문*민님 SK브로드밴드 34,100원`)는 「승인」이 줄 가운데라
          * 여기 걸리지 않는다.
+         *
+         * **앞에 공백(또는 줄 시작)을 요구한다.** 이것이 없으면 `미승인`처럼 「승인」을 접미사로
+         * 품은 낱말이 걸린다 — 승인 거절 문자가 금액·일시 줄을 정상으로 달고 오면 **거절된
+         * 금액이 지출로 저장된다.** 낱말 경계(`\b`)로는 못 막는다. 자바 정규식의 `\b`는
+         * `\w`(=`[a-zA-Z_0-9]`) 기준이라 한글 사이에서 경계를 찾지 못한다.
          */
-        private val KIND_LINE_REGEX = Regex("""(승인|취소)$""")
+        private val KIND_LINE_REGEX = Regex("""(?:^|\s)(승인|취소)$""")
         private val AMOUNT_LINE_REGEX = Regex("""^([\d,]+)원""")
         private val DATE_REGEX = Regex("""(\d{2})/(\d{2})\s+(\d{2}):(\d{2})""")
     }

@@ -138,6 +138,16 @@ class CardApprovalParserTest :
             }
         }
 
+        // **거절 문자를 지출로 저장하면 안 된다.** 「승인」을 접미사로 품은 낱말이 걸리면
+        // 금액·일시 줄이 정상이라 그대로 승인 건이 된다 — 금액이 틀리는 쪽이라 조용히 새어도
+        // 알아채기 어렵다.
+        Given("「미승인」으로 끝나는 거절 문자") {
+            val declined = approvalTextWithoutCardWord.replace("030 승인", "030 미승인")
+            When("supports") {
+                Then("처리 불가") { parser.supports(declined).shouldBeFalse() }
+            }
+        }
+
         Given("무관한 텍스트") {
             When("supports") {
                 Then("처리 불가") {
