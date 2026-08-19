@@ -156,16 +156,33 @@ data class TeslaDriveInsightsResponse(
      */
     val maxSpeedKmh: Int?,
     /**
-     * 이번 달 주행거리(km, KST 경계). **`/tesla/summary`의 이번 달 `distanceKm`과 같은
-     * 값이다** — 두 화면에 다른 숫자가 뜨면 어느 쪽도 못 믿는다.
+     * 전 기간 총 주행거리(km). **`/tesla/summary`가 달마다 내는 `distanceKm`을 전부 더한
+     * 값과 같다** — 한쪽이 거르는 주행을 다른 쪽이 세면 「월 평균」이 요약 화면의 어느
+     * 숫자와도 맞지 않는다.
      *
      * **0을 낸다. null이 아니다.** 이 저장소의 규칙은 「0은 안 탔다, null은 기록이 없다」인데
-     * 이것은 기간이 못박힌 합계라 그 달에 주행이 없으면 「0km 탔다」가 사실이다. null로
-     * 두면 매달 1일 새벽마다 화면에 「—」가 뜬다.
+     * 이것은 세어서 나온 합계라 주행이 없으면 「0km 탔다」가 사실이다.
      */
-    val monthDistanceKm: BigDecimal,
-    /** 올해 주행거리(km, KST 경계). `monthDistanceKm`과 같은 이유로 0을 낸다. */
-    val yearDistanceKm: BigDecimal,
+    val totalDistanceKm: BigDecimal,
+    /**
+     * 주행 기록이 있는 달 수 — **평균의 분모다.**
+     *
+     * **평균을 서버가 내지 않는다.** 이 저장소는 나눗셈을 앱에 맡긴다(단가·전비가 모두
+     * 그렇다). 서버가 평균을 내 버리면 분모 정의가 응답에서 사라져 화면이 그 뜻을 설명할 수
+     * 없다. 앱이 낸다:
+     *
+     * ```
+     * 월 평균 = totalDistanceKm / recordedMonths
+     * 연 평균 = 월 평균 × 12
+     * ```
+     *
+     * 분모는 「탄 달의 수」다. 실측 기준 2021-09부터 60개월이고 빈 달이 없어 경과 기간과
+     * 사실상 같지만, 빈 달이 생기더라도 뜻이 명확하다. 진행 중인 달도 든다 — 그 달의 부분
+     * 거리가 분자에 이미 있으므로 짝이 맞는다.
+     *
+     * **주행이 하나도 없으면 0이다. 앱이 나누기 전에 막아야 한다.**
+     */
+    val recordedMonths: Int,
 )
 
 /**
@@ -213,7 +230,7 @@ data class DrivePlace(
 )
 
 /**
- * 최근 며칠의 차량 상태를 시간축 구간으로 낸다. **시각은 전부 KST다.**
+ * 최근 몇 시간의 차량 상태를 시간축 구간으로 낸다. **시각은 전부 KST다.**
  *
  * **세 계열을 그대로 낸다 — 하나의 띠로 합치지 않는다.** 합치려면 구간 산술(빼기·쪼개기)이
  * 필요하다: `online` 구간 하나가 주행 둘에 걸치면 셋으로 갈라져야 하고, 그 로직은 SQL로도
@@ -226,8 +243,11 @@ data class DrivePlace(
  */
 data class TeslaStateTimelineResponse(
     /** 받은 범위를 되돌려 싣는다 — 앱이 무엇을 받았는지 알 수 있게. */
-    val days: Int,
-    /** 범위 시작(KST). **자정에 맞춰져 있다** — 앱이 하루에 한 행씩 그린다. */
+    val hours: Int,
+    /**
+     * 범위 시작(KST) = `to` − `hours`시간. **자정에 맞추지 않는다** — 앱이 24시간을 한 줄로
+     * 그리고 오른쪽 끝이 「지금」이라, 자정 정렬은 그 끝을 「지금」이 아니게 만든다.
+     */
     val from: LocalDateTime,
     /** 범위 끝(KST) = 요청 시각. 진행 중인 구간의 `to`가 이 값이다. */
     val to: LocalDateTime,
@@ -248,7 +268,7 @@ data class TeslaStateTimelineResponse(
  * `state`는 `online`·`offline`·`asleep`이다. **`/tesla/status`와 달리 `charging`·`driving`이
  * 여기 오지 않는다** — 그 둘은 `states` 테이블에 없고, 이 응답에서는 별도 배열로 나간다.
  *
- * `asleep`이 최근 며칠에 하나도 없을 수 있다(실측 최근 7일 0개). **그래도 앱의 색 팔레트에서
+ * `asleep`이 범위 안에 하나도 없을 수 있다(실측 최근 7일 0개). **그래도 앱의 색 팔레트에서
  * 빼지 않는다** — 2026년에도 2월·4월·5월·6월·7월에 있었고, 범위에 안 잡히는 것뿐이다.
  */
 data class StateSegment(

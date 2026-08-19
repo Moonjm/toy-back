@@ -10,6 +10,17 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-19-tesla-state-timeline-drive-stats-design.md`
 
+> **개정 (2026-08-19).** 아래 태스크는 **초판 계약**을 구현한 것이고 `0e2b8a9`(#44)로 머지됐다.
+> 그 뒤 스펙이 개정되어(`154595a`) 두 곳이 바뀌었으므로, **이 문서를 그대로 실행하면 옛 계약이 나온다.**
+> 현재 코드는 개정 계약을 따른다 — 무엇이 다른지는 스펙의 개정 블록을 보라.
+>
+> | 자리 | 초판 (이 문서) | 개정 (현재 코드) |
+> |---|---|---|
+> | 타임라인 파라미터 | `days` 1~30, 기본 7 | `hours` 1~168, 기본 24 |
+> | 범위 시작 | KST 자정 − (days−1)일 | `to` − `hours`시간 (자정 스냅 없음) |
+> | 응답 필드 | `days` | `hours` |
+> | 주행 통계 | `monthDistanceKm`·`yearDistanceKm` (월·연 경계) | `totalDistanceKm`·`recordedMonths` (전 기간, 평균의 분자·분모) |
+
 ## Global Constraints
 
 - **TeslaMate 시각은 타임존 없는 `timestamp`에 든 UTC 값이다.** SQL에서 `now()`(timestamptz)와 직접 비교하지 않고 `(now() AT TIME ZONE 'UTC')`로 맞춘다. 행 타입(`*Row`)의 시각은 전부 UTC이고, KST로 되돌리는 것은 서비스가 `TeslaTime.toKst`로 한다.

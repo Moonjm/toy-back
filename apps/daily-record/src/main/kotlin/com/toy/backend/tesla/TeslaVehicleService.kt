@@ -140,8 +140,8 @@ class TeslaVehicleService(
                     DrivePlace(name = it.name, driveCount = it.driveCount, distanceKm = it.distanceKm)
                 },
             maxSpeedKmh = stats.maxSpeedKmh,
-            monthDistanceKm = stats.monthDistanceKm,
-            yearDistanceKm = stats.yearDistanceKm,
+            totalDistanceKm = stats.totalDistanceKm,
+            recordedMonths = stats.recordedMonths,
         )
     }
 
@@ -152,17 +152,17 @@ class TeslaVehicleService(
      * 서비스가 하는 일은 **범위 계산과 KST 되돌리기뿐**이다. 범위 자르기(`GREATEST`/`LEAST`)와
      * 유령 거르기(24시간 범위)는 SQL이 한다.
      */
-    fun stateTimeline(days: Int): TeslaStateTimelineResponse {
-        if (days !in MIN_DAYS..MAX_DAYS) {
-            throw CustomException(ErrorCode.INVALID_REQUEST, "days는 $MIN_DAYS~$MAX_DAYS 사이여야 합니다")
+    fun stateTimeline(hours: Int): TeslaStateTimelineResponse {
+        if (hours !in MIN_HOURS..MAX_HOURS) {
+            throw CustomException(ErrorCode.INVALID_REQUEST, "hours는 $MIN_HOURS~$MAX_HOURS 사이여야 합니다")
         }
 
-        val (fromKst, toKst) = TeslaTime.timelineWindowKst(days)
+        val (fromKst, toKst) = TeslaTime.timelineWindowKst(hours)
         val windowStart = TeslaTime.toUtc(fromKst)
         val windowEnd = TeslaTime.toUtc(toKst)
 
         return TeslaStateTimelineResponse(
-            days = days,
+            hours = hours,
             from = fromKst,
             to = toKst,
             states =
@@ -258,11 +258,14 @@ class TeslaVehicleService(
         const val MAX_MONTHS = 60
 
         /**
-         * `/tesla/state-timeline`의 범위. 기본 7일, 1~30. 상한이 30인 것은 응답 크기 때문이다 —
-         * 30일이면 상태 구간이 600개 안팎이고, 그 정도는 한 응답으로 충분하다.
+         * `/tesla/state-timeline`의 범위. 기본 24시간, 1~168(=7일).
+         *
+         * 상한을 168로 둔 이유는 초판의 30일 상한과 같다 — 화면이 지금 쓰는 값(24)보다
+         * 넉넉하되, 한 응답에 담기는 구간 수가 손댈 만한 크기를 넘지 않는 선이다.
+         * 실측 최근 24시간이 22구간, 최근 7일이 168구간이다.
          */
-        const val MIN_DAYS = 1
-        const val MAX_DAYS = 30
+        const val MIN_HOURS = 1
+        const val MAX_HOURS = 168
 
         /**
          * 온도 버킷의 **응답 라벨**이다(℃). `bucket` 번호 → (`fromC`, `toC`).

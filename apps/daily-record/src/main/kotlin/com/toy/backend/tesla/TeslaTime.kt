@@ -27,16 +27,18 @@ object TeslaTime {
     fun nowKst(): LocalDateTime = LocalDateTime.now(KST)
 
     /**
-     * 최근 `days`일의 타임라인 범위(KST). `first`가 시작, `second`가 끝이다.
+     * 최근 `hours`시간의 타임라인 범위(KST). `first`가 시작, `second`가 끝이다.
      *
-     * **시작을 KST 자정에 맞춘다.** 앱이 하루에 한 행씩 그리므로, 범위가 임의 시각에서
-     * 시작하면 첫 행과 마지막 행이 둘 다 잘린 반쪽이 된다. `days=7`이면 온전한 6일 +
-     * 오늘 부분 = 7행이다.
+     * **지금부터 거꾸로 센다 — 자정에 맞추지 않는다.** 초판은 앱이 하루 한 행씩 그렸기
+     * 때문에 시작을 KST 자정에 맞췄다(임의 시각에서 시작하면 첫 행과 마지막 행이 반쪽이
+     * 됐다). 지금 앱은 24시간을 **한 줄로** 그리고 오른쪽 끝이 「지금」이다 — 자정에 맞추면
+     * 그 끝이 「지금」이 아니게 되므로, 정렬이 문제를 풀던 자리에서 문제를 만드는 자리로
+     * 바뀌었다.
      *
      * 끝은 요청 시각 그대로다 — 진행 중인 상태·주행·충전을 여기서 막는다.
      */
     fun timelineWindowKst(
-        days: Int,
+        hours: Int,
         nowKst: LocalDateTime = nowKst(),
-    ): Pair<LocalDateTime, LocalDateTime> = nowKst.toLocalDate().minusDays((days - 1).toLong()).atStartOfDay() to nowKst
+    ): Pair<LocalDateTime, LocalDateTime> = nowKst.minusHours(hours.toLong()) to nowKst
 }
