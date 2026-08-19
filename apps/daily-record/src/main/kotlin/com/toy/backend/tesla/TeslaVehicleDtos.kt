@@ -122,7 +122,7 @@ data class BatteryHealthSample(
  * 정한다. 1단계의 예외(중앙값)와 달리 여기는 합이라 나눌 이유가 없다.
  */
 data class TeslaDriveInsightsResponse(
-    /** 받은 창을 되돌려 싣는다 — 앱이 무엇을 받았는지 알 수 있게. */
+    /** 받은 범위를 되돌려 싣는다 — 앱이 무엇을 받았는지 알 수 있게. */
     val months: Int,
     /**
      * `cars.efficiency` 그대로(kWh/km). **null일 수 있다** — TeslaMate가 아직 못 채운
@@ -143,7 +143,7 @@ data class TeslaDriveInsightsResponse(
      */
     val places: List<DrivePlace>,
     /**
-     * 역대 최고 속도(km/h). **`months` 창을 따르지 않는다** — 창이 바뀔 때마다 바뀌면
+     * 역대 최고 속도(km/h). **`months` 범위를 따르지 않는다** — 범위가 바뀔 때마다 바뀌면
      * 기록이 아니다. 앱은 이 값의 라벨을 **「역대 최고」**로 적어 옆 두 타일과 범위가
      * 다름을 글자로 드러낸다.
      *
@@ -175,10 +175,10 @@ data class TeslaDriveInsightsResponse(
  * **빈 버킷의 숫자는 0이지 null이 아니다.** `MonthlyStat`이 「기록이 없다」를 null로 내는 것과
  * 반대인데 뜻이 다르기 때문이다 — 여기서 0은 「그 온도대에 실제로 안 탔다」는 사실이다.
  *
- * **`DistanceBucket`과 달리, 창 안의 모든 주행이 어느 한 버킷에 들어가는 것은 아니다.**
+ * **`DistanceBucket`과 달리, 범위 안의 모든 주행이 어느 한 버킷에 들어가는 것은 아니다.**
  * `outside_temp_avg IS NULL`이거나 `ΔratedRange <= 0`인 주행은 `driveCount`에서 빠진 뒤 집계되므로
  * (아래 참고) 어느 버킷에도 들어가지 않는다 — 온도 버킷 다섯 개의 합이 거리 버킷 다섯 개의 합보다
- * 작을 수 있다. `months=1`처럼 표본이 적은 창에서는 「그 온도대에 탔지만 전부 Δrated≤0로 걸러진」
+ * 작을 수 있다. `months=1`처럼 표본이 적은 범위에서는 「그 온도대에 탔지만 전부 Δrated≤0로 걸러진」
  * 버킷이 `driveCount: 0`으로 보일 수 있다 — 그 온도대에 «기록이 없다»는 뜻이 아니다.
  */
 data class TemperatureBucket(
@@ -225,14 +225,14 @@ data class DrivePlace(
  * 열리는 일은 없다.
  */
 data class TeslaStateTimelineResponse(
-    /** 받은 창을 되돌려 싣는다 — 앱이 무엇을 받았는지 알 수 있게. */
+    /** 받은 범위를 되돌려 싣는다 — 앱이 무엇을 받았는지 알 수 있게. */
     val days: Int,
-    /** 창 시작(KST). **자정에 맞춰져 있다** — 앱이 하루에 한 행씩 그린다. */
+    /** 범위 시작(KST). **자정에 맞춰져 있다** — 앱이 하루에 한 행씩 그린다. */
     val from: LocalDateTime,
-    /** 창 끝(KST) = 요청 시각. 진행 중인 구간의 `to`가 이 값이다. */
+    /** 범위 끝(KST) = 요청 시각. 진행 중인 구간의 `to`가 이 값이다. */
     val to: LocalDateTime,
     /**
-     * `states`의 구간, 오래된 것부터. **창 밖은 잘려서 온다.**
+     * `states`의 구간, 오래된 것부터. **범위 밖은 잘려서 온다.**
      *
      * 그 기간에 기록이 없으면 빈 배열이다 — 404가 아니다(「없는 리소스」가 아니라
      * 「그 기간에 기록이 없다」).
@@ -249,7 +249,7 @@ data class TeslaStateTimelineResponse(
  * 여기 오지 않는다** — 그 둘은 `states` 테이블에 없고, 이 응답에서는 별도 배열로 나간다.
  *
  * `asleep`이 최근 며칠에 하나도 없을 수 있다(실측 최근 7일 0개). **그래도 앱의 색 팔레트에서
- * 빼지 않는다** — 2026년에도 2월·4월·5월·6월·7월에 있었고, 창에 안 잡히는 것뿐이다.
+ * 빼지 않는다** — 2026년에도 2월·4월·5월·6월·7월에 있었고, 범위에 안 잡히는 것뿐이다.
  */
 data class StateSegment(
     val state: String,

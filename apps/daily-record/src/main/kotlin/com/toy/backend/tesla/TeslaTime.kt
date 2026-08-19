@@ -23,13 +23,13 @@ object TeslaTime {
     fun monthRangeUtc(yearMonth: YearMonth): Pair<LocalDateTime, LocalDateTime> =
         toUtc(yearMonth.atDay(1).atStartOfDay()) to toUtc(yearMonth.plusMonths(1).atDay(1).atStartOfDay())
 
-    /** 지금(KST). 창 계산을 순수 함수로 두려고 시각 읽기만 여기로 뺀다. */
+    /** 지금(KST). 범위 계산을 순수 함수로 두려고 시각 읽기만 여기로 뺀다. */
     fun nowKst(): LocalDateTime = LocalDateTime.now(KST)
 
     /**
-     * 최근 `days`일의 타임라인 창(KST). `first`가 시작, `second`가 끝이다.
+     * 최근 `days`일의 타임라인 범위(KST). `first`가 시작, `second`가 끝이다.
      *
-     * **시작을 KST 자정에 맞춘다.** 앱이 하루에 한 행씩 그리므로, 창이 임의 시각에서
+     * **시작을 KST 자정에 맞춘다.** 앱이 하루에 한 행씩 그리므로, 범위가 임의 시각에서
      * 시작하면 첫 행과 마지막 행이 둘 다 잘린 반쪽이 된다. `days=7`이면 온전한 6일 +
      * 오늘 부분 = 7행이다.
      *

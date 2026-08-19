@@ -181,7 +181,7 @@ class JdbcTeslaChargeRepository(
          *
          * 경계를 SQL에서 잡는 이유는 Kotlin에서 `now()`를 쓰면 시계 주입과 테스트 이음새가
          * 따라붙기 때문이다. `start_date`는 타임존 없는 컬럼에 든 UTC 값이라
-         * `now() AT TIME ZONE 'UTC'`로 맞춰야 창이 어긋나지 않는다 —
+         * `now() AT TIME ZONE 'UTC'`로 맞춰야 범위가 어긋나지 않는다 —
          * `now()`(timestamptz)와 그냥 비교하면 세션 타임존만큼(KST면 9시간) 짧아진다.
          */
         private const val MISSING_COST_SQL = """
@@ -206,7 +206,7 @@ class JdbcTeslaChargeRepository(
         """
 
         /**
-         * **목록과 같은 창을 쓴다.** 목록만 좁히면 배지가 「37건」인데 목록에는 3건만 보이고,
+         * **목록과 같은 범위를 쓴다.** 목록만 좁히면 배지가 「37건」인데 목록에는 3건만 보이고,
          * 채워도 배지가 거의 줄지 않아 무엇이 남았는지 읽히지 않는다.
          */
         private const val COUNT_MISSING_COST_SQL = """

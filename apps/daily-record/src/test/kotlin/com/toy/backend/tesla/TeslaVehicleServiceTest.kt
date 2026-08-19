@@ -15,7 +15,7 @@ import java.time.YearMonth
 import java.time.ZoneId
 
 /**
- * **12개월 추이·이번 달·직전 달이 한 벌의 그룹 집계에서 나온다** — 직전 달이 12개월 창 안에 든다.
+ * **12개월 추이·이번 달·직전 달이 한 벌의 그룹 집계에서 나온다** — 직전 달이 12개월 범위 안에 든다.
  * 주행만 있는 달과 충전만 있는 달이 하나로 합쳐지는지, 없는 달이 0이 아니라 null인지가 핵심이다.
  */
 class TeslaVehicleServiceTest :
@@ -34,8 +34,8 @@ class TeslaVehicleServiceTest :
 
             service.summary(YearMonth.of(2026, 8))
 
-            // 12개월 창의 시작은 2025-09, 끝은 2026-09 직전이다. 둘 다 KST 경계를 UTC로 옮긴 값이다.
-            Then("12개월 창이 UTC 경계로 번역된다") {
+            // 12개월 범위의 시작은 2025-09, 끝은 2026-09 직전이다. 둘 다 KST 경계를 UTC로 옮긴 값이다.
+            Then("12개월 범위가 UTC 경계로 번역된다") {
                 start.captured shouldBe LocalDateTime.of(2025, 8, 31, 15, 0)
                 end.captured shouldBe LocalDateTime.of(2026, 8, 31, 15, 0)
             }
@@ -128,7 +128,7 @@ class TeslaVehicleServiceTest :
 
             val response = service.summary(YearMonth.of(2026, 8))
 
-            // 목록은 그 달만이다 — 12개월 창을 쓰면 안 된다.
+            // 목록은 그 달만이다 — 12개월 범위를 쓰면 안 된다.
             Then("목록은 그 달의 경계로 조회한다") {
                 start.captured shouldBe LocalDateTime.of(2026, 7, 31, 15, 0)
                 end.captured shouldBe LocalDateTime.of(2026, 8, 31, 15, 0)
@@ -551,7 +551,7 @@ class TeslaVehicleServiceTest :
             }
         }
 
-        // 셋의 창이 서로 다르다 — 최고 속도는 전 기간이고 거리 둘은 KST 월·연 경계다.
+        // 셋의 범위가 서로 다르다 — 최고 속도는 전 기간이고 거리 둘은 KST 월·연 경계다.
         // 서비스는 그것을 해석하지 않고 그대로 올린다.
         Given("주행 통계가 올 때") {
             every { vehicleRepository.driveTemperatureBuckets(any()) } returns emptyList()
@@ -600,9 +600,9 @@ class TeslaVehicleServiceTest :
 
             val response = service.stateTimeline(7)
 
-            // 앱이 하루에 한 행씩 그린다. 창이 임의 시각에서 시작하면 첫 행이 반쪽이 된다.
+            // 앱이 하루에 한 행씩 그린다. 범위가 임의 시각에서 시작하면 첫 행이 반쪽이 된다.
             // 고정 시각 검증은 `TeslaTimeTest`가 한다 — 여기서는 자정에 맞았는지만 본다.
-            Then("창 시작이 KST 자정에서 6일을 뺀 자정이다") {
+            Then("범위 시작이 KST 자정에서 6일을 뺀 자정이다") {
                 response.from shouldBe LocalDate.now(kst).minusDays(6).atStartOfDay()
             }
 
