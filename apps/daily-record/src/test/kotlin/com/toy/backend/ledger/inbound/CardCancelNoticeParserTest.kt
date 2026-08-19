@@ -59,7 +59,15 @@ class CardCancelNoticeParserTest :
                 // **그날의 끝으로 잡는다.** 매칭 창이 `entryAt <= occurredAt`이라
                 // 자정으로 잡으면 같은 날 18:21에 승인된 건이 창 밖으로 밀려난다.
                 Then("일시는 그 날짜의 끝이다") {
-                    result.occurredAt shouldBe LocalDateTime.of(2026, 8, 10, 23, 59, 59, 999_999_999)
+                    result.occurredAt shouldBe LocalDateTime.of(2026, 8, 10, 23, 59, 59, 999_999_000)
+                }
+
+                // **`LocalTime.MAX`(나노초)를 쓰면 PostgreSQL이 다음 날 자정으로 올린다** —
+                // 매칭에 실패한 취소가 하루 뒤 날짜로 남고 매칭 창도 다음 날까지 벌어진다.
+                // 목으로 리포지토리를 대체하는 테스트는 그 변환을 못 보므로, 값이 DB 정밀도
+                // 안에 있는지를 여기서 대신 못 박는다.
+                Then("마이크로초 정밀도를 넘지 않는다") {
+                    (result.occurredAt.nano % 1_000) shouldBe 0
                 }
             }
         }
@@ -93,7 +101,7 @@ class CardCancelNoticeParserTest :
                 val text = cancelNoticeText.replace("08/10", "12/31")
                 val result = parser.parse(text, LocalDateTime.of(2027, 1, 2, 9, 0))
                 Then("전년도로 보정") {
-                    result.occurredAt shouldBe LocalDateTime.of(2026, 12, 31, 23, 59, 59, 999_999_999)
+                    result.occurredAt shouldBe LocalDateTime.of(2026, 12, 31, 23, 59, 59, 999_999_000)
                 }
             }
         }

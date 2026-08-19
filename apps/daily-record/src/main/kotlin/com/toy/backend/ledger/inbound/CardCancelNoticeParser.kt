@@ -47,7 +47,7 @@ class CardCancelNoticeParser : MessageParser {
                 ParserDates
                     .resolveYear(month.toInt(), day.toInt(), 0, 0, receivedAt)
                     .toLocalDate()
-                    .atTime(LocalTime.MAX),
+                    .atTime(END_OF_DAY),
             source = EntrySource.SMS,
         )
     }
@@ -89,6 +89,21 @@ class CardCancelNoticeParser : MessageParser {
          * 참고.
          */
         private val PG_NAMES = listOf("이니시스", "토스페이먼츠", "나이스페이", "KCP", "다날")
+
+        /**
+         * 하루의 끝. **`LocalTime.MAX`를 쓰면 안 된다.**
+         *
+         * `LocalTime.MAX`는 `23:59:59.999999999`(나노초)인데 PostgreSQL의 `timestamp`는
+         * 마이크로초까지만 담는다. JDBC 드라이버가 반올림해 **다음 날 `00:00:00`으로 저장한다**
+         * (실측 2026-08-19: `2026-08-10T23:59:59.999999999` → `2026-08-11T00:00`).
+         *
+         * 그러면 둘이 함께 틀어진다 — 매칭에 실패한 취소 건이 **하루 뒤 날짜로 장부에 남고**,
+         * 매칭 창(`entryAt <= :before`)이 **다음 날 자정 승인 건까지** 끌어온다.
+         *
+         * **목으로 리포지토리를 대체하는 단위 테스트는 이 변환을 드러내지 못한다**
+         * (`AGENTS.md`의 「단위 테스트는 …DB 제약 문제를 잡지 못한다」).
+         */
+        private val END_OF_DAY: LocalTime = LocalTime.of(23, 59, 59, 999_999_000)
 
         /**
          * `08/10 (주)이니시스 - (주)공영홈쇼핑 사용 22,320원 취소처리` 를 한 번에 뽑는다.
