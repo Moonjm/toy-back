@@ -40,6 +40,16 @@ private val approvalText =
 
 private val cancelText = approvalText.replace("승인", "취소")
 
+/**
+ * PG를 거친 결제의 취소 알림 — 한 줄이고 **시각이 없으며** 가맹점 앞에 PG사가 붙는다.
+ * 2026-08-19에 이 형식이 파서 없이 `PARSE_FAILED`로 떨어졌다.
+ */
+private val pgCancelNoticeText =
+    """
+    [Web발신]
+    [현대카드] 이*지님 08/10 (주)이니시스 - (주)공영홈쇼핑 사용 22,320원 취소처리되었습니다
+    """.trimIndent()
+
 /** 단위 테스트용 no-op 트랜잭션 매니저 — 콜백을 그대로 실행하고 예외는 전파한다. */
 private val noopTransactionManager =
     object : PlatformTransactionManager {
@@ -62,7 +72,14 @@ class InboundServiceTest :
             }
         val service =
             InboundService(
-                parsers = listOf(CardApprovalParser(), OverseasApprovalParser(), KakaoPayParser(), AutoPaymentParser()),
+                parsers =
+                    listOf(
+                        CardApprovalParser(),
+                        CardCancelNoticeParser(),
+                        OverseasApprovalParser(),
+                        KakaoPayParser(),
+                        AutoPaymentParser(),
+                    ),
                 entryRepository = entryRepository,
                 inboundRepository = inboundRepository,
                 userRepository = userRepository,
@@ -132,6 +149,49 @@ class InboundServiceTest :
                     beforeSlot.captured.dayOfMonth shouldBe 14
                     beforeSlot.captured.hour shouldBe 7
                     beforeSlot.captured.minute shouldBe 38
+                    afterSlot.captured shouldBe beforeSlot.captured.minusDays(7)
+                }
+            }
+        }
+
+        /*
+         * PG 취소 알림은 시각이 없다(`08/10`). 매칭 창이 `entryAt <= before`이므로 그 날짜를
+         * 자정으로 잡으면 **같은 날 18:21에 승인된 건이 창 밖으로 밀려나** 매칭이 조용히
+         * 실패하고 음수 건이 따로 쌓인다. 그날의 끝으로 잡는 이유가 이것이다.
+         */
+        Given("PG 취소 알림 수신 — 시각 없는 날짜") {
+            When("같은 날 18:21에 승인된 건이 있으면") {
+                val existing = dummyLedgerEntry(user = user, id = 21L)
+                val afterSlot = slot<LocalDateTime>()
+                val beforeSlot = slot<LocalDateTime>()
+                every {
+                    entryRepository.findLatestCancellable(
+                        user,
+                        BigDecimal("22320"),
+                        "KRW",
+                        // PG사(`(주)이니시스`)를 뗀 실가맹점으로 찾아야 승인 건과 맞는다.
+                        "(주)공영홈쇼핑",
+                        EntrySource.SMS,
+                        capture(afterSlot),
+                        capture(beforeSlot),
+                    )
+                } returns existing
+                justRun { entryRepository.delete(existing) }
+
+                val inboundId = service.process("testuser", pgCancelNoticeText)
+
+                Then("기존 건이 삭제되고 CANCEL_MATCHED로 남는다") {
+                    inboundId shouldBe 100L
+                    verify { entryRepository.delete(existing) }
+                    verify { inboundRepository.save(match { it.status == InboundStatus.CANCEL_MATCHED && it.entryId == 21L }) }
+                }
+
+                Then("매칭 창이 그날 18:21을 포함한다") {
+                    val approvedAt = LocalDateTime.of(beforeSlot.captured.year, 8, 10, 18, 21)
+                    (beforeSlot.captured >= approvedAt) shouldBe true
+                    (afterSlot.captured < approvedAt) shouldBe true
+                    beforeSlot.captured.monthValue shouldBe 8
+                    beforeSlot.captured.dayOfMonth shouldBe 10
                     afterSlot.captured shouldBe beforeSlot.captured.minusDays(7)
                 }
             }

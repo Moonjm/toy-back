@@ -50,11 +50,17 @@ class DietChatMessage(
     @Column(nullable = false, columnDefinition = "text")
     var content: String,
     /**
-     * **기존 행은 전부 `TEXT`다.** 컬럼 정의에 `default`를 둬야 ddl-auto가 not null 컬럼을
-     * 붙일 때 이미 있는 행이 살아남는다. `role`이 이미 같은 이유로 `columnDefinition`을 쓴다.
+     * `role`과 같은 이유로 `columnDefinition`을 쓴다 — ddl-auto가 CHECK 제약을 갱신하지 못한다.
+     *
+     * **`default 'TEXT'`를 여기 두지 않는다.** 컬럼을 처음 붙일 때는 그 기본값이 필요했고
+     * (`ADD COLUMN … default 'TEXT' not null`이라야 기존 행이 살아남는다) 실제로 그렇게 들어갔지만,
+     * 정의에 남겨 두면 부팅마다 Hibernate가 DB의 타입(`varchar`)과 이 문자열을 견주어 늘 다르다고
+     * 보고 `ALTER COLUMN type SET DATA TYPE varchar(20) default 'TEXT'`를 낸다. PostgreSQL의
+     * `SET DATA TYPE`은 타입만 받으므로 그 DDL은 **매번 문법 오류로 실패하며 WARN을 찍는다.**
+     * 이미 걸린 기본값은 이 정의를 지워도 사라지지 않는다.
      */
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, columnDefinition = "varchar(20) default 'TEXT'")
+    @Column(nullable = false, columnDefinition = "varchar(20)")
     var type: ChatMessageType = ChatMessageType.TEXT,
     /**
      * `MEAL_CARD`가 가리키는 끼니. **FK를 걸지 않는다** — 걸면 카드 삭제가 한 번 새는 순간
