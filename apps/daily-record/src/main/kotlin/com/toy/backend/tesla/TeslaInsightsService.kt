@@ -231,8 +231,7 @@ class TeslaInsightsService(
      * 쿼리 셋이 전부다. 서비스가 하는 일은 **범위 계산과 KST 되돌리기뿐**이다 —
      * 솎기와 범위 자르기는 SQL이 한다.
      *
-     * **`parkDrain`만 범위를 따르지 않는다.** 48시간 안에 순수 주차 구간이 하나도 없는 날이
-     * 흔해서, 최근 7일로 고정해야 숫자가 늘 나온다.
+     * **`parkDrain`만 범위를 따르지 않는다** — 최근 7일 고정이다(이유는 `PARK_DRAIN_DAYS` 참고).
      */
     fun batteryWindow(hours: Int): TeslaBatteryWindowResponse {
         if (hours !in MIN_HOURS..MAX_HOURS) {
