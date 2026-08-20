@@ -3109,7 +3109,7 @@ Expected: PASS
 ```bash
 ./gradlew spotlessApply
 git add apps/daily-record/src/
-git commit -m "feat: 배터리 추이과 최근 팬텀 드레인을 낸다"
+git commit -m "feat: 배터리 추이와 최근 팬텀 드레인을 낸다"
 ```
 
 ---
