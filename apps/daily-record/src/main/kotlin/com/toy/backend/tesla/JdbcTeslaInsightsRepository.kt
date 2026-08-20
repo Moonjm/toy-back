@@ -91,7 +91,7 @@ class JdbcTeslaInsightsRepository(
                     weekday = rs.getInt("weekday"),
                     driveCount = rs.getInt("drive_count"),
                     distanceKm = rs.getBigDecimal("distance_km"),
-                    drivingMin = rs.getInt("driving_min"),
+                    drivingMin = rs.nullableInt("driving_min"),
                 )
             }.list()
 
@@ -229,14 +229,9 @@ class JdbcTeslaInsightsRepository(
         """
 
         /**
-         * **`isodow`라 1이 월요일이다.** 같은 응답의 `driveTimes`·`chargeTimes`는 `dow`(0=일)를
-         * 쓴다 — 기존 계약이라 바꿀 수 없다. 한 응답에 두 벌이 나가는 셈이라 응답 타입 쪽에도
-         * 적어 두었다.
-         *
-         * **KST로 옮긴 뒤 뽑는다.** UTC로 뽑으면 월요일 아침 출근이 일요일 밤으로 찍힌다.
-         *
-         * 경계 컬럼이 `start_date`인 것은 월별 집계와 맞춘 것이다 — 자정을 걸친 주행은 출발한
-         * 요일로 친다.
+         * **KST로 옮긴 뒤 뽑는다** — UTC로 뽑으면 월요일 아침 출근이 일요일 밤으로 찍힌다.
+         * `isodow`라 1이 월요일이다(요일 번호 규약은 `WeekdayDriveRow` 참조). 경계는 `start_date`
+         * 기준이라 자정을 걸친 주행은 출발한 요일로 친다.
          */
         private const val WEEKDAY_DRIVES_SQL = """
             SELECT EXTRACT(isodow FROM d.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')::int AS weekday,

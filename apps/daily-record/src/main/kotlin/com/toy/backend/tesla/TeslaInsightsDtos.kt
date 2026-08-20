@@ -37,13 +37,7 @@ data class TeslaInsightsResponse(
     val totalDistanceKm: BigDecimal,
     /** 주행 기록이 있는 달 수 — 평균의 분모다. **0으로 올 수 있다.** */
     val recordedMonths: Int,
-    /**
-     * 요일별 합, **월요일(1)부터 일곱 개가 늘 온다.**
-     *
-     * **`weekday`가 1=월요일이다 — 같은 응답의 `driveTimes`·`chargeTimes`는 0=일요일이다.**
-     * 뒤의 둘은 `/tesla/drive-insights`의 기존 계약(PostgreSQL `dow`)을 그대로 물려받았고,
-     * 이쪽은 앱의 요일 막대가 월요일부터 시작한다. 섞어 읽으면 하루가 밀린다.
-     */
+    /** 요일별 합, **월요일(1)부터 일곱 개가 늘 온다.** 요일 번호 규약은 `InsightsWeekday` 참조. */
     val weekday: List<InsightsWeekday>,
 )
 
@@ -92,10 +86,8 @@ data class InsightsWeekday(
     val distanceKm: BigDecimal,
     val drivingMin: Int,
     /**
-     * 범위 안에서 그 요일이 며칠 나왔나 — **요일 평균의 분모다.**
-     *
-     * **오늘도 한 번으로 센다.** 오늘의 주행이 이미 분자에 들어 있어 짝이 맞는다.
-     * 정지 시간 쪽은 반대로 오늘의 흐른 시간만 센다(아래).
+     * 범위 안에서 그 요일이 며칠 나왔나 — **요일 평균의 분모다.** 오늘도 한 번으로 센다(오늘의
+     * 주행이 이미 분자에 있어 짝이 맞는다) — `idleMin`의 분모는 반대로 흐른 분만 센다.
      */
     val occurrences: Int,
     /**
