@@ -134,7 +134,7 @@ data class ChargerRow(
     val costMissingCount: Int,
 )
 
-/** 다녀온 지역 수. `GROUP BY`가 없어 주소가 하나도 없어도 0이 든 행이 온다. */
+/** 다녀온 지역 수. 행이 항상 오는 이유는 `TeslaInsightsRepository.regions` 참조. */
 data class RegionRow(
     val cities: Int,
     val states: Int,
