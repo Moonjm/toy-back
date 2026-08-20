@@ -107,10 +107,14 @@ class JdbcTeslaVehicleRepository(
                 )
             }.list()
 
-    override fun driveTemperatureBuckets(months: Int): List<DriveTemperatureBucketRow> =
+    override fun driveTemperatureBuckets(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<DriveTemperatureBucketRow> =
         teslaMateJdbcClient
             .sql(DRIVE_TEMPERATURE_BUCKETS_SQL)
-            .param("months", months)
+            .param("start", startUtc)
+            .param("end", endUtcExclusive)
             .query { rs, _ ->
                 DriveTemperatureBucketRow(
                     bucket = rs.getInt("bucket"),
@@ -120,10 +124,14 @@ class JdbcTeslaVehicleRepository(
                 )
             }.list()
 
-    override fun driveTimes(months: Int): List<DriveTimeRow> =
+    override fun driveTimes(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<DriveTimeRow> =
         teslaMateJdbcClient
             .sql(DRIVE_TIMES_SQL)
-            .param("months", months)
+            .param("start", startUtc)
+            .param("end", endUtcExclusive)
             .query { rs, _ ->
                 DriveTimeRow(
                     weekday = rs.getInt("weekday"),
@@ -132,10 +140,14 @@ class JdbcTeslaVehicleRepository(
                 )
             }.list()
 
-    override fun driveDistanceBuckets(months: Int): List<DriveDistanceBucketRow> =
+    override fun driveDistanceBuckets(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<DriveDistanceBucketRow> =
         teslaMateJdbcClient
             .sql(DRIVE_DISTANCE_BUCKETS_SQL)
-            .param("months", months)
+            .param("start", startUtc)
+            .param("end", endUtcExclusive)
             .query { rs, _ ->
                 DriveDistanceBucketRow(
                     bucket = rs.getInt("bucket"),
@@ -144,10 +156,14 @@ class JdbcTeslaVehicleRepository(
                 )
             }.list()
 
-    override fun drivePlaces(months: Int): List<DrivePlaceRow> =
+    override fun drivePlaces(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<DrivePlaceRow> =
         teslaMateJdbcClient
             .sql(DRIVE_PLACES_SQL)
-            .param("months", months)
+            .param("start", startUtc)
+            .param("end", endUtcExclusive)
             .query { rs, _ ->
                 DrivePlaceRow(
                     name = rs.getString("name"),
@@ -319,14 +335,15 @@ class JdbcTeslaVehicleRepository(
         """
 
         /**
-         * **조회 범위의 기준을 `(now() AT TIME ZONE 'UTC')`로 맞춘다.** `end_date`는 타임존 없는
-         * 컬럼에 든 UTC 값이라 `now()`(timestamptz)와 그냥 비교하면 세션 타임존만큼(KST면
-         * 9시간) 범위가 어긋난다 — `ACTIVITY_SQL`이 같은 이유로 같은 꼴을 쓴다.
+         * 네 주행 쿼리가 함께 쓰는 조회 범위. **UTC로 온다** — TeslaMate가 타임존 없는 컬럼에
+         * UTC 값을 넣으므로 KST를 넘기면 9시간이 어긋난다.
          *
-         * 네 주행 쿼리가 이 한 줄을 함께 쓴다.
+         * 경계 컬럼이 `end_date`인 것은 초판 그대로다. 「범위에 든다」의 기준을 네 쿼리가
+         * 같이 쓰게 하려는 것이다.
          */
         private const val DRIVE_WINDOW = """
-                   AND d.end_date >= (now() AT TIME ZONE 'UTC') - (:months * interval '1 month')
+                   AND d.end_date >= :start
+                   AND d.end_date <  :end
         """
 
         /**

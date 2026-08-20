@@ -104,8 +104,14 @@ class TeslaVehicleService(
             throw CustomException(ErrorCode.INVALID_REQUEST, "months는 $MIN_MONTHS~$MAX_MONTHS 사이여야 합니다")
         }
 
-        val temperatures = vehicleRepository.driveTemperatureBuckets(months).associateBy { it.bucket }
-        val distances = vehicleRepository.driveDistanceBuckets(months).associateBy { it.bucket }
+        // 예전 SQL이 `now() − N개월`로 만들던 창을 그대로 옮겼다. **뜻을 바꾸지 않는다** —
+        // 앱 1단계가 이 엔드포인트를 계속 쓴다. 달에 맞춘 창은 `/tesla/insights`의 것이다.
+        val nowKst = TeslaTime.nowKst()
+        val endUtc = TeslaTime.toUtc(nowKst)
+        val startUtc = TeslaTime.toUtc(nowKst.minusMonths(months.toLong()))
+
+        val temperatures = vehicleRepository.driveTemperatureBuckets(startUtc, endUtc).associateBy { it.bucket }
+        val distances = vehicleRepository.driveDistanceBuckets(startUtc, endUtc).associateBy { it.bucket }
         val stats = vehicleRepository.driveStats()
 
         return TeslaDriveInsightsResponse(
@@ -123,7 +129,7 @@ class TeslaVehicleService(
                     )
                 },
             driveTimes =
-                vehicleRepository.driveTimes(months).map {
+                vehicleRepository.driveTimes(startUtc, endUtc).map {
                     DriveTime(weekday = it.weekday, hour = it.hour, count = it.count)
                 },
             distanceBuckets =
@@ -137,7 +143,7 @@ class TeslaVehicleService(
                     )
                 },
             places =
-                vehicleRepository.drivePlaces(months).map {
+                vehicleRepository.drivePlaces(startUtc, endUtc).map {
                     DrivePlace(name = it.name, driveCount = it.driveCount, distanceKm = it.distanceKm)
                 },
             maxSpeedKmh = stats.maxSpeedKmh,

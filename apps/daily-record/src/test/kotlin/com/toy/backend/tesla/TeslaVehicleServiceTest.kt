@@ -469,10 +469,10 @@ class TeslaVehicleServiceTest :
 
         // 서비스가 하는 일은 버킷 자리 채움과 행→DTO 변환뿐이다. 합계·KST 변환은 SQL이 한다.
         Given("주행 인사이트를 조회할 때 리포지토리가 아무 행도 주지 않으면") {
-            every { vehicleRepository.driveTemperatureBuckets(any()) } returns emptyList()
-            every { vehicleRepository.driveTimes(any()) } returns emptyList()
-            every { vehicleRepository.driveDistanceBuckets(any()) } returns emptyList()
-            every { vehicleRepository.drivePlaces(any()) } returns emptyList()
+            every { vehicleRepository.driveTemperatureBuckets(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
+            every { vehicleRepository.driveTimes(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
+            every { vehicleRepository.driveDistanceBuckets(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
+            every { vehicleRepository.drivePlaces(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
             every { vehicleRepository.carEfficiency() } returns BigDecimal("0.1367")
             every { vehicleRepository.driveStats() } returns DriveStatsRow(138, BigDecimal("107257.8"), 60)
 
@@ -515,16 +515,16 @@ class TeslaVehicleServiceTest :
         }
 
         Given("일부 버킷에만 주행이 있을 때") {
-            every { vehicleRepository.driveTemperatureBuckets(any()) } returns
+            every { vehicleRepository.driveTemperatureBuckets(any<LocalDateTime>(), any<LocalDateTime>()) } returns
                 listOf(
                     DriveTemperatureBucketRow(1, 82, BigDecimal("2424.8"), BigDecimal("2939.2")),
                     DriveTemperatureBucketRow(5, 118, BigDecimal("2494.6"), BigDecimal("2551.5")),
                 )
-            every { vehicleRepository.driveTimes(any()) } returns
+            every { vehicleRepository.driveTimes(any<LocalDateTime>(), any<LocalDateTime>()) } returns
                 listOf(DriveTimeRow(1, 8, 43), DriveTimeRow(2, 17, 41))
-            every { vehicleRepository.driveDistanceBuckets(any()) } returns
+            every { vehicleRepository.driveDistanceBuckets(any<LocalDateTime>(), any<LocalDateTime>()) } returns
                 listOf(DriveDistanceBucketRow(5, 3, BigDecimal("412.0")))
-            every { vehicleRepository.drivePlaces(any()) } returns
+            every { vehicleRepository.drivePlaces(any<LocalDateTime>(), any<LocalDateTime>()) } returns
                 listOf(
                     DrivePlaceRow("집", 124, BigDecimal("812.4")),
                     // 지오펜스가 없어 주소로 떨어진 도착지도 그대로 나간다 —
@@ -568,10 +568,10 @@ class TeslaVehicleServiceTest :
 
         // TeslaMate가 efficiency를 아직 못 채운 경우다. 그때 앱은 전비 카드를 감춘다.
         Given("cars.efficiency가 null일 때") {
-            every { vehicleRepository.driveTemperatureBuckets(any()) } returns emptyList()
-            every { vehicleRepository.driveTimes(any()) } returns emptyList()
-            every { vehicleRepository.driveDistanceBuckets(any()) } returns emptyList()
-            every { vehicleRepository.drivePlaces(any()) } returns emptyList()
+            every { vehicleRepository.driveTemperatureBuckets(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
+            every { vehicleRepository.driveTimes(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
+            every { vehicleRepository.driveDistanceBuckets(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
+            every { vehicleRepository.drivePlaces(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
             every { vehicleRepository.carEfficiency() } returns null
             every { vehicleRepository.driveStats() } returns DriveStatsRow(138, BigDecimal("107257.8"), 60)
 
@@ -583,10 +583,10 @@ class TeslaVehicleServiceTest :
         }
 
         Given("months가 범위 경계일 때") {
-            every { vehicleRepository.driveTemperatureBuckets(any()) } returns emptyList()
-            every { vehicleRepository.driveTimes(any()) } returns emptyList()
-            every { vehicleRepository.driveDistanceBuckets(any()) } returns emptyList()
-            every { vehicleRepository.drivePlaces(any()) } returns emptyList()
+            every { vehicleRepository.driveTemperatureBuckets(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
+            every { vehicleRepository.driveTimes(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
+            every { vehicleRepository.driveDistanceBuckets(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
+            every { vehicleRepository.drivePlaces(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
             every { vehicleRepository.carEfficiency() } returns null
             every { vehicleRepository.driveStats() } returns DriveStatsRow(138, BigDecimal("107257.8"), 60)
 
@@ -603,39 +603,53 @@ class TeslaVehicleServiceTest :
             }
         }
 
-        // months는 이 엔드포인트의 유일한 파라미터다. 스텁을 전부 any()로 두면 서비스가
-        // driveTimes(12)처럼 값을 하드코딩해도 테스트가 초록으로 남는다 — 12가 아닌 값으로
-        // 불러 네 리포지토리 메서드가 그 값을 그대로 받는지 캡처로 확인한다.
+        // 네 리포지토리 메서드가 같은 범위(start, end)를 받는지 캡처로 확인한다 —
+        // 범위 자체의 값(now() 기준 계산)은 검증하지 않는다. `nowKst()`가 실제 시각을 읽어
+        // 고정할 수 없고, 창의 계산은 `TeslaTime` 쪽에서 이미 못 박았다.
         // `carEfficiency()`는 파라미터가 없어 대상이 아니다.
         Given("months=3으로 조회할 때") {
-            val temperatureMonths = slot<Int>()
-            val timesMonths = slot<Int>()
-            val distanceMonths = slot<Int>()
-            val placesMonths = slot<Int>()
-            every { vehicleRepository.driveTemperatureBuckets(capture(temperatureMonths)) } returns emptyList()
-            every { vehicleRepository.driveTimes(capture(timesMonths)) } returns emptyList()
-            every { vehicleRepository.driveDistanceBuckets(capture(distanceMonths)) } returns emptyList()
-            every { vehicleRepository.drivePlaces(capture(placesMonths)) } returns emptyList()
+            val temperatureStart = slot<LocalDateTime>()
+            val temperatureEnd = slot<LocalDateTime>()
+            val timesStart = slot<LocalDateTime>()
+            val timesEnd = slot<LocalDateTime>()
+            val distanceStart = slot<LocalDateTime>()
+            val distanceEnd = slot<LocalDateTime>()
+            val placesStart = slot<LocalDateTime>()
+            val placesEnd = slot<LocalDateTime>()
+            every {
+                vehicleRepository.driveTemperatureBuckets(capture(temperatureStart), capture(temperatureEnd))
+            } returns emptyList()
+            every {
+                vehicleRepository.driveTimes(capture(timesStart), capture(timesEnd))
+            } returns emptyList()
+            every {
+                vehicleRepository.driveDistanceBuckets(capture(distanceStart), capture(distanceEnd))
+            } returns emptyList()
+            every {
+                vehicleRepository.drivePlaces(capture(placesStart), capture(placesEnd))
+            } returns emptyList()
             every { vehicleRepository.carEfficiency() } returns null
             every { vehicleRepository.driveStats() } returns DriveStatsRow(138, BigDecimal("107257.8"), 60)
 
             service.driveInsights(3)
 
-            Then("months를 받는 네 리포지토리 메서드가 3을 그대로 받는다") {
-                temperatureMonths.captured shouldBe 3
-                timesMonths.captured shouldBe 3
-                distanceMonths.captured shouldBe 3
-                placesMonths.captured shouldBe 3
+            Then("네 리포지토리 메서드가 같은 범위를 받는다") {
+                timesStart.captured shouldBe temperatureStart.captured
+                distanceStart.captured shouldBe temperatureStart.captured
+                placesStart.captured shouldBe temperatureStart.captured
+                timesEnd.captured shouldBe temperatureEnd.captured
+                distanceEnd.captured shouldBe temperatureEnd.captured
+                placesEnd.captured shouldBe temperatureEnd.captured
             }
         }
 
         // 평균은 나눗셈이고 이 저장소는 나눗셈을 앱에 맡긴다. 서비스는 분자와 분모를
         // 해석하지 않고 그대로 올린다.
         Given("주행 통계가 올 때") {
-            every { vehicleRepository.driveTemperatureBuckets(any()) } returns emptyList()
-            every { vehicleRepository.driveTimes(any()) } returns emptyList()
-            every { vehicleRepository.driveDistanceBuckets(any()) } returns emptyList()
-            every { vehicleRepository.drivePlaces(any()) } returns emptyList()
+            every { vehicleRepository.driveTemperatureBuckets(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
+            every { vehicleRepository.driveTimes(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
+            every { vehicleRepository.driveDistanceBuckets(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
+            every { vehicleRepository.drivePlaces(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
             every { vehicleRepository.carEfficiency() } returns null
             every { vehicleRepository.driveStats() } returns
                 DriveStatsRow(138, BigDecimal("107257.8"), 60)
@@ -658,10 +672,10 @@ class TeslaVehicleServiceTest :
         // 주행이 하나도 없는 경우다. 「역대 최고」는 값 자체가 없지만(null),
         // 나머지 둘은 세어서 나온 값이라 0이 사실이다 — 서비스가 보정하지 않는다.
         Given("주행이 하나도 없을 때") {
-            every { vehicleRepository.driveTemperatureBuckets(any()) } returns emptyList()
-            every { vehicleRepository.driveTimes(any()) } returns emptyList()
-            every { vehicleRepository.driveDistanceBuckets(any()) } returns emptyList()
-            every { vehicleRepository.drivePlaces(any()) } returns emptyList()
+            every { vehicleRepository.driveTemperatureBuckets(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
+            every { vehicleRepository.driveTimes(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
+            every { vehicleRepository.driveDistanceBuckets(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
+            every { vehicleRepository.drivePlaces(any<LocalDateTime>(), any<LocalDateTime>()) } returns emptyList()
             every { vehicleRepository.carEfficiency() } returns null
             every { vehicleRepository.driveStats() } returns DriveStatsRow(null, BigDecimal.ZERO, 0)
 
