@@ -24,9 +24,13 @@ class TeslaInsightsService(
         val temperatures = vehicleRepository.driveTemperatureBuckets(window.startUtc, window.endUtc).associateBy { it.bucket }
         val distances = vehicleRepository.driveDistanceBuckets(window.startUtc, window.endUtc).associateBy { it.bucket }
         val stats = vehicleRepository.driveStats()
+        val drives = insightsRepository.driveMonthly(window.startUtc, window.endUtc).associateBy { it.month }
+        val charges = insightsRepository.chargeMonthly(window.startUtc, window.endUtc).associateBy { it.month }
+        val parkDrains = insightsRepository.parkDrainMonthly(window.startUtc, window.endUtc).associateBy { it.month }
 
         return TeslaInsightsResponse(
             months = months,
+            monthly = window.months().map { monthOf(it, window, drives, charges, parkDrains) },
             efficiencyKwhPerKm = vehicleRepository.carEfficiency(),
             temperatureBuckets =
                 TeslaBuckets.TEMPERATURE.map { (bucket, bounds) ->
@@ -103,6 +107,45 @@ class TeslaInsightsService(
         val startUtc: LocalDateTime,
         val endUtc: LocalDateTime,
     )
+
+    /** 범위의 달을 오래된 것부터. **기록이 없는 달도 자리를 지킨다.** */
+    private fun InsightsWindow.months(): List<YearMonth> =
+        generateSequence(fromMonth) { it.plusMonths(1) }
+            .takeWhile { !it.isAfter(toMonth) }
+            .toList()
+
+    /**
+     * 행 셋을 한 달로 합친다. **서비스가 하는 유일한 산술이 여기 있다** — 정지 시간의 뺄셈이다.
+     * 그것을 SQL로 옮기려면 「지금」을 SQL이 알아야 하고, 그러면 테스트가 시각을 못 박을 수 없다.
+     */
+    private fun monthOf(
+        month: YearMonth,
+        window: InsightsWindow,
+        drives: Map<YearMonth, InsightsDriveMonthRow>,
+        charges: Map<YearMonth, InsightsChargeMonthRow>,
+        parkDrains: Map<YearMonth, ParkDrainMonthRow>,
+    ): InsightsMonth {
+        val drive = drives[month]
+        val charge = charges[month]
+        val parkDrain = parkDrains[month]
+        val elapsedMin = TeslaTime.monthElapsedMinutes(month, window.startKst, window.endKst)
+
+        return InsightsMonth(
+            yearMonth = month,
+            distanceKm = drive?.distanceKm,
+            driveCount = drive?.driveCount,
+            drivingMin = drive?.drivingMin,
+            energyAddedKwh = charge?.energyAddedKwh,
+            energyUsedKwh = charge?.energyUsedKwh,
+            cost = charge?.cost,
+            chargeCount = charge?.chargeCount,
+            chargingMin = charge?.chargingMin,
+            ratedRangeUsedKm = drive?.ratedRangeUsedKm,
+            idleMin = (elapsedMin - (drive?.drivingMin ?: 0) - (charge?.chargingMin ?: 0)).coerceAtLeast(0),
+            parkDrainRatedKm = parkDrain?.ratedKm ?: BigDecimal.ZERO,
+            parkDrainSamples = parkDrain?.samples ?: 0,
+        )
+    }
 
     companion object {
         /** `months`의 범위. **0은 전체 기간**이고 상한 60은 실측 기록 길이(60개월)에서 왔다. */
