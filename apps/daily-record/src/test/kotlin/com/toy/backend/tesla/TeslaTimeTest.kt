@@ -51,25 +51,25 @@ class TeslaTimeTest :
             }
         }
 
-        given("monthElapsedMinutes — 달의 경과 분") {
+        Given("monthElapsedMinutes — 달의 경과 분") {
             val start = LocalDateTime.of(2026, 3, 1, 0, 0)
 
-            `when`("이미 끝난 달이면") {
-                then("그 달 전체 분이다") {
+            When("이미 끝난 달이면") {
+                Then("그 달 전체 분이다") {
                     // 2026-04는 30일 = 43,200분
                     TeslaTime.monthElapsedMinutes(YearMonth.of(2026, 4), start, LocalDateTime.of(2026, 8, 20, 15, 0)) shouldBe 43_200
                 }
             }
 
-            `when`("진행 중인 달이면") {
-                then("지금까지만 센다") {
+            When("진행 중인 달이면") {
+                Then("지금까지만 센다") {
                     // 8/1 00:00 ~ 8/20 15:00 = 19일 15시간 = 28,260분
                     TeslaTime.monthElapsedMinutes(YearMonth.of(2026, 8), start, LocalDateTime.of(2026, 8, 20, 15, 0)) shouldBe 28_260
                 }
             }
 
-            `when`("창이 달 도중에 시작하면") {
-                then("창 시작부터 센다") {
+            When("창이 달 도중에 시작하면") {
+                Then("창 시작부터 센다") {
                     // 3/1 00:00 시작이 아니라 3/10 12:00 시작이면 3/10 12:00 ~ 3/31 24:00 = 21일 12시간
                     TeslaTime.monthElapsedMinutes(
                         YearMonth.of(2026, 3),
@@ -79,45 +79,45 @@ class TeslaTimeTest :
                 }
             }
 
-            `when`("창 밖의 달이면") {
-                then("0이다 — 음수가 나오지 않는다") {
+            When("창 밖의 달이면") {
+                Then("0이다 — 음수가 나오지 않는다") {
                     TeslaTime.monthElapsedMinutes(YearMonth.of(2025, 1), start, LocalDateTime.of(2026, 8, 20, 15, 0)) shouldBe 0
                     TeslaTime.monthElapsedMinutes(YearMonth.of(2027, 1), start, LocalDateTime.of(2026, 8, 20, 15, 0)) shouldBe 0
                 }
             }
         }
 
-        given("weekdaySpans — 요일별 등장 수와 경과 분") {
-            `when`("정확히 한 주면") {
+        Given("weekdaySpans — 요일별 등장 수와 경과 분") {
+            When("정확히 한 주면") {
                 val spans =
                     TeslaTime.weekdaySpans(
                         LocalDateTime.of(2026, 8, 10, 0, 0), // 월요일
                         LocalDateTime.of(2026, 8, 17, 0, 0), // 다음 월요일 00:00
                     )
 
-                then("일곱 요일이 한 번씩, 하루씩이다") {
+                Then("일곱 요일이 한 번씩, 하루씩이다") {
                     spans.keys shouldBe (1..7).toSet()
                     spans.values.map { it.occurrences }.toSet() shouldBe setOf(1)
                     spans.values.map { it.elapsedMin }.toSet() shouldBe setOf(1_440)
                 }
             }
 
-            `when`("오늘이 아직 안 끝났으면") {
+            When("오늘이 아직 안 끝났으면") {
                 val spans =
                     TeslaTime.weekdaySpans(
                         LocalDateTime.of(2026, 8, 17, 0, 0), // 월요일 00:00
                         LocalDateTime.of(2026, 8, 20, 15, 0), // 목요일 15:00
                     )
 
-                then("오늘도 한 번으로 세되 경과 분은 지금까지다") {
+                Then("오늘도 한 번으로 세되 경과 분은 지금까지다") {
                     spans[4]!!.occurrences shouldBe 1 // 목요일
                     spans[4]!!.elapsedMin shouldBe 900 // 15시간
                     spans[1]!!.elapsedMin shouldBe 1_440 // 월요일은 온전히 지났다
                 }
             }
 
-            `when`("끝이 시작보다 이르면") {
-                then("빈 맵이 아니라 전부 0이다") {
+            When("끝이 시작보다 이르면") {
+                Then("빈 맵이 아니라 전부 0이다") {
                     val spans =
                         TeslaTime.weekdaySpans(
                             LocalDateTime.of(2026, 8, 20, 0, 0),
