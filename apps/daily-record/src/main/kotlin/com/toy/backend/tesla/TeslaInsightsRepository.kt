@@ -115,4 +115,22 @@ interface TeslaInsightsRepository {
      * 주행이 하나도 없으면 빈 리스트다. 효율 기록만 없을 수도 있다(거리 하한 20km).
      */
     fun driveRecords(): List<DriveRecordRow>
+
+    /**
+     * 범위 안의 SOC 표본, 시각순. **5분 슬롯마다 하나로 솎아서 온다.**
+     *
+     * **이 인터페이스에서 `positions`를 읽는 유일한 자리다.** 범위가 있으므로 BRIN이
+     * 듣는다(실측 48시간 32ms). 범위 없는 조회를 여기 더하지 마라 — 실측 11.7초다.
+     */
+    fun batterySamples(
+        windowStartUtc: LocalDateTime,
+        windowEndUtc: LocalDateTime,
+    ): List<BatterySampleRow>
+
+    /**
+     * `sinceUtc` 이후 시작된 순수 주차 구간의 팬텀 드레인 합. **집계라 행은 늘 온다.**
+     *
+     * 「순수 주차」의 정의와 유령 충전 규칙은 `parkDrainMonthly`와 같다.
+     */
+    fun parkDrainSince(sinceUtc: LocalDateTime): ParkDrainRow
 }

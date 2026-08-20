@@ -227,6 +227,43 @@ class TeslaInsightsService(
         )
     }
 
+    /**
+     * 쿼리 셋이 전부다. 서비스가 하는 일은 **범위 계산과 KST 되돌리기뿐**이다 —
+     * 솎기와 범위 자르기는 SQL이 한다.
+     *
+     * **`parkDrain`만 범위를 따르지 않는다.** 48시간 안에 순수 주차 구간이 하나도 없는 날이
+     * 흔해서, 최근 7일로 고정해야 숫자가 늘 나온다.
+     */
+    fun batteryWindow(hours: Int): TeslaBatteryWindowResponse {
+        if (hours !in MIN_HOURS..MAX_HOURS) {
+            throw CustomException(ErrorCode.INVALID_REQUEST, "hours는 $MIN_HOURS~$MAX_HOURS 사이여야 합니다")
+        }
+
+        val (fromKst, toKst) = TeslaTime.timelineWindowKst(hours)
+        val windowStart = TeslaTime.toUtc(fromKst)
+        val windowEnd = TeslaTime.toUtc(toKst)
+        val parkDrain = insightsRepository.parkDrainSince(TeslaTime.toUtc(toKst.minusDays(PARK_DRAIN_DAYS)))
+
+        return TeslaBatteryWindowResponse(
+            hours = hours,
+            from = fromKst,
+            to = toKst,
+            samples =
+                insightsRepository.batterySamples(windowStart, windowEnd).map {
+                    BatterySample(
+                        at = TeslaTime.toKst(it.dateUtc),
+                        batteryLevel = it.batteryLevel,
+                        usableBatteryLevel = it.usableBatteryLevel,
+                    )
+                },
+            charges =
+                vehicleRepository.chargeSegments(windowStart, windowEnd).map {
+                    TimeSegment(from = TeslaTime.toKst(it.fromUtc), to = TeslaTime.toKst(it.toUtc))
+                },
+            parkDrain = ParkDrain(ratedKm = parkDrain.ratedKm, hours = parkDrain.hours, samples = parkDrain.samples),
+        )
+    }
+
     companion object {
         /** `months`의 범위. **0은 전체 기간**이고 상한 60은 실측 기록 길이(60개월)에서 왔다. */
         const val ALL_MONTHS = 0
@@ -236,5 +273,15 @@ class TeslaInsightsService(
         private const val RECORD_DISTANCE = "distance"
         private const val RECORD_DURATION = "duration"
         private const val RECORD_EFFICIENCY = "efficiency"
+
+        /** `/tesla/battery-window`의 범위. 기본 48시간, 1~168(=7일) — `/tesla/state-timeline`과 같다. */
+        const val MIN_HOURS = 1
+        const val MAX_HOURS = 168
+
+        /**
+         * 팬텀 드레인이 보는 고정 기간. **범위(`hours`)와 무관하다** — 48시간 안에 순수 주차
+         * 구간이 하나도 없는 날이 흔해서, 고정해야 숫자가 늘 나온다(실측 최근 7일 19구간).
+         */
+        private const val PARK_DRAIN_DAYS = 7L
     }
 }

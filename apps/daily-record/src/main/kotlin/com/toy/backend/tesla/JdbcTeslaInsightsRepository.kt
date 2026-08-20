@@ -3,6 +3,7 @@ package com.toy.backend.tesla
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
+import java.math.BigDecimal
 import java.sql.ResultSet
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -208,6 +209,34 @@ class JdbcTeslaInsightsRepository(
                     ratedRangeUsedKm = rs.getBigDecimal("rated_range_used_km"),
                 )
             }.list()
+
+    override fun batterySamples(
+        windowStartUtc: LocalDateTime,
+        windowEndUtc: LocalDateTime,
+    ): List<BatterySampleRow> =
+        teslaMateJdbcClient
+            .sql(BATTERY_SAMPLES_SQL)
+            .param("start", windowStartUtc)
+            .param("end", windowEndUtc)
+            .query { rs, _ ->
+                BatterySampleRow(
+                    dateUtc = rs.getObject("date", LocalDateTime::class.java),
+                    batteryLevel = rs.getInt("battery_level"),
+                    usableBatteryLevel = rs.nullableInt("usable_battery_level"),
+                )
+            }.list()
+
+    override fun parkDrainSince(sinceUtc: LocalDateTime): ParkDrainRow =
+        teslaMateJdbcClient
+            .sql(PARK_DRAIN_SINCE_SQL)
+            .param("since", sinceUtc)
+            .query { rs, _ ->
+                ParkDrainRow(
+                    ratedKm = rs.getBigDecimal("rated_km") ?: BigDecimal.ZERO,
+                    hours = rs.getBigDecimal("hours") ?: BigDecimal.ZERO,
+                    samples = rs.getInt("samples"),
+                )
+            }.single()
 
     private fun ResultSet.nullableInt(column: String): Int? = getObject(column) as Int?
 
@@ -546,6 +575,74 @@ class JdbcTeslaInsightsRepository(
                 AND rated_used > 0
               ORDER BY distance / rated_used DESC, id
               LIMIT 1)
+        """
+
+        /**
+         * **5분 슬롯마다 첫 행 하나만 남긴다.**
+         *
+         * 초안 스펙은 「48시간이면 수백 개라 솎지 않는다」였는데 실측(2026-08-20)이
+         * **12,517행**이었다(약 750KB). 상한인 168시간에서는 102,141행이라 6MB가 된다.
+         * 솎으면 48시간 82개·168시간 423개다.
+         *
+         * **잃는 것이 거의 없는 이유:** TeslaMate는 차가 깨어 있을 때만 위치를 쌓는다.
+         * 12,517행이 48시간 중 주행·충전한 몇 시간에 몰려 있고 주차 중에는 애초에 행이 없다.
+         * 즉 솎아서 잃는 것은 **주행 중의 초 단위 해상도뿐**이고, 48시간을 한 화면에 그리는
+         * 차트에서 그 해상도는 픽셀로도 안 보인다. (`/tesla/charges/{id}/curve`가 1,700개를
+         * 안 줄이는 것과 다른 판단인 이유는 자릿수다 — 거기는 한 세션의 곡선이 주인공이다.)
+         *
+         * **`date`는 슬롯 경계가 아니라 실제 표본 시각이다.** 5분 눈금으로 옮기면 없는 시각의
+         * 값이 된다.
+         *
+         * `battery_level IS NOT NULL`을 거는 이유: 이 배열의 주인공이라 없으면 점을 찍을 수
+         * 없다. `usable_battery_level`은 반대로 걸지 않는다 — 실측 3.0%만 채워져 있어 걸면
+         * 표본이 통째로 사라진다.
+         *
+         * 실측 48시간 67ms.
+         */
+        private const val BATTERY_SAMPLES_SQL = """
+            WITH s AS (
+                SELECT p.date, p.battery_level, p.usable_battery_level,
+                       FLOOR(EXTRACT(epoch FROM p.date) / 300) AS slot
+                  FROM positions p
+                 WHERE p.date >= :start
+                   AND p.date <  :end
+                   AND p.battery_level IS NOT NULL
+            )
+            SELECT DISTINCT ON (s.slot) s.date, s.battery_level, s.usable_battery_level
+              FROM s
+             ORDER BY s.slot, s.date
+        """
+
+        /**
+         * 최근 팬텀 드레인. `PARK_DRAIN_MONTHLY_SQL`과 **같은 정의**를 쓴다 —
+         * `LEAD`를 전체 주행 위에서 돌리고, 겹침 판정에 `c.end_date IS NOT NULL`을 건다.
+         * 두 응답의 같은 값이 달라지면 안 된다.
+         *
+         * 집계라 행은 늘 온다. 표본이 없으면 `samples`가 0이고 `SUM`이 null이라
+         * 매핑에서 0으로 바꾼다 — 「0km 샜다」가 아니라 「표본이 없다」를 `samples`가 말한다.
+         *
+         * 실측(2026-08-20) 최근 7일 19구간·32.8km·139.4시간.
+         */
+        private const val PARK_DRAIN_SINCE_SQL = """
+            WITH park AS (
+                SELECT d.end_date                                                 AS from_date,
+                       LEAD(d.start_date)           OVER w                        AS to_date,
+                       d.end_rated_range_km - LEAD(d.start_rated_range_km) OVER w AS drop_km
+                  FROM drives d
+                 WHERE d.end_date IS NOT NULL
+                WINDOW w AS (ORDER BY d.start_date)
+            )
+            SELECT COUNT(*)                 AS samples,
+                   ROUND(SUM(p.drop_km), 1) AS rated_km,
+                   ROUND(SUM(EXTRACT(epoch FROM (p.to_date - p.from_date)) / 3600.0)::numeric, 1) AS hours
+              FROM park p
+             WHERE p.to_date IS NOT NULL
+               AND p.from_date >= :since
+               AND NOT EXISTS (SELECT 1
+                                 FROM charging_processes c
+                                WHERE c.end_date IS NOT NULL
+                                  AND c.start_date < p.to_date
+                                  AND c.end_date   > p.from_date)
         """
     }
 }

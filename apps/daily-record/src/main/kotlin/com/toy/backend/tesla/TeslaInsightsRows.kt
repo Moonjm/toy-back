@@ -157,3 +157,27 @@ data class DriveRecordRow(
     val durationMin: Int,
     val ratedRangeUsedKm: BigDecimal,
 )
+
+/**
+ * SOC 표본 하나. **5분 슬롯마다 첫 행 하나만 온다** — 자세한 근거는 `BATTERY_SAMPLES_SQL`.
+ *
+ * `usableBatteryLevel`은 **대부분 null이다**(실측 최근 30일 3.0%만 채워짐).
+ * 0으로 바꾸지 않는다 — 「0%였다」와 「모른다」는 다르다.
+ */
+data class BatterySampleRow(
+    val dateUtc: LocalDateTime,
+    val batteryLevel: Int,
+    val usableBatteryLevel: Int?,
+)
+
+/**
+ * 팬텀 드레인 합. **나누지 않는다 — 하락 정격거리와 그 시간을 함께 낸다.**
+ * 앱이 `km/시간` 또는 `%/일`로 만든다.
+ *
+ * 집계 쿼리라 행은 늘 온다. 표본이 없으면 `samples`가 0이고 나머지는 0이다.
+ */
+data class ParkDrainRow(
+    val ratedKm: BigDecimal,
+    val hours: BigDecimal,
+    val samples: Int,
+)

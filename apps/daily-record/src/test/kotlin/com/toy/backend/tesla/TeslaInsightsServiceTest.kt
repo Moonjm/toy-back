@@ -393,4 +393,59 @@ class TeslaInsightsServiceTest :
                 }
             }
         }
+
+        Given("batteryWindow — 범위 검증") {
+            When("hours가 0이거나 169면") {
+                Then("400이다") {
+                    shouldThrow<CustomException> { service.batteryWindow(0) }
+                    shouldThrow<CustomException> { service.batteryWindow(169) }
+                }
+            }
+        }
+
+        Given("batteryWindow — 응답") {
+            fun stubWindow() {
+                every { insightsRepository.batterySamples(any(), any()) } returns emptyList()
+                every { insightsRepository.parkDrainSince(any()) } returns ParkDrainRow(BigDecimal.ZERO, BigDecimal.ZERO, 0)
+                every { vehicleRepository.chargeSegments(any(), any()) } returns emptyList()
+            }
+
+            When("표본이 없으면") {
+                Then("null이 아니라 빈 배열이다") {
+                    stubWindow()
+                    val response = service.batteryWindow(48)
+
+                    response.samples shouldBe emptyList()
+                    response.charges shouldBe emptyList()
+                }
+            }
+
+            When("끝이 요청 시각인지") {
+                Then("from이 to − hours다") {
+                    stubWindow()
+                    val response = service.batteryWindow(48)
+                    response.from shouldBe response.to.minusHours(48)
+                }
+            }
+
+            When("표본이 오면") {
+                Then("시각을 KST로 되돌린다") {
+                    stubWindow()
+                    every { insightsRepository.batterySamples(any(), any()) } returns
+                        listOf(BatterySampleRow(LocalDateTime.of(2026, 8, 18, 6, 2), 62, null))
+
+                    val sample = service.batteryWindow(48).samples.single()
+                    sample.at shouldBe LocalDateTime.of(2026, 8, 18, 15, 2)
+                    sample.batteryLevel shouldBe 62
+                    sample.usableBatteryLevel shouldBe null
+                }
+            }
+
+            When("팬텀 드레인 표본이 0이면") {
+                Then("null이 아니라 samples 0으로 온다 — 앱이 그 줄을 감춘다") {
+                    stubWindow()
+                    service.batteryWindow(48).parkDrain.samples shouldBe 0
+                }
+            }
+        }
     })

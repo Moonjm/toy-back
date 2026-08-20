@@ -197,6 +197,7 @@ data class DistanceRecord(
 
 data class DurationRecord(
     val driveId: Long,
+    /** 출발 시각(KST). */
     val startedAt: LocalDateTime,
     val durationMin: Int,
 )
@@ -210,7 +211,66 @@ data class DurationRecord(
  */
 data class EfficiencyRecord(
     val driveId: Long,
+    /** 출발 시각(KST). */
     val startedAt: LocalDateTime,
     val distanceKm: BigDecimal,
     val ratedRangeUsedKm: BigDecimal,
+)
+
+/**
+ * 개요 화면의 충전 레벨 카드 하나를 채운다. **시각은 전부 KST다.**
+ *
+ * **이 응답만 `positions`를 읽는다.** 범위가 있으므로 괜찮고, 표본은 5분 슬롯으로 솎아서 온다.
+ */
+data class TeslaBatteryWindowResponse(
+    /** 받은 범위를 되돌려 싣는다. */
+    val hours: Int,
+    /** 범위 시작(KST) = `to` − `hours`시간. */
+    val from: LocalDateTime,
+    /**
+     * 범위 끝(KST) = **요청 시각**. 자정에 맞추지 않는다 — 화면의 오른쪽 끝이 「지금」이어야
+     * 한다. `/tesla/state-timeline`이 내린 결정과 같다.
+     */
+    val to: LocalDateTime,
+    /**
+     * SOC 표본, 오래된 것부터. **5분마다 최대 하나다**(실측 48시간 82개).
+     *
+     * 기록이 없으면 빈 배열이다 — 404가 아니다.
+     */
+    val samples: List<BatterySample>,
+    /**
+     * 이 범위 안의 충전 구간, **범위 경계로 잘려서 온다.** 앱이 선 위에 다른 색으로 겹쳐 그린다.
+     * 마감되지 않은 유령 세션은 빠진다(`/tesla/state-timeline`과 같은 규칙이다).
+     */
+    val charges: List<TimeSegment>,
+    /** 최근 7일 팬텀 드레인. **`hours`와 무관한 고정 7일**이다 — 아래 참고. */
+    val parkDrain: ParkDrain,
+)
+
+/**
+ * `at`은 **그 슬롯의 실제 표본 시각**이다(5분 눈금으로 옮기지 않는다 — 없는 시각의 값이 된다).
+ */
+data class BatterySample(
+    val at: LocalDateTime,
+    val batteryLevel: Int,
+    /**
+     * **대부분 null이다**(실측 최근 30일 3.0%만 채워짐). 주 계열은 `batteryLevel`이고,
+     * 이 값은 있을 때만 찍는 보조 계열이다 — 이것으로 선을 그리면 거의 다 끊긴다.
+     */
+    val usableBatteryLevel: Int?,
+)
+
+/**
+ * 주차 중 정격거리가 얼마나 샜나. **범위(`hours`)를 따르지 않고 최근 7일 고정이다** —
+ * 48시간 안에 순수 주차 구간이 하나도 없는 날이 흔해서, 고정해야 숫자가 늘 나온다.
+ *
+ * **나누지 않는다.** 하락 정격거리와 그 시간을 함께 내고, 앱이 `km/시간` 또는 `%/일`로 만든다.
+ */
+data class ParkDrain(
+    /** 하락 정격거리 합(km). **음수 구간도 부호 그대로 들어 있다.** */
+    val ratedKm: BigDecimal,
+    /** 그 구간들의 시간 합. */
+    val hours: BigDecimal,
+    /** 몇 구간에서 나왔나. **0이면 앱이 그 줄을 감춘다.** */
+    val samples: Int,
 )

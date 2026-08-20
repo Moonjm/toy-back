@@ -35,7 +35,23 @@ class TeslaInsightsController(
         @RequestParam(defaultValue = DEFAULT_MONTHS)
         months: Int,
     ): ResponseEntity<DataResponseBody<TeslaInsightsResponse>> = ResponseEntity.ok(DataResponseBody(service.insights(months)))
+
+    /**
+     * 개요 화면의 충전 레벨 카드 하나를 채운다. **표본은 5분마다 하나로 솎여서 나간다** —
+     * 실측으로 48시간이 12,517행이라 그대로 내면 응답이 750KB이고, 상한인 168시간에서는
+     * 6MB가 된다.
+     *
+     * 앱은 이 응답을 캐시하지 않는다 — 「최근 48시간」이 계속 움직인다.
+     */
+    @GetMapping("/battery-window")
+    @Operation(summary = "배터리 추이 — 최근 몇 시간의 SOC 표본·충전 구간·최근 7일 팬텀 드레인")
+    fun batteryWindow(
+        @Parameter(description = "거슬러 볼 시간(1~168)", example = DEFAULT_HOURS)
+        @RequestParam(defaultValue = DEFAULT_HOURS)
+        hours: Int,
+    ): ResponseEntity<DataResponseBody<TeslaBatteryWindowResponse>> = ResponseEntity.ok(DataResponseBody(service.batteryWindow(hours)))
 }
 
 /** 애너테이션 인자라 컴파일 상수여야 해서 문자열이다. */
 private const val DEFAULT_MONTHS = "12"
+private const val DEFAULT_HOURS = "48"
