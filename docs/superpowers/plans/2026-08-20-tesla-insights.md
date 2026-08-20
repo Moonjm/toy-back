@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 앱 통계 탭 한 장을 한 번에 채우는 `GET /tesla/insights`(기존 `/tesla/drive-insights`의 여덟 필드를 이름까지 그대로 흡수한다)와, 개요 화면의 배터리 창을 내는 `GET /tesla/battery-window`를 신설한다.
+**Goal:** 앱 통계 탭 한 장을 한 번에 채우는 `GET /tesla/insights`(기존 `/tesla/drive-insights`의 여덟 필드를 이름까지 그대로 흡수한다)와, 개요 화면의 배터리 추이를 내는 `GET /tesla/battery-window`를 신설한다.
 
-**Architecture:** `com.toy.backend.tesla`에 **세 번째 파일 계열 `TeslaInsights*`를 만든다.** 지금은 충전(`TeslaCharge*`)과 차량(`TeslaVehicle*`) 둘인데, `JdbcTeslaVehicleRepository`가 이미 664줄이라 새 집계 열넷을 얹으면 1,200줄을 넘고 「차가 어떤 상태인가」와 「26장짜리 통계 화면」이 한 파일에서 섞인다. 계열을 가르되 **기존 SQL은 복사하지 않는다** — `TeslaInsightsService`가 `TeslaVehicleRepository`를 함께 주입받아 온도·시간대·거리·장소·주행통계·전비 여섯 개를 그대로 쓴다. 집계·창 자르기·KST 변환의 경계는 기존 규약 그대로다: **SQL이 자르고 합치고, 서비스는 자리를 채우고 KST로 되돌리고 뺄셈만 한다.**
+**Architecture:** `com.toy.backend.tesla`에 **세 번째 파일 계열 `TeslaInsights*`를 만든다.** 지금은 충전(`TeslaCharge*`)과 차량(`TeslaVehicle*`) 둘인데, `JdbcTeslaVehicleRepository`가 이미 664줄이라 새 집계 열넷을 얹으면 1,200줄을 넘고 「차가 어떤 상태인가」와 「26장짜리 통계 화면」이 한 파일에서 섞인다. 계열을 가르되 **기존 SQL은 복사하지 않는다** — `TeslaInsightsService`가 `TeslaVehicleRepository`를 함께 주입받아 온도·시간대·거리·장소·주행통계·전비 여섯 개를 그대로 쓴다. 집계·범위 자르기·KST 변환의 경계는 기존 규약 그대로다: **SQL이 자르고 합치고, 서비스는 자리를 채우고 KST로 되돌리고 뺄셈만 한다.**
 
 **Tech Stack:** Kotlin, Spring Boot, `JdbcClient`(TeslaMate 보조 DataSource), kotest `BehaviorSpec` + mockk
 
@@ -24,6 +24,8 @@
 - **커밋 전 `./gradlew spotlessApply` 필수.** 커밋 메시지는 한국어 현재형(`feat:`/`refactor:`/`docs:`).
 - **Gradle 모듈 경로는 `:daily-record`다** — `:apps:daily-record`가 아니다(`settings.gradle.kts`가 `projectDir`로 옮겨 놨다).
 - **kotest 블록 이름은 대문자 `Given`/`When`/`Then`으로 쓴다.** 저장소의 기존 테스트가 그렇게 쓴다 — 한 파일에 대소문자가 섞이면 안 된다.
+- **조회 범위를 「창」이라 부르지 않는다 — 「범위」다.** 기존 코드가 그렇게 쓴다(`findLatestPosition`의 「7일 범위」, `stateSegments`의 「범위 경계로 잘라서 준다」). 코드 식별자(`InsightsWindow`·`windowOf`·`windowStart`)는 그대로 둔다 — 바꾸는 것은 한국어 문장뿐이다.
+- **주석은 「왜」만 적고 기본 1~3줄로 쓴다.** 아래 계획 본문의 KDoc은 근거를 다 담느라 길게 적혀 있다. **그 근거는 살리되 문장은 줄여라.** 길어도 되는 것은 셋뿐이다: (1) 실측 숫자가 판단의 근거일 때, (2) 되돌리면 조용히 깨지는 함정일 때, (3) 두 곳이 같은 숫자를 써야 한다는 결합. `**볼드**` 강조는 KDoc 하나에 최대 하나. **같은 근거를 두 곳에 적지 않는다** — 한 곳에 적고 다른 곳은 그것을 가리킨다.
 
 ---
 
@@ -31,7 +33,7 @@
 
 | 파일 | 이 계획에서의 책임 |
 |---|---|
-| `TeslaTime.kt` (수정) | 통계 창 계산·달별 경과 분·요일별 경과 분. **전부 순수 함수** — 정지 시간이 뺄셈이라 시각을 못 박고 검증해야 한다 |
+| `TeslaTime.kt` (수정) | 통계 범위 계산·달별 경과 분·요일별 경과 분. **전부 순수 함수** — 정지 시간이 뺄셈이라 시각을 못 박고 검증해야 한다 |
 | `TeslaBuckets.kt` (신규) | 버킷 **라벨** 다섯 벌(온도·거리·최고속도·평균속도·충전 SoC). 지금 `TeslaVehicleService`의 private 상수 둘이 여기로 옮겨 오고, 두 서비스가 함께 본다 |
 | `TeslaInsightsRows.kt` (신규) | 새 집계의 행 타입 |
 | `TeslaInsightsRepository.kt` (신규) | 새 집계의 인터페이스 |
@@ -68,7 +70,7 @@
 
 ---
 
-### Task 1: 통계 창·경과 시간 계산 (`TeslaTime`)
+### Task 1: 통계 범위·경과 시간 계산 (`TeslaTime`)
 
 **Files:**
 - Modify: `apps/daily-record/src/main/kotlin/com/toy/backend/tesla/TeslaTime.kt`
@@ -105,8 +107,8 @@
             }
         }
 
-        When("창이 달 도중에 시작하면") {
-            Then("창 시작부터 센다") {
+        When("범위가 달 도중에 시작하면") {
+            Then("범위 시작부터 센다") {
                 // 3/1 00:00 시작이 아니라 3/10 12:00 시작이면 3/10 12:00 ~ 3/31 24:00 = 21일 12시간
                 TeslaTime.monthElapsedMinutes(
                     YearMonth.of(2026, 3),
@@ -116,7 +118,7 @@
             }
         }
 
-        When("창 밖의 달이면") {
+        When("범위 밖의 달이면") {
             Then("0이다 — 음수가 나오지 않는다") {
                 TeslaTime.monthElapsedMinutes(YearMonth.of(2025, 1), start, LocalDateTime.of(2026, 8, 20, 15, 0)) shouldBe 0
                 TeslaTime.monthElapsedMinutes(YearMonth.of(2027, 1), start, LocalDateTime.of(2026, 8, 20, 15, 0)) shouldBe 0
@@ -180,13 +182,13 @@ Expected: FAIL — `Unresolved reference: monthElapsedMinutes`
 
 ```kotlin
     /**
-     * 창 안에서 그 달이 실제로 몇 분 지났는가. **정지 시간의 분모다.**
+     * 범위 안에서 그 달이 실제로 몇 분 지났는가. **정지 시간의 분모다.**
      *
      * 「그 달 전체 분」이 아닌 이유: 8월 20일에 8월의 분모를 달 전체(44,640분)로 잡으면 아직
-     * 오지 않은 11일치가 정지 시간으로 들어가 **진행 중인 달만 막대가 솟는다.** 창 시작보다
+     * 오지 않은 11일치가 정지 시간으로 들어가 **진행 중인 달만 막대가 솟는다.** 범위 시작보다
      * 앞선 부분도 같은 이유로 뺀다.
      *
-     * 창과 겹치지 않는 달은 0이다 — 뺄셈의 분모라 음수가 나오면 안 된다.
+     * 범위와 겹치지 않는 달은 0이다 — 뺄셈의 분모라 음수가 나오면 안 된다.
      */
     fun monthElapsedMinutes(
         month: YearMonth,
@@ -200,7 +202,7 @@ Expected: FAIL — `Unresolved reference: monthElapsedMinutes`
     }
 
     /**
-     * 창 안에서 각 요일이 며칠 나왔고(`occurrences`) 그 요일에 실제로 몇 분이 흘렀는가
+     * 범위 안에서 각 요일이 며칠 나왔고(`occurrences`) 그 요일에 실제로 몇 분이 흘렀는가
      * (`elapsedMin`). **키는 1이 월요일**(ISO)이고 일곱 개가 늘 있다 — 0인 요일도 자리를 지킨다.
      *
      * `occurrences`는 요일 평균의 분모이고 `elapsedMin`은 정지 시간의 분모다. **둘을 함께 내는
@@ -230,7 +232,7 @@ Expected: FAIL — `Unresolved reference: monthElapsedMinutes`
         return (1..7).associateWith { WeekdaySpan(occurrences[it], minutes[it]) }
     }
 
-    /** 요일 하나가 창 안에서 며칠 나왔고 몇 분이 흘렀는지. 자세한 뜻은 `weekdaySpans`. */
+    /** 요일 하나가 범위 안에서 며칠 나왔고 몇 분이 흘렀는지. 자세한 뜻은 `weekdaySpans`. */
     data class WeekdaySpan(
         val occurrences: Int,
         val elapsedMin: Int,
@@ -250,7 +252,7 @@ Expected: PASS
 ./gradlew spotlessApply
 git add apps/daily-record/src/main/kotlin/com/toy/backend/tesla/TeslaTime.kt \
         apps/daily-record/src/test/kotlin/com/toy/backend/tesla/TeslaTimeTest.kt
-git commit -m "feat: 통계 창의 달별·요일별 경과 시간을 낸다"
+git commit -m "feat: 통계 범위의 달별·요일별 경과 시간을 낸다"
 ```
 
 ---
@@ -387,9 +389,9 @@ git commit -m "refactor: 버킷 라벨을 TeslaBuckets 한곳으로 모은다"
   - `driveDistanceBuckets(startUtc: LocalDateTime, endUtcExclusive: LocalDateTime): List<DriveDistanceBucketRow>`
   - `drivePlaces(startUtc: LocalDateTime, endUtcExclusive: LocalDateTime): List<DrivePlaceRow>`
 
-**왜 바꾸나:** 지금 네 메서드는 `months: Int`를 받아 SQL 안에서 `end_date >= now() − N months`로 **구르는 창**을 만든다. `/tesla/insights`는 **달에 맞춘 창**이 필요하다(`monthly` 배열이 달 단위라, 한 응답 안에서 「12개월」의 뜻이 배열마다 다르면 안 된다). 게다가 `months=0`(전체 기간)을 SQL의 `now() − 0 months`로는 표현할 수 없다. 범위를 서비스가 계산해 넘기면 두 뜻이 다 표현되고 **창의 정의가 테스트 가능한 자리로 나온다.**
+**왜 바꾸나:** 지금 네 메서드는 `months: Int`를 받아 SQL 안에서 `end_date >= now() − N months`로 **구르는 범위**을 만든다. `/tesla/insights`는 **달에 맞춘 범위**이 필요하다(`monthly` 배열이 달 단위라, 한 응답 안에서 「12개월」의 뜻이 배열마다 다르면 안 된다). 게다가 `months=0`(전체 기간)을 SQL의 `now() − 0 months`로는 표현할 수 없다. 범위를 서비스가 계산해 넘기면 두 뜻이 다 표현되고 **범위의 정의가 테스트 가능한 자리로 나온다.**
 
-**`/tesla/drive-insights`의 동작은 바뀌지 않는다.** 서비스가 예전과 같은 구르는 창(`지금 − N개월` ~ `지금`)을 만들어 넘긴다. 앱 1단계가 이 엔드포인트를 계속 쓰므로 여기서 뜻을 바꾸면 안 된다.
+**`/tesla/drive-insights`의 동작은 바뀌지 않는다.** 서비스가 예전과 같은 구르는 범위(`지금 − N개월` ~ `지금`)을 만들어 넘긴다. 앱 1단계가 이 엔드포인트를 계속 쓰므로 여기서 뜻을 바꾸면 안 된다.
 
 - [ ] **Step 1: 인터페이스와 SQL을 고친다**
 
@@ -400,7 +402,7 @@ git commit -m "refactor: 버킷 라벨을 TeslaBuckets 한곳으로 모은다"
      * ... (기존 설명 유지) ...
      *
      * **범위를 서비스가 정해 넘긴다.** 예전에는 `months`를 받아 SQL이 `now() − N개월`로
-     * 구르는 창을 만들었는데, `/tesla/insights`는 달에 맞춘 창이 필요하고 「전체 기간」도
+     * 구르는 범위를 만들었는데, `/tesla/insights`는 달에 맞춘 범위가 필요하고 「전체 기간」도
      * 표현해야 한다. 경계 컬럼은 **`end_date`**다(월별 집계는 `start_date`를 쓴다 —
      * 자정을 걸친 주행 한 건의 차이다).
      */
@@ -429,8 +431,8 @@ git commit -m "refactor: 버킷 라벨을 TeslaBuckets 한곳으로 모은다"
 `TeslaVehicleService.driveInsights`의 검증 바로 뒤에 넣는다:
 
 ```kotlin
-        // 예전 SQL이 `now() − N개월`로 만들던 창을 그대로 옮겼다. **뜻을 바꾸지 않는다** —
-        // 앱 1단계가 이 엔드포인트를 계속 쓴다. 달에 맞춘 창은 `/tesla/insights`의 것이다.
+        // 예전 SQL이 `now() − N개월`로 만들던 범위를 그대로 옮겼다. **뜻을 바꾸지 않는다** —
+        // 앱 1단계가 이 엔드포인트를 계속 쓴다. 달에 맞춘 범위는 `/tesla/insights`의 것이다.
         //
         // **월 빼기를 UTC 벽시계에서 한다.** `nowKst.minusMonths(...)`를 먼저 하고 UTC로
         // 바꾸면 월말에 하루가 어긋난다 — 2026-03-30T16:00 UTC(= 03-31T01:00 KST)에서
@@ -447,7 +449,7 @@ git commit -m "refactor: 버킷 라벨을 TeslaBuckets 한곳으로 모은다"
 
 - [ ] **Step 3: 기존 테스트의 목 시그니처를 맞춘다**
 
-`TeslaVehicleServiceTest.kt`에서 네 메서드의 `every { ... }` 인자를 `any<LocalDateTime>(), any<LocalDateTime>()`으로 바꾼다. **범위 값 자체를 검증하지 않는다** — `nowKst()`가 실제 시각을 읽어 고정할 수 없고, 창의 계산은 Task 1이 `TeslaTime` 쪽에서 이미 못 박았다.
+`TeslaVehicleServiceTest.kt`에서 네 메서드의 `every { ... }` 인자를 `any<LocalDateTime>(), any<LocalDateTime>()`으로 바꾼다. **범위 값 자체를 검증하지 않는다** — `nowKst()`가 실제 시각을 읽어 고정할 수 없고, 범위 계산은 Task 1이 `TeslaTime` 쪽에서 이미 못 박았다.
 
 - [ ] **Step 4: 통과를 확인한다**
 
@@ -464,7 +466,7 @@ git commit -m "refactor: 주행 집계의 조회 범위를 서비스가 정해 �
 
 ---
 
-### Task 4: `/tesla/insights` 골격 — 창 계산과 기존 여덟 필드
+### Task 4: `/tesla/insights` 골격 — 범위 계산과 기존 여덟 필드
 
 **Files:**
 - Create: `apps/daily-record/src/main/kotlin/com/toy/backend/tesla/TeslaInsightsRepository.kt`
@@ -604,7 +606,7 @@ import java.time.YearMonth
 /**
  * 앱 통계 화면의 집계를 읽는다. **전부 읽기 전용이고 `drives`·`charging_processes`·
  * `addresses`만 본다** — `positions`를 읽는 것은 `/tesla/battery-window` 하나뿐이고 그것도
- * 창이 있다(스펙: 「`positions`를 훑지 않는다」).
+ * 범위가 있다(스펙: 「`positions`를 훑지 않는다」).
  *
  * **범위는 서비스가 UTC로 계산해 넘긴다.** 이 인터페이스에 `months` 같은 파라미터를 두지
  * 않는 이유는 「전체 기간」을 SQL로 표현할 길이 없고, 두면 그 분기가 쿼리 수만큼 복제되기
@@ -789,9 +791,9 @@ class TeslaInsightsService(
     }
 
     /**
-     * 조회 범위를 한 번만 정하고 모든 쿼리가 그것을 쓴다. **달에 맞춘 창이다** —
+     * 조회 범위를 한 번만 정하고 모든 쿼리가 그것을 쓴다. **달에 맞춘 범위이다** —
      * `monthly` 배열이 달 단위라, 한 응답 안에서 「12개월」의 뜻이 배열마다 다르면 안 된다.
-     * (`/tesla/drive-insights`는 구르는 창을 쓴다. 그쪽 뜻은 바꾸지 않았다.)
+     * (`/tesla/drive-insights`는 구르는 범위를 쓴다. 그쪽 뜻은 바꾸지 않았다.)
      *
      * **끝은 요청 시각이다.** 달 끝으로 잡으면 진행 중인 달의 정지 시간에 아직 오지 않은
      * 날들이 들어간다.
@@ -866,7 +868,7 @@ import org.springframework.web.bind.annotation.RestController
  * 인증은 기존 `SecurityConfig`가 요구한다. `PublicEndpoint`를 두지 않는다 —
  * 요일별 주행 습관은 충전 시각보다 더 직접적으로 생활을 드러낸다.
  */
-@Tag(name = "차량 통계", description = "TeslaMate 주행·충전 통계와 배터리 창 API")
+@Tag(name = "차량 통계", description = "TeslaMate 주행·충전 통계와 배터리 추이 API")
 @RestController
 @RequestMapping("/tesla")
 class TeslaInsightsController(
@@ -925,7 +927,7 @@ git commit -m "feat: 통계 응답의 골격과 기존 주행 인사이트를 �
 
 **팬텀 드레인 SQL의 급소 둘** (실측 2026-08-20으로 잡았다):
 
-1. **`LEAD`는 창 밖까지 포함한 전체 주행 위에서 돌아야 한다.** 창 안쪽만 놓고 `LEAD`를 걸면 창 첫 주행의 「직전 주차」가 창 밖 이웃을 못 봐 통째로 빠진다. `WHERE`는 `LEAD` **뒤에** 건다.
+1. **`LEAD`는 범위 밖까지 포함한 전체 주행 위에서 돌아야 한다.** 범위 안쪽만 놓고 `LEAD`를 걸면 범위 첫 주행의 「직전 주차」가 범위 밖 이웃을 못 봐 통째로 빠진다. `WHERE`는 `LEAD` **뒤에** 건다.
 2. **충전 겹침 판정에 `c.end_date IS NOT NULL`이 반드시 있어야 한다.** 없이 `COALESCE(c.end_date, p.to_date)`로 열어 두면 2021년에 시작된 마감 안 된 충전 하나가 **그 뒤 모든 주차 구간을 「충전이 낀 구간」으로 만든다** — 실측으로 표본이 4,587건에서 **76건**으로 무너졌다. `/tesla/state-timeline`의 `SEGMENT_NOT_GHOST`가 막는 것과 같은 계열의 유령이다.
 
 - [ ] **Step 1: 실패하는 테스트를 쓴다**
@@ -1230,8 +1232,8 @@ data class ParkDrainMonthRow(
          * 월별 팬텀 드레인. **연속한 두 주행 사이에 충전이 하나도 없는 구간**의 정격거리
          * 하락을 더한다.
          *
-         * **급소 1 — `LEAD`를 창 밖까지 포함해 돌린다.** CTE에 범위 조건을 넣고 `LEAD`를
-         * 걸면 창 첫 주행의 직전 주차가 이웃을 못 봐 통째로 빠진다. 범위는 `LEAD` **뒤**의
+         * **급소 1 — `LEAD`를 범위 밖까지 포함해 돌린다.** CTE에 범위 조건을 넣고 `LEAD`를
+         * 걸면 범위 첫 주행의 직전 주차가 이웃을 못 봐 통째로 빠진다. 범위는 `LEAD` **뒤**의
          * `WHERE`에서 건다. `drives`가 5천 행이라 전체를 훑어도 실측 20ms다.
          *
          * **급소 2 — 겹침 판정에 `c.end_date IS NOT NULL`이 반드시 있어야 한다.** 마감되지
@@ -1280,7 +1282,7 @@ data class ParkDrainMonthRow(
 
 ```kotlin
     /**
-     * 창의 오래된 달부터 이번 달까지, **기록이 없는 달도 자리를 지킨다**(0과 null은 다르다).
+     * 범위의 오래된 달부터 이번 달까지, **기록이 없는 달도 자리를 지킨다**(0과 null은 다르다).
      *
      * `/tesla/summary`의 `trend`와 겹치지만 없애지 않는다 — `trend`는 12개월 고정이고
      * 이쪽은 기간 칩을 따른다. 앱은 개요·충전 탭에서 `trend`를, 통계 탭에서 이것을 본다.
@@ -1310,7 +1312,7 @@ data class InsightsMonth(
     /** 효율 추세의 분모 재료. kWh 환산(`× efficiencyKwhPerKm`)과 나눗셈은 앱이 한다. */
     val ratedRangeUsedKm: BigDecimal?,
     /**
-     * 정지 시간(분) = **그 달의 창 안 경과 분 − 주행 분 − 충전 분**. 0 미만은 0으로 자른다.
+     * 정지 시간(분) = **그 달의 범위 안 경과 분 − 주행 분 − 충전 분**. 0 미만은 0으로 자른다.
      *
      * `states`를 읽지 않는다. 이 차량의 `states`는 신뢰가 낮고(최근 7일 `offline` 131시간,
      * `asleep` 0개) 오프라인이 곧 주차도 아니다. 빼기로 내면 「차가 얼마나 서 있었나」에
@@ -1340,7 +1342,7 @@ data class InsightsMonth(
 응답에 `monthly = window.months().map { monthOf(it, window, drives, charges, parkDrains) }`를 싣고, 아래 둘을 더한다:
 
 ```kotlin
-    /** 창의 달을 오래된 것부터. **기록이 없는 달도 자리를 지킨다.** */
+    /** 범위의 달을 오래된 것부터. **기록이 없는 달도 자리를 지킨다.** */
     private fun InsightsWindow.months(): List<YearMonth> =
         generateSequence(fromMonth) { it.plusMonths(1) }
             .takeWhile { !it.isAfter(toMonth) }
@@ -1439,11 +1441,11 @@ git commit -m "feat: 월별 주행·충전·정지 시간·팬텀 드레인을 �
             }
         }
 
-        When("창이 정확히 4주면") {
+        When("범위가 정확히 4주면") {
             Then("occurrences가 요일마다 4다") {
                 stubEmpty()
-                // 창 시작이 달 1일이라 정확한 주 수를 못 박을 수 없다.
-                // 대신 합이 창의 날 수와 같은지 본다 — 어느 날도 두 요일에 세어지지 않는다.
+                // 범위 시작이 달 1일이라 정확한 주 수를 못 박을 수 없다.
+                // 대신 합이 범위의 날 수와 같은지 본다 — 어느 날도 두 요일에 세어지지 않는다.
                 val weekday = service.insights(3).weekday
                 weekday.sumOf { it.occurrences } shouldBe
                     TeslaTime
@@ -1622,7 +1624,7 @@ data class InsightsWeekday(
     val distanceKm: BigDecimal,
     val drivingMin: Int,
     /**
-     * 창 안에서 그 요일이 며칠 나왔나 — **요일 평균의 분모다.**
+     * 범위 안에서 그 요일이 며칠 나왔나 — **요일 평균의 분모다.**
      *
      * **오늘도 한 번으로 센다.** 오늘의 주행이 이미 분자에 들어 있어 짝이 맞는다.
      * 정지 시간 쪽은 반대로 오늘의 흐른 시간만 센다(아래).
@@ -2618,7 +2620,7 @@ data class DriveRecordRow(
  * 명예의 전당. **셋 다 null일 수 있다** — 주행이 하나도 없거나(전부 null), 20km 넘는 주행이
  * 없으면(`bestEfficiency`만 null) 「역대」라는 값 자체가 없다.
  *
- * **「최다 고도 상승」을 두지 않는다.** `positions.elevation`을 주행마다 훑어야 하는데 창이
+ * **「최다 고도 상승」을 두지 않는다.** `positions.elevation`을 주행마다 훑어야 하는데 범위가
  * 없는 3,000만 행 스캔이고, 얻는 것이 타일 한 칸이라 값이 비용을 못 넘는다.
  */
 data class InsightsRecords(
@@ -2722,7 +2724,7 @@ git commit -m "feat: 역대 기록 셋을 낸다"
 **스펙 JSON보다 `hours`를 되돌려 싣는다.** `/tesla/state-timeline`·`/tesla/drive-insights`가
 받은 범위를 되싣는 것과 같다 — 앱이 무엇을 받았는지 알 수 있어야 한다.
 
-**이 엔드포인트만 `positions`를 읽는다.** 창이 있으므로 BRIN이 듣는다(실측 48시간 32ms). **그리고 5분 슬롯으로 솎는다** — 실측 12,517행이 82개가 된다. 솎지 않으면 응답이 750KB이고, 상한인 168시간에서는 102,141행이라 6MB가 된다.
+**이 엔드포인트만 `positions`를 읽는다.** 범위가 있으므로 BRIN이 듣는다(실측 48시간 32ms). **그리고 5분 슬롯으로 솎는다** — 실측 12,517행이 82개가 된다. 솎지 않으면 응답이 750KB이고, 상한인 168시간에서는 102,141행이라 6MB가 된다.
 
 **`charges` 배열은 새 SQL을 쓰지 않는다.** `/tesla/state-timeline`이 이미 「범위에 걸치는 충전 구간을 범위 경계로 잘라서」 내고 있고(`TeslaVehicleRepository.chargeSegments`), 유령 거르기까지 같은 규칙이다.
 
@@ -2960,7 +2962,7 @@ data class ParkDrainRow(
 /**
  * 개요 화면의 충전 레벨 카드 하나를 채운다. **시각은 전부 KST다.**
  *
- * **이 응답만 `positions`를 읽는다.** 창이 있으므로 괜찮고, 표본은 5분 슬롯으로 솎아서 온다.
+ * **이 응답만 `positions`를 읽는다.** 범위가 있으므로 괜찮고, 표본은 5분 슬롯으로 솎아서 온다.
  */
 data class TeslaBatteryWindowResponse(
     /** 받은 범위를 되돌려 싣는다. */
@@ -2979,7 +2981,7 @@ data class TeslaBatteryWindowResponse(
      */
     val samples: List<BatterySample>,
     /**
-     * 이 창 안의 충전 구간, **범위 경계로 잘려서 온다.** 앱이 선 위에 다른 색으로 겹쳐 그린다.
+     * 이 범위 안의 충전 구간, **범위 경계로 잘려서 온다.** 앱이 선 위에 다른 색으로 겹쳐 그린다.
      * 마감되지 않은 유령 세션은 빠진다(`/tesla/state-timeline`과 같은 규칙이다).
      */
     val charges: List<TimeSegment>,
@@ -3001,7 +3003,7 @@ data class BatterySample(
 )
 
 /**
- * 주차 중 정격거리가 얼마나 샜나. **창(`hours`)을 따르지 않고 최근 7일 고정이다** —
+ * 주차 중 정격거리가 얼마나 샜나. **범위(`hours`)를 따르지 않고 최근 7일 고정이다** —
  * 48시간 안에 순수 주차 구간이 하나도 없는 날이 흔해서, 고정해야 숫자가 늘 나온다.
  *
  * **나누지 않는다.** 하락 정격거리와 그 시간을 함께 내고, 앱이 `km/시간` 또는 `%/일`로 만든다.
@@ -3025,7 +3027,7 @@ data class ParkDrain(
      * 쿼리 셋이 전부다. 서비스가 하는 일은 **범위 계산과 KST 되돌리기뿐**이다 —
      * 솎기와 범위 자르기는 SQL이 한다.
      *
-     * **`parkDrain`만 창을 따르지 않는다.** 48시간 안에 순수 주차 구간이 하나도 없는 날이
+     * **`parkDrain`만 범위를 따르지 않는다.** 48시간 안에 순수 주차 구간이 하나도 없는 날이
      * 흔해서, 최근 7일로 고정해야 숫자가 늘 나온다.
      */
     fun batteryWindow(hours: Int): TeslaBatteryWindowResponse {
@@ -3067,7 +3069,7 @@ data class ParkDrain(
         const val MAX_HOURS = 168
 
         /**
-         * 팬텀 드레인이 보는 고정 기간. **창(`hours`)과 무관하다** — 48시간 안에 순수 주차
+         * 팬텀 드레인이 보는 고정 기간. **범위(`hours`)와 무관하다** — 48시간 안에 순수 주차
          * 구간이 하나도 없는 날이 흔해서, 고정해야 숫자가 늘 나온다(실측 최근 7일 19구간).
          */
         private const val PARK_DRAIN_DAYS = 7L
@@ -3084,7 +3086,7 @@ data class ParkDrain(
      * 앱은 이 응답을 캐시하지 않는다 — 「최근 48시간」이 계속 움직인다.
      */
     @GetMapping("/battery-window")
-    @Operation(summary = "배터리 창 — 최근 몇 시간의 SOC 표본·충전 구간·최근 7일 팬텀 드레인")
+    @Operation(summary = "배터리 추이 — 최근 몇 시간의 SOC 표본·충전 구간·최근 7일 팬텀 드레인")
     fun batteryWindow(
         @Parameter(description = "거슬러 볼 시간(1~168)", example = DEFAULT_HOURS)
         @RequestParam(defaultValue = DEFAULT_HOURS)
@@ -3106,7 +3108,7 @@ Expected: PASS
 ```bash
 ./gradlew spotlessApply
 git add apps/daily-record/src/
-git commit -m "feat: 배터리 창과 최근 팬텀 드레인을 낸다"
+git commit -m "feat: 배터리 추이과 최근 팬텀 드레인을 낸다"
 ```
 
 ---
@@ -3204,7 +3206,7 @@ curl -s -H "Authorization: Bearer $TOKEN" 'http://localhost:8080/tesla/battery-w
 `docs/changelog/2026-08-20-tesla-insights.md`에 기존 파일들의 형식대로 적는다. **반드시 담을 것 넷:**
 
 1. **`/tesla/insights` 신설** — `/tesla/drive-insights`의 여덟 필드를 이름까지 그대로 흡수했고, 옛 것은 앱이 넘어간 뒤 지운다.
-2. **`positions`를 읽는 계열이 하나로 남았다** — `/tesla/battery-window`뿐이고 창이 있으며 5분 슬롯으로 솎는다.
+2. **`positions`를 읽는 계열이 하나로 남았다** — `/tesla/battery-window`뿐이고 범위가 있으며 5분 슬롯으로 솎는다.
 3. **`TeslaVehicleRepository`의 네 메서드가 `months: Int` 대신 UTC 범위를 받는다** — 「전체 기간」을 SQL로 표현할 수 없어서다. `/tesla/drive-insights`의 동작은 그대로다.
 4. **버킷 라벨이 `TeslaBuckets` 한곳으로 모였다** — SQL의 `CASE`와 어긋날 수 있는 자리가 늘지 않게.
 

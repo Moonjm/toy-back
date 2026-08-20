@@ -68,8 +68,8 @@ class TeslaTimeTest :
                 }
             }
 
-            When("창이 달 도중에 시작하면") {
-                Then("창 시작부터 센다") {
+            When("범위가 달 도중에 시작하면") {
+                Then("범위 시작부터 센다") {
                     // 3/1 00:00 시작이 아니라 3/10 12:00 시작이면 3/10 12:00 ~ 3/31 24:00 = 21일 12시간
                     TeslaTime.monthElapsedMinutes(
                         YearMonth.of(2026, 3),
@@ -79,7 +79,7 @@ class TeslaTimeTest :
                 }
             }
 
-            When("창 밖의 달이면") {
+            When("범위 밖의 달이면") {
                 Then("0이다 — 음수가 나오지 않는다") {
                     TeslaTime.monthElapsedMinutes(YearMonth.of(2025, 1), start, LocalDateTime.of(2026, 8, 20, 15, 0)) shouldBe 0
                     TeslaTime.monthElapsedMinutes(YearMonth.of(2027, 1), start, LocalDateTime.of(2026, 8, 20, 15, 0)) shouldBe 0

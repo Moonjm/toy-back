@@ -104,15 +104,11 @@ class TeslaVehicleService(
             throw CustomException(ErrorCode.INVALID_REQUEST, "months는 $MIN_MONTHS~$MAX_MONTHS 사이여야 합니다")
         }
 
-        // 예전 SQL이 `now() − N개월`로 만들던 창을 그대로 옮겼다. **뜻을 바꾸지 않는다** —
-        // 앱 1단계가 이 엔드포인트를 계속 쓴다. 달에 맞춘 창은 `/tesla/insights`의 것이다.
+        // 예전 SQL이 만들던 구르는 범위 그대로다 — 앱 1단계가 이 엔드포인트를 계속 쓴다.
         //
-        // **월 빼기를 UTC 벽시계에서 한다.** `nowKst.minusMonths(...)`를 먼저 하고 UTC로
-        // 바꾸면 월말에 하루가 어긋난다 — 2026-03-30T16:00 UTC(= 03-31T01:00 KST)에서
-        // 1개월을 빼면 UTC로는 02-28T16:00인데, KST로 먼저 빼면 「2월 31일」이 28일로 잘린
-        // 뒤 9시간을 되빼서 02-27T16:00이 된다. 실측으로 정확히 하루 차이다.
-        // Postgres의 `- interval '1 month'`와 java.time의 `minusMonths`는 둘 다 그 달의
-        // 마지막 날로 자르므로, 같은 벽시계 위에서 빼기만 하면 결과가 일치한다.
+        // **월 빼기는 UTC 벽시계에서 한다.** KST로 먼저 빼면 월말에 하루가 어긋난다:
+        // 2026-03-30T16:00 UTC에서 1개월을 빼면 02-28T16:00인데, KST(03-31T01:00)로 빼면
+        // 「2월 31일」이 28일로 잘린 뒤 9시간을 되빼 02-27T16:00이 된다(실측).
         val nowKst = TeslaTime.nowKst()
         val endUtc = TeslaTime.toUtc(nowKst)
         val startUtc = endUtc.minusMonths(months.toLong())

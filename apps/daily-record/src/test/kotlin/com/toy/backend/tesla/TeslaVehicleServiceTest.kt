@@ -605,7 +605,7 @@ class TeslaVehicleServiceTest :
 
         // 네 리포지토리 메서드가 같은 범위(start, end)를 받는지 캡처로 확인한다 —
         // 범위 자체의 값(now() 기준 계산)은 검증하지 않는다. `nowKst()`가 실제 시각을 읽어
-        // 고정할 수 없고, 창의 계산은 `TeslaTime` 쪽에서 이미 못 박았다.
+        // 고정할 수 없고, 범위 계산은 `TeslaTime` 쪽에서 이미 못 박았다.
         // `carEfficiency()`는 파라미터가 없어 대상이 아니다.
         Given("months=3으로 조회할 때") {
             val temperatureStart = slot<LocalDateTime>()

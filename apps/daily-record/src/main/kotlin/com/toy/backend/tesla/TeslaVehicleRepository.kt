@@ -8,6 +8,10 @@ import java.time.LocalDateTime
  * `TeslaChargeRepository.updateCost` 하나뿐이다.
  *
  * 행 타입의 시각은 전부 UTC다. KST 변환은 서비스가 한다.
+ *
+ * 주행 집계 넷(`driveTemperatureBuckets`·`driveTimes`·`driveDistanceBuckets`·`drivePlaces`)은
+ * 조회 범위를 서비스에서 UTC로 받는다 — 「전체 기간」을 SQL로 표현할 길이 없어서다.
+ * 경계 컬럼은 `end_date`이고, 월별 집계가 쓰는 `start_date`와 자정을 걸친 주행 한 건이 다르다.
  */
 interface TeslaVehicleRepository {
     /**
@@ -67,11 +71,6 @@ interface TeslaVehicleRepository {
      * `ΔratedRange > 0`(넣으면 전비가 무한대가 된다)이다.
      *
      * **행이 온 버킷만 온다.** 빈 버킷의 자리를 채우는 것은 서비스가 한다.
-     *
-     * **범위를 서비스가 정해 넘긴다.** 예전에는 `months`를 받아 SQL이 `now() − N개월`로
-     * 구르는 창을 만들었는데, `/tesla/insights`는 달에 맞춘 창이 필요하고 「전체 기간」도
-     * 표현해야 한다. 경계 컬럼은 **`end_date`**다(월별 집계는 `start_date`를 쓴다 —
-     * 자정을 걸친 주행 한 건의 차이다).
      */
     fun driveTemperatureBuckets(
         startUtc: LocalDateTime,
@@ -83,11 +82,6 @@ interface TeslaVehicleRepository {
      * 밤 11시로 찍힌다. 0인 칸은 행이 오지 않는다(168칸 중 대부분이 0이다).
      *
      * 온도·주행가능거리 조건을 걸지 않는다. 시간대는 둘 다 쓰지 않는다.
-     *
-     * **범위를 서비스가 정해 넘긴다.** 예전에는 `months`를 받아 SQL이 `now() − N개월`로
-     * 구르는 창을 만들었는데, `/tesla/insights`는 달에 맞춘 창이 필요하고 「전체 기간」도
-     * 표현해야 한다. 경계 컬럼은 **`end_date`**다(월별 집계는 `start_date`를 쓴다 —
-     * 자정을 걸친 주행 한 건의 차이다).
      */
     fun driveTimes(
         startUtc: LocalDateTime,
@@ -96,11 +90,6 @@ interface TeslaVehicleRepository {
 
     /**
      * 거리 버킷별 주행 합. 온도·주행가능거리 조건을 걸지 않는다. 행이 온 버킷만 온다.
-     *
-     * **범위를 서비스가 정해 넘긴다.** 예전에는 `months`를 받아 SQL이 `now() − N개월`로
-     * 구르는 창을 만들었는데, `/tesla/insights`는 달에 맞춘 창이 필요하고 「전체 기간」도
-     * 표현해야 한다. 경계 컬럼은 **`end_date`**다(월별 집계는 `start_date`를 쓴다 —
-     * 자정을 걸친 주행 한 건의 차이다).
      */
     fun driveDistanceBuckets(
         startUtc: LocalDateTime,
@@ -113,11 +102,6 @@ interface TeslaVehicleRepository {
      * 이름은 **지오펜스 → 주소** 순으로 떨어진다. 이 DB에는 지오펜스가 0행이지만 최근 12개월
      * 958건이 전부 도착지 주소를 갖고 있어(실측 2026-08-19) 목록이 채워진다.
      * 이름이 끝내 없는 도착지는 세지 않는다 — 실측으로 0건이다.
-     *
-     * **범위를 서비스가 정해 넘긴다.** 예전에는 `months`를 받아 SQL이 `now() − N개월`로
-     * 구르는 창을 만들었는데, `/tesla/insights`는 달에 맞춘 창이 필요하고 「전체 기간」도
-     * 표현해야 한다. 경계 컬럼은 **`end_date`**다(월별 집계는 `start_date`를 쓴다 —
-     * 자정을 걸친 주행 한 건의 차이다).
      */
     fun drivePlaces(
         startUtc: LocalDateTime,

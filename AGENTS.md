@@ -28,8 +28,8 @@ apps/daily-record, apps/family-tree   각 앱 (전용 DB 사용)
   넣으려면 **`numeric(10,2)`로 수동 확장돼 있어야 한다** — 우리 마이그레이션 도구가 안 미치는 남의
   DB라 TeslaMate를 복원·재설치하면 이 확장이 조용히 사라지고, 증상은 1만 원 이상 금액 수정만 400이 되는 것이다
   충전 외에 `drives`·`positions`·`states`도 읽는다(`/tesla/summary`·`/tesla/status`).
-  `positions`는 3,000만 행에 `date`가 BRIN뿐이라 **창 없는 `ORDER BY date DESC`가 11.7초**다 —
-  7일 창을 먼저 돌리고 PK 역순으로 폴백한다. 월 집계는 `date_trunc`를 **KST로 옮긴 뒤** 자른다
+  `positions`는 3,000만 행에 `date`가 BRIN뿐이라 **범위 없는 `ORDER BY date DESC`가 11.7초**다 —
+  7일 범위를 먼저 돌리고 PK 역순으로 폴백한다. 월 집계는 `date_trunc`를 **KST로 옮긴 뒤** 자른다
   (UTC 기준으로 자르면 월초 9시간이 옆 달로 샌다)
 - 앱 모듈은 `common-core`·`common-auth`를 의존하고, 앱끼리는 의존하지 않는다
 - 앱 전용 에러 코드는 앱 모듈에 `Code` 구현 enum으로 둔다(예: `LedgerErrorCode`).
@@ -45,7 +45,7 @@ apps/daily-record, apps/family-tree   각 앱 (전용 DB 사용)
   단, enum 컬럼은 `columnDefinition`을 명시해 CHECK 제약이 생기지 않게 한다
   (ddl-auto가 제약을 갱신하지 못해 enum 값 추가 시 기존 DB에서 INSERT가 깨진다)
 - **크래시 중간 상태 복구 없음** — "커밋 A 직후 프로세스가 죽으면 B가 유실된다" 류의
-  좁은 창은 감수한다. 상태를 늘려 방어하면 그 상태 자체가 새 문제를 만든다
+  좁은 범위는 감수한다. 상태를 늘려 방어하면 그 상태 자체가 새 문제를 만든다
 
 반대로 **데이터 정합성·보안 문제는 규모와 무관하게 엄격히** 다룬다:
 사용자 데이터 격리, 잘못된 레코드 삭제, 금액·통화 오류, 자격 증명 노출 등.
