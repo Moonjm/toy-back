@@ -179,6 +179,7 @@ GET /tesla/insights?months=12
   "chargeStartLevels": [{ "fromPct": 0, "toPct": 10, "count": 3 }],
   "chargeEndLevels":   [{ "fromPct": 90, "toPct": 100, "count": 41 }],
 
+  // `name`은 지오펜스 이름이고, 지오펜스가 없으면 주소로 짓는다(아래 「이름 짓기」).
   "places":   [{ "name": "집", "driveCount": 302, "distanceKm": 4120.8 }],
   "chargers": [{ "name": "집", "chargeCount": 210, "energyAddedKwh": 4820.1,
                  "cost": 612000, "costMissingCount": 4 }],
@@ -203,6 +204,8 @@ GET /tesla/insights?months=12
 
 - **`monthly`가 `/tesla/summary`의 `trend`와 겹친다.** 없애지 않는다 — `trend`는 12개월 고정이고 `monthly`는 기간 칩을 따른다. 앱은 개요·충전 탭에서 `trend`를, 통계 탭에서 `monthly`를 본다.
 - **`records`에 `driveId`를 싣는다.** 앱이 나중에 그 주행 상세로 보내고 싶어질 자리다. 지금 앱에 주행 상세 화면이 없으므로 쓰이지 않지만, 이 값을 안 실으면 나중에 계약을 또 고쳐야 한다.
+- **`places`·`chargers`의 이름은 지오펜스가 없으면 주소로 짓는다.** 초안은 지오펜스로만 묶어서 이 차량(`geofences` **0행**)에서는 두 배열이 늘 비었다 — 앱이 카드 둘을 영영 감춘다는 뜻이다. 그런데 실측 5b·5c가 그 자리를 이미 메울 수 있다고 말한다: 도착지 주소는 최근 12개월 도시 21곳으로 채워져 있고, 충전소는 주소만으로 12곳이 이름을 얻는다(상위 138·126·73건). `regions`가 쓰기로 한 `drives.end_address_id → addresses` 조인을 그대로 한 번 더 쓰는 것이라 새 비용이 아니다.
+
 - **`chargers[].energyAddedKwh`는 null일 수 있다.** TeslaMate가 데이터를 잃은 채 금액만 남은 세션이 하나 있고(실측 `id=15`, 10,360원), 그 세션만 있는 충전소·달이면 `SUM`이 null이다. **0으로 바꾸지 않는다** — 0은 「0 kWh 넣었다」는 거짓이고, 우리가 모르는 것은 null이다. 같은 객체의 `cost`가 이미 같은 이유로 nullable이다.
 - **`chargers[].costMissingCount`를 함께 낸다.** 금액 미입력 충전이 섞이면 「충전소별 비용 TOP」 순위가 뒤집힌다. 앱이 「4건 금액 없음」을 적을 수 있어야 한다. `/tesla/charges/totals`가 같은 이유로 이미 이 필드를 낸다.
 - **`temperatureBuckets`에 `distanceKm`과 `ratedRangeUsedKm`이 둘 다 있다.** 기존 계약 그대로다. 종합 효율(정격 대비 실주행)은 이 배열의 합으로 앱이 낸다 — 별도 필드를 두지 않는다.
@@ -216,7 +219,7 @@ GET /tesla/insights?months=12
 
 ### 쿼리 방향
 
-전부 `drives`와 `charging_processes`만 읽는다. 공통 규칙 셋을 지킨다.
+전부 `drives`와 `charging_processes`를 읽고, 이름과 지역에만 `geofences`·`addresses`를 좌측 조인한다(`positions`는 읽지 않는다). 공통 규칙 셋을 지킨다.
 
 1. **월 경계는 KST로 자른다.** `date_trunc('month', d.start_date AT TIME ZONE 'Asia/Seoul')`. UTC로 자르면 월초 9시간이 옆 달로 샌다 — 이미 `TeslaTime`에 있는 관례다.
 2. **유령 행을 뺀다.** `end_date IS NOT NULL`. `drives` 12건·`charging_processes` 6건이 마감되지 않은 채 남아 있다(앞선 설계 실측).
@@ -237,6 +240,23 @@ GET /tesla/insights?months=12
 `records.bestEfficiency`에는 **거리 하한 20km**를 건다. 하한이 없으면 정격거리 표시가 움직이지 않은 0.2km 주행이 1등이 된다(실측 3번 아래 「실측이 바꾼 것」 3).
 
 `regions`는 `drives.end_address_id → addresses`를 조인해 `city`/`state`/`country`를 distinct 센다.
+
+### 이름 짓기 — `places`·`chargers`
+
+둘 다 **지오펜스를 먼저 보고, 없으면 주소로 내려간다.**
+
+```sql
+COALESCE(g.name, a.name, a.road, a.city, a.display_name)
+```
+
+- `places`는 `drives.end_geofence_id → geofences`, `drives.end_address_id → addresses`.
+- `chargers`는 `charging_processes.geofence_id → geofences`, `.address_id → addresses`.
+- **`display_name`으로 바로 떨어뜨리지 않는다.** 실측(2026-08-19, 최근 12개월 958건)에서 `a.name`이 819건(85.5%)을 짧은 이름으로 덮고 나머지는 `a.road`가 거의 다 채운다. `display_name`은 「Goyang-daero, 일산2동, Ilsanseo-gu, Goyang-si, 10360, South Korea」 한 줄이라 목록을 무너뜨린다 — 마지막 수단이다.
+- **묶는 키는 id가 아니라 표시 이름이다**(`GROUP BY 1`). 주소는 재지오코딩할 때마다 행이 갈리는데, 사람이 같은 곳으로 읽는 것을 두 줄로 내면 순위표가 무너진다(실측 상위 12개 중 갈려 있던 것 하나: 53+2 → 55). **묶고 나면 이름이 결과 안에서 유일해진다** — 앱이 이름을 행 아이디로 써도 안전하다는 뜻이고, 이것이 `DrivePlace`가 `Identifiable`을 못 달던 이유를 없앤다.
+- **이름을 못 지으면 그 행을 뺀다.** 지오펜스도 주소도 없는 도착지는 「이름 없는 곳」으로 순위표에 오를 자격이 없다.
+- **`ORDER BY`의 마지막 열은 이름이다.** 건수·거리가 같은 곳이 `LIMIT 10` 경계에 걸리면 tie-breaker 없이는 실행마다 잘리는 쪽이 달라진다.
+
+**지오펜스를 등록하면 이름이 바뀐다.** 같은 장소가 어제는 주소로, 오늘은 「집」으로 나온다. 순위표라 그래도 되지만 앱이 이름을 키로 **캐시**하면 깨진다 — 앱은 응답 순서를 그대로 그린다.
 
 ---
 
@@ -288,5 +308,8 @@ GET /tesla/battery-window?hours=48
 - 요일 집계: `occurrences`가 기간 안의 실제 요일 수인지(윤년·월말 경계).
 - 빈 달: 기록 없는 달이 `monthly`에서 사라지지 않고 필드가 `null`로 오는지.
 - `months=0`: 전체 기간으로 해석되는지. `months=61`은 400인지.
-- 지오펜스 0행: `places`·`chargers`가 빈 배열인지(`null`이 아니라).
+- 지오펜스 0행: `places`·`chargers`가 **주소 이름으로 채워지는지**(빈 배열이 아니라). 이 차량의 기본 상태다.
+- 이름 짓기: 지오펜스와 주소가 둘 다 있으면 지오펜스가 이기는지, `a.name`이 비면 `road`→`city`→`display_name`으로 차례로 내려가는지, 넷 다 없는 도착지가 빠지는지.
+- 주소 행이 갈린 같은 이름 둘이 **한 줄로 합쳐지는지**(재지오코딩 대비).
+- 주행·충전이 하나도 없는 기간: 두 배열이 빈 배열인지(`null`이 아니라).
 - KST 경계: 월초 00:30 KST 주행이 그 달에 잡히는지.
