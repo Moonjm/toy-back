@@ -327,14 +327,26 @@ class JdbcTeslaInsightsRepository(
          * `BETWEEN`이 아니라 겹침으로 본다 — 주차 시작 전에 시작해 주차 중에 끝난 충전을
          * `BETWEEN c.start_date`로는 못 잡는다(실측 차이 전 기간 1건, 4,588 → 4,587). 음수를
          * 자르지 않는 근거는 `ParkDrainMonthRow`의 KDoc.
+         *
+         * **급소 3 — 유령 주행(`end_date IS NULL`)을 `LEAD` 앞이 아니라 뒤에서 걸러야 한다.**
+         * CTE의 `WHERE d.end_date IS NOT NULL`로 미리 빼면 유령의 앞뒤 완료 주행이 `LEAD`에서
+         * 서로 이웃이 되어 그 사이 전체가 「순수 주차」로 잡힌다 — 실제로는 그 안에 주행이
+         * 통째로 들어 있다. 실측으로 이렇게 잘못 잡힌 구간이 10건이고, 최악은 2023-07-30
+         * 「주차」 1.6시간에 106.3km가 샌 값이었다(실제 팬텀 드레인은 하루 1~2km 수준이다).
+         * 월별 합이 최대 +51%(2022-11, 301.6 → 200.0km) 부풀었고 전 기간 합은
+         * 10,869.4 → 10,470.0km로 바뀐다. 고치려면 `LEAD`는 전체 주행(유령 포함) 위에서 돌리고,
+         * 바깥 `WHERE`에서 `from_date`·`to_date`·`to_end_date` 셋 다 `NOT NULL`을 요구한다 —
+         * `from_date`는 곧 `d.end_date`라 앞이 유령이면 저절로 걸러지고, `to_end_date`는 뒤가
+         * 유령인 짝(유령 12건 전부 `start_rated_range_km`가 NULL이라 안 막으면 표본은 세도
+         * `SUM`이 그 건을 건너뛴다)을 막으려고 따로 `LEAD`한 값이다.
          */
         private const val PARK_DRAIN_MONTHLY_SQL = """
             WITH park AS (
                 SELECT d.end_date                                                       AS from_date,
                        LEAD(d.start_date)           OVER w                              AS to_date,
+                       LEAD(d.end_date)             OVER w                              AS to_end_date,
                        d.end_rated_range_km - LEAD(d.start_rated_range_km) OVER w       AS drop_km
                   FROM drives d
-                 WHERE d.end_date IS NOT NULL
                 WINDOW w AS (ORDER BY d.start_date)
             )
             SELECT date_trunc(
@@ -344,7 +356,9 @@ class JdbcTeslaInsightsRepository(
                    COUNT(*)              AS park_drain_samples,
                    ROUND(SUM(p.drop_km), 1) AS park_drain_rated_km
               FROM park p
-             WHERE p.to_date IS NOT NULL
+             WHERE p.from_date    IS NOT NULL
+               AND p.to_date      IS NOT NULL
+               AND p.to_end_date  IS NOT NULL
                AND p.from_date >= :start
                AND p.from_date <  :end
                AND NOT EXISTS (SELECT 1
@@ -645,7 +659,9 @@ class JdbcTeslaInsightsRepository(
 
         /**
          * 최근 팬텀 드레인. `PARK_DRAIN_MONTHLY_SQL`과 **같은 정의**를 쓴다 —
-         * `LEAD`를 전체 주행 위에서 돌리고, 겹침 판정에 `c.end_date IS NOT NULL`을 건다.
+         * `LEAD`를 전체 주행(유령 포함) 위에서 돌리고, 짝의 어느 쪽이든 마감되지 않았으면
+         * 바깥 `WHERE`에서 빼며, 겹침 판정에 `c.end_date IS NOT NULL`을 건다. 급소 근거는
+         * `PARK_DRAIN_MONTHLY_SQL`의 KDoc 참조 — 최근 7일은 유령이 없어 값이 안 바뀐다.
          * 두 응답의 같은 값이 달라지면 안 된다.
          *
          * 집계라 행은 늘 온다. 표본이 없으면 `samples`가 0이고 `SUM`이 null이라
@@ -657,16 +673,18 @@ class JdbcTeslaInsightsRepository(
             WITH park AS (
                 SELECT d.end_date                                                 AS from_date,
                        LEAD(d.start_date)           OVER w                        AS to_date,
+                       LEAD(d.end_date)             OVER w                        AS to_end_date,
                        d.end_rated_range_km - LEAD(d.start_rated_range_km) OVER w AS drop_km
                   FROM drives d
-                 WHERE d.end_date IS NOT NULL
                 WINDOW w AS (ORDER BY d.start_date)
             )
             SELECT COUNT(*)                 AS samples,
                    ROUND(SUM(p.drop_km), 1) AS rated_km,
                    ROUND(SUM(EXTRACT(epoch FROM (p.to_date - p.from_date)) / 3600.0)::numeric, 1) AS hours
               FROM park p
-             WHERE p.to_date IS NOT NULL
+             WHERE p.from_date    IS NOT NULL
+               AND p.to_date      IS NOT NULL
+               AND p.to_end_date  IS NOT NULL
                AND p.from_date >= :since
                AND NOT EXISTS (SELECT 1
                                  FROM charging_processes c
