@@ -74,7 +74,7 @@ class JdbcTeslaInsightsRepository(
             .query { rs, _ ->
                 ParkDrainMonthRow(
                     month = YearMonth.from(rs.getObject("month_start", LocalDate::class.java)),
-                    ratedKm = rs.getBigDecimal("park_drain_rated_km"),
+                    ratedKm = rs.getBigDecimal("park_drain_rated_km") ?: BigDecimal.ZERO,
                     samples = rs.getInt("park_drain_samples"),
                 )
             }.list()
@@ -432,7 +432,7 @@ class JdbcTeslaInsightsRepository(
          * 뺀다 — `DRIVE_TEMPERATURE_BUCKETS_SQL`이 같은 이유로 같은 조건을 건다.
          */
         private const val SPEED_ENERGY_BUCKETS_SQL = """
-            WITH d AS (
+            WITH avg_speed AS (
                 SELECT d.distance,
                        d.start_rated_range_km - d.end_rated_range_km AS rated_used,
                        d.distance / (d.duration_min / 60.0)          AS avg_speed
@@ -444,15 +444,15 @@ class JdbcTeslaInsightsRepository(
                    AND d.start_date >= :start
                    AND d.start_date <  :end
             )
-            SELECT CASE WHEN d.avg_speed < 20 THEN 1
-                        WHEN d.avg_speed < 40 THEN 2
-                        WHEN d.avg_speed < 60 THEN 3
-                        WHEN d.avg_speed < 80 THEN 4
+            SELECT CASE WHEN avg_speed.avg_speed < 20 THEN 1
+                        WHEN avg_speed.avg_speed < 40 THEN 2
+                        WHEN avg_speed.avg_speed < 60 THEN 3
+                        WHEN avg_speed.avg_speed < 80 THEN 4
                         ELSE 5
-                   END                                AS bucket,
-                   ROUND(SUM(d.distance)::numeric, 1) AS distance_km,
-                   ROUND(SUM(d.rated_used), 1)        AS rated_range_used_km
-              FROM d
+                   END                                        AS bucket,
+                   ROUND(SUM(avg_speed.distance)::numeric, 1) AS distance_km,
+                   ROUND(SUM(avg_speed.rated_used), 1)        AS rated_range_used_km
+              FROM avg_speed
              GROUP BY bucket
              ORDER BY bucket
         """
@@ -546,6 +546,10 @@ class JdbcTeslaInsightsRepository(
          * **급소 2 — `ORDER BY`마다 `id`를 tie-breaker로 둔다.** 실측으로 최장거리와 최장시간이
          * 같은 주행(id 3619)이고, 동률이 나올 때 어느 것이 뽑힐지 실행마다 달라지면 안 된다.
          *
+         * **급소 3 — PostgreSQL은 `DESC`의 기본이 `NULLS FIRST`라 NULL 행이 1등으로 뽑힌다.**
+         * 실측 NULL은 0건이지만 `SPEED_BUCKETS_SQL`과 같은 이유로 CTE에서 명시로 걷고
+         * `NULLS LAST`도 붙인다.
+         *
          * `ROUND`의 자릿수는 다른 집계와 맞춘다 — 거리는 소수 한 자리다.
          */
         private const val DRIVE_RECORDS_SQL = """
@@ -554,18 +558,21 @@ class JdbcTeslaInsightsRepository(
                        start_rated_range_km - end_rated_range_km AS rated_used
                   FROM drives
                  WHERE end_date IS NOT NULL
+                   AND distance IS NOT NULL
+                   AND duration_min IS NOT NULL
+                   AND start_rated_range_km - end_rated_range_km IS NOT NULL
             )
             (SELECT 'distance' AS kind, id AS drive_id, start_date AS started_at,
                     ROUND(distance::numeric, 1) AS distance_km, duration_min,
                     ROUND(rated_used, 1)        AS rated_range_used_km
                FROM d
-              ORDER BY distance DESC, id
+              ORDER BY distance DESC NULLS LAST, id
               LIMIT 1)
             UNION ALL
             (SELECT 'duration', id, start_date,
                     ROUND(distance::numeric, 1), duration_min, ROUND(rated_used, 1)
                FROM d
-              ORDER BY duration_min DESC, id
+              ORDER BY duration_min DESC NULLS LAST, id
               LIMIT 1)
             UNION ALL
             (SELECT 'efficiency', id, start_date,
@@ -573,7 +580,7 @@ class JdbcTeslaInsightsRepository(
                FROM d
               WHERE distance >= 20
                 AND rated_used > 0
-              ORDER BY distance / rated_used DESC, id
+              ORDER BY distance / rated_used DESC NULLS LAST, id
               LIMIT 1)
         """
 

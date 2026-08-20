@@ -80,7 +80,7 @@ class TeslaInsightsService(
                         weekday = weekday,
                         driveCount = drive?.driveCount ?: 0,
                         distanceKm = drive?.distanceKm ?: BigDecimal.ZERO,
-                        drivingMin = drive?.drivingMin ?: 0,
+                        drivingMin = drive?.drivingMin,
                         occurrences = span.occurrences,
                         idleMin = (span.elapsedMin - (drive?.drivingMin ?: 0) - (charge?.chargingMin ?: 0)).coerceAtLeast(0),
                     )

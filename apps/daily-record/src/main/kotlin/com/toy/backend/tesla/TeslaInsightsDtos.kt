@@ -101,7 +101,11 @@ data class InsightsWeekday(
     val weekday: Int,
     val driveCount: Int,
     val distanceKm: BigDecimal,
-    val drivingMin: Int,
+    /**
+     * `SUM(duration_min)`이 결측이면 null이다 — 0으로 누르면 「기록 없음」이 아니라 나눗셈에서
+     * 0이 된다(`InsightsMonth.drivingMin`과 같은 규칙).
+     */
+    val drivingMin: Int?,
     /**
      * 범위 안에서 그 요일이 며칠 나왔나 — **요일 평균의 분모다.** 오늘도 한 번으로 센다(오늘의
      * 주행이 이미 분자에 있어 짝이 맞는다) — `idleMin`의 분모는 반대로 흐른 분만 센다.

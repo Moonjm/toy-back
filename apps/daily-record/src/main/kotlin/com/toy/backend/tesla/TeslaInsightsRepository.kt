@@ -112,7 +112,8 @@ interface TeslaInsightsRepository {
      * **파라미터가 없다 — `months` 범위를 따르지 않는다.** 범위가 바뀔 때마다 1등이 바뀌면
      * 기록이 아니다. `driveStats`의 `maxSpeedKmh`와 같은 규약이다.
      *
-     * 주행이 하나도 없으면 빈 리스트다. 효율 기록만 없을 수도 있다(거리 하한 20km).
+     * PostgreSQL은 `DESC`의 기본이 `NULLS FIRST`라 NULL 행이 1등으로 뽑힌다. 실측 NULL은
+     * 0건이지만 `SPEED_BUCKETS_SQL`과 같은 이유로 구현이 명시로 걷고 `NULLS LAST`도 붙인다.
      */
     fun driveRecords(): List<DriveRecordRow>
 

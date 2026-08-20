@@ -63,6 +63,23 @@ class TeslaInsightsServiceTest :
                     service.insights(0).months shouldBe 0
                 }
             }
+
+            When("months가 0이고 첫 주행 달이 있으면") {
+                Then("monthly가 그 달부터 이번 달까지 자리를 채운다") {
+                    stubEmpty()
+                    // stubEmpty()가 늘 null을 줘서 이 경로(coerceAtMost, 첫 주행 달부터 N칸)가
+                    // 그동안 한 번도 안 돌았다 — 앱의 「전체」 기간 칩이 정확히 이 경로다.
+                    val thisMonth = YearMonth.from(TeslaTime.nowKst())
+                    val firstMonth = thisMonth.minusMonths(3)
+                    every { insightsRepository.firstDriveMonth() } returns firstMonth
+
+                    val monthly = service.insights(0).monthly
+
+                    monthly.size shouldBe 4
+                    monthly.first().yearMonth shouldBe firstMonth
+                    monthly.last().yearMonth shouldBe thisMonth
+                }
+            }
         }
 
         Given("insights — 버킷 자리 채움") {
