@@ -87,6 +87,13 @@ apps/daily-record, apps/family-tree   각 앱 (전용 DB 사용)
 - 금액은 `BigDecimal`, 컬럼은 `precision = 19, scale = 4`
 - 파라미터가 4개를 넘는 JPA 파생 쿼리는 `@Query`로 바꾼다 — 메서드명이 길어지는 것보다
   같은 타입 인자의 순서 뒤바뀜이 위험하다
+- **`ORDER BY ... DESC`에 NULL이 올 수 있으면 `NULLS LAST`를 명시한다.** PostgreSQL
+  기본이 `NULLS FIRST`라 NULL 행이 1등으로 뽑힌다. `SUM`·`ROUND(SUM(...))` 파생 컬럼이
+  특히 그렇다. (`COUNT(*)`는 NULL이 될 수 없으니 안 붙여도 된다.)
+- **`COUNT(*)`와 `SUM(...)`을 함께 낼 때, 그 개수가 「합이 몇 건에서 나왔나」를 뜻하면
+  모집단을 맞춘다.** 반대로 「몇 건 있었나」를 뜻하면 지금처럼 두는 것이 맞다 — 충전의
+  `cost`가 그 예다(null을 건너뛰는 것이 「실제로 낸 돈」이고 `costMissingCount`가 따로
+  보고한다).
 
 ### 커밋 전: 새 심볼이 **어느 파일에** 나오는지 센다
 
