@@ -203,6 +203,7 @@ GET /tesla/insights?months=12
 
 - **`monthly`가 `/tesla/summary`의 `trend`와 겹친다.** 없애지 않는다 — `trend`는 12개월 고정이고 `monthly`는 기간 칩을 따른다. 앱은 개요·충전 탭에서 `trend`를, 통계 탭에서 `monthly`를 본다.
 - **`records`에 `driveId`를 싣는다.** 앱이 나중에 그 주행 상세로 보내고 싶어질 자리다. 지금 앱에 주행 상세 화면이 없으므로 쓰이지 않지만, 이 값을 안 실으면 나중에 계약을 또 고쳐야 한다.
+- **`chargers[].energyAddedKwh`는 null일 수 있다.** TeslaMate가 데이터를 잃은 채 금액만 남은 세션이 하나 있고(실측 `id=15`, 10,360원), 그 세션만 있는 충전소·달이면 `SUM`이 null이다. **0으로 바꾸지 않는다** — 0은 「0 kWh 넣었다」는 거짓이고, 우리가 모르는 것은 null이다. 같은 객체의 `cost`가 이미 같은 이유로 nullable이다.
 - **`chargers[].costMissingCount`를 함께 낸다.** 금액 미입력 충전이 섞이면 「충전소별 비용 TOP」 순위가 뒤집힌다. 앱이 「4건 금액 없음」을 적을 수 있어야 한다. `/tesla/charges/totals`가 같은 이유로 이미 이 필드를 낸다.
 - **`temperatureBuckets`에 `distanceKm`과 `ratedRangeUsedKm`이 둘 다 있다.** 기존 계약 그대로다. 종합 효율(정격 대비 실주행)은 이 배열의 합으로 앱이 낸다 — 별도 필드를 두지 않는다.
 - **`fromC`가 `null`인 첫 버킷**은 「0℃ 미만」을 뜻한다. 기존 계약 그대로다.
