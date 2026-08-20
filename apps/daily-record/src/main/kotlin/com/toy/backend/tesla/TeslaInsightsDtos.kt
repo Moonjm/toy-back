@@ -39,6 +39,12 @@ data class TeslaInsightsResponse(
     val recordedMonths: Int,
     /** 요일별 합, **월요일(1)부터 일곱 개가 늘 온다.** 요일 번호 규약은 `InsightsWeekday` 참조. */
     val weekday: List<InsightsWeekday>,
+    /** 충전 시작의 요일×시각. **0인 칸은 빠지고 `weekday`는 0이 일요일**이다(`driveTimes`와 같다). */
+    val chargeTimes: List<DriveTime>,
+    /** 일곱 개가 늘 온다. 주행 한 건의 **최고** 속도 분포다. */
+    val speedBuckets: List<SpeedBucket>,
+    /** 다섯 개가 늘 온다. 주행 한 건의 **평균** 속도별 전비 재료다. */
+    val speedEnergyBuckets: List<SpeedEnergyBucket>,
 )
 
 /**
@@ -97,4 +103,22 @@ data class InsightsWeekday(
      * 최대 하루치 부풀어 오른다.
      */
     val idleMin: Int,
+)
+
+/** `toKmh`가 null이면 상한이 없다. 경계는 **`fromKmh` 포함, `toKmh` 미만**이다. */
+data class SpeedBucket(
+    val fromKmh: Int,
+    val toKmh: Int?,
+    val driveCount: Int,
+)
+
+/**
+ * 평균 속도별 거리·정격거리 소모(전비 나눗셈은 앱이 한다). **`driveCount`가 없다** — 건수는
+ * `speedBuckets`가 내고, 이쪽은 `ΔratedRange > 0`인 주행만 들어 모집단이 다르다.
+ */
+data class SpeedEnergyBucket(
+    val fromKmh: Int,
+    val toKmh: Int?,
+    val distanceKm: BigDecimal,
+    val ratedRangeUsedKm: BigDecimal,
 )

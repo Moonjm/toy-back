@@ -30,6 +30,8 @@ class TeslaInsightsService(
         val weekdayDrives = insightsRepository.weekdayDrives(window.startUtc, window.endUtc).associateBy { it.weekday }
         val weekdayCharges = insightsRepository.weekdayCharges(window.startUtc, window.endUtc).associateBy { it.weekday }
         val spans = TeslaTime.weekdaySpans(window.startKst, window.endKst)
+        val speeds = insightsRepository.speedBuckets(window.startUtc, window.endUtc).associateBy { it.bucket }
+        val speedEnergies = insightsRepository.speedEnergyBuckets(window.startUtc, window.endUtc).associateBy { it.bucket }
 
         return TeslaInsightsResponse(
             months = months,
@@ -79,6 +81,28 @@ class TeslaInsightsService(
                         drivingMin = drive?.drivingMin ?: 0,
                         occurrences = span.occurrences,
                         idleMin = (span.elapsedMin - (drive?.drivingMin ?: 0) - (charge?.chargingMin ?: 0)).coerceAtLeast(0),
+                    )
+                },
+            chargeTimes =
+                insightsRepository.chargeTimes(window.startUtc, window.endUtc).map {
+                    DriveTime(weekday = it.weekday, hour = it.hour, count = it.count)
+                },
+            speedBuckets =
+                TeslaBuckets.SPEED.map { (bucket, bounds) ->
+                    SpeedBucket(
+                        fromKmh = bounds.first,
+                        toKmh = bounds.second,
+                        driveCount = speeds[bucket]?.driveCount ?: 0,
+                    )
+                },
+            speedEnergyBuckets =
+                TeslaBuckets.SPEED_ENERGY.map { (bucket, bounds) ->
+                    val row = speedEnergies[bucket]
+                    SpeedEnergyBucket(
+                        fromKmh = bounds.first,
+                        toKmh = bounds.second,
+                        distanceKm = row?.distanceKm ?: BigDecimal.ZERO,
+                        ratedRangeUsedKm = row?.ratedRangeUsedKm ?: BigDecimal.ZERO,
                     )
                 },
         )

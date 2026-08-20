@@ -110,6 +110,45 @@ class JdbcTeslaInsightsRepository(
                 )
             }.list()
 
+    override fun chargeTimes(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<ChargeTimeRow> =
+        teslaMateJdbcClient
+            .sql(CHARGE_TIMES_SQL)
+            .param("start", startUtc)
+            .param("end", endUtcExclusive)
+            .query { rs, _ ->
+                ChargeTimeRow(rs.getInt("weekday"), rs.getInt("hour"), rs.getInt("row_count"))
+            }.list()
+
+    override fun speedBuckets(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<SpeedBucketRow> =
+        teslaMateJdbcClient
+            .sql(SPEED_BUCKETS_SQL)
+            .param("start", startUtc)
+            .param("end", endUtcExclusive)
+            .query { rs, _ -> SpeedBucketRow(rs.getInt("bucket"), rs.getInt("drive_count")) }
+            .list()
+
+    override fun speedEnergyBuckets(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<SpeedEnergyBucketRow> =
+        teslaMateJdbcClient
+            .sql(SPEED_ENERGY_BUCKETS_SQL)
+            .param("start", startUtc)
+            .param("end", endUtcExclusive)
+            .query { rs, _ ->
+                SpeedEnergyBucketRow(
+                    bucket = rs.getInt("bucket"),
+                    distanceKm = rs.getBigDecimal("distance_km"),
+                    ratedRangeUsedKm = rs.getBigDecimal("rated_range_used_km"),
+                )
+            }.list()
+
     private fun ResultSet.nullableInt(column: String): Int? = getObject(column) as Int?
 
     companion object {
@@ -255,6 +294,79 @@ class JdbcTeslaInsightsRepository(
                AND cp.start_date <  :end
              GROUP BY weekday
              ORDER BY weekday
+        """
+
+        /** 규약은 `JdbcTeslaVehicleRepository.DRIVE_TIMES_SQL`과 같다 — `dow`라 0이 일요일이다. */
+        private const val CHARGE_TIMES_SQL = """
+            SELECT EXTRACT(dow  FROM cp.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')::int AS weekday,
+                   EXTRACT(hour FROM cp.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')::int AS hour,
+                   COUNT(*)                                                                           AS row_count
+              FROM charging_processes cp
+             WHERE cp.end_date IS NOT NULL
+               AND cp.start_date >= :start
+               AND cp.start_date <  :end
+             GROUP BY weekday, hour
+             ORDER BY weekday, hour
+        """
+
+        /**
+         * 버킷 경계는 `TeslaBuckets.SPEED`와 같은 숫자여야 한다. `ELSE 7`이 「120 이상」을
+         * 받는데, 실측(2026-08-20)으로 `speed_max` 140 이상 주행이 0건이라 사실상 `120~140`이다.
+         *
+         * **`speed_max IS NOT NULL`을 명시로 건다** — 실측 NULL 0건이지만, 없으면 상류가 값을
+         * 못 채우는 날 NULL이 조용히 `ELSE 7`(최고 속도 칸)로 들어간다.
+         */
+        private const val SPEED_BUCKETS_SQL = """
+            SELECT CASE WHEN d.speed_max <  20 THEN 1
+                        WHEN d.speed_max <  40 THEN 2
+                        WHEN d.speed_max <  60 THEN 3
+                        WHEN d.speed_max <  80 THEN 4
+                        WHEN d.speed_max < 100 THEN 5
+                        WHEN d.speed_max < 120 THEN 6
+                        ELSE 7
+                   END      AS bucket,
+                   COUNT(*) AS drive_count
+              FROM drives d
+             WHERE d.end_date IS NOT NULL
+               AND d.distance > 0
+               AND d.speed_max IS NOT NULL
+               AND d.start_date >= :start
+               AND d.start_date <  :end
+             GROUP BY bucket
+             ORDER BY bucket
+        """
+
+        /**
+         * **버킷 경계는 `TeslaBuckets.SPEED_ENERGY`와 같은 숫자여야 한다.**
+         *
+         * 평균 속도를 세 번 쓰지 않으려고 `avg_speed`를 CTE에서 한 번만 만든다.
+         * `duration_min > 0`이 분모를 막고, `ΔratedRange > 0`은 전비가 무한대가 되는 주행을
+         * 뺀다 — `DRIVE_TEMPERATURE_BUCKETS_SQL`이 같은 이유로 같은 조건을 건다.
+         */
+        private const val SPEED_ENERGY_BUCKETS_SQL = """
+            WITH d AS (
+                SELECT d.distance,
+                       d.start_rated_range_km - d.end_rated_range_km AS rated_used,
+                       d.distance / (d.duration_min / 60.0)          AS avg_speed
+                  FROM drives d
+                 WHERE d.end_date IS NOT NULL
+                   AND d.distance > 0
+                   AND d.duration_min > 0
+                   AND d.start_rated_range_km - d.end_rated_range_km > 0
+                   AND d.start_date >= :start
+                   AND d.start_date <  :end
+            )
+            SELECT CASE WHEN d.avg_speed < 20 THEN 1
+                        WHEN d.avg_speed < 40 THEN 2
+                        WHEN d.avg_speed < 60 THEN 3
+                        WHEN d.avg_speed < 80 THEN 4
+                        ELSE 5
+                   END                                AS bucket,
+                   ROUND(SUM(d.distance)::numeric, 1) AS distance_km,
+                   ROUND(SUM(d.rated_used), 1)        AS rated_range_used_km
+              FROM d
+             GROUP BY bucket
+             ORDER BY bucket
         """
     }
 }

@@ -33,6 +33,9 @@ class TeslaInsightsServiceTest :
             every { insightsRepository.parkDrainMonthly(any(), any()) } returns emptyList()
             every { insightsRepository.weekdayDrives(any(), any()) } returns emptyList()
             every { insightsRepository.weekdayCharges(any(), any()) } returns emptyList()
+            every { insightsRepository.chargeTimes(any(), any()) } returns emptyList()
+            every { insightsRepository.speedBuckets(any(), any()) } returns emptyList()
+            every { insightsRepository.speedEnergyBuckets(any(), any()) } returns emptyList()
         }
 
         Given("insights — 범위 검증") {
@@ -211,6 +214,50 @@ class TeslaInsightsServiceTest :
                     val diff = kotlin.math.abs(monday.idleMin - (span.elapsedMin - 300).coerceAtLeast(0))
                     diff shouldBeLessThanOrEqual 1
                     monday.occurrences shouldBe span.occurrences
+                }
+            }
+        }
+
+        Given("속도 버킷") {
+            When("행이 하나도 없으면") {
+                Then("최고속도 일곱 칸·평균속도 다섯 칸이 자리를 지킨다") {
+                    stubEmpty()
+                    val response = service.insights(12)
+
+                    response.speedBuckets.size shouldBe 7
+                    response.speedBuckets.last().fromKmh shouldBe 120
+                    response.speedBuckets.last().toKmh shouldBe null
+                    response.speedEnergyBuckets.size shouldBe 5
+                    response.speedEnergyBuckets.last().fromKmh shouldBe 80
+                    response.speedEnergyBuckets.last().toKmh shouldBe null
+                }
+            }
+
+            When("행이 오면") {
+                Then("그 칸에 값이 들어간다") {
+                    stubEmpty()
+                    every { insightsRepository.speedBuckets(any(), any()) } returns listOf(SpeedBucketRow(6, 372))
+
+                    service
+                        .insights(12)
+                        .speedBuckets
+                        .single { it.fromKmh == 100 }
+                        .driveCount shouldBe 372
+                }
+            }
+        }
+
+        Given("chargeTimes") {
+            When("0인 칸이 있으면") {
+                Then("행이 온 칸만 낸다 — 168칸을 채우지 않는다") {
+                    stubEmpty()
+                    every { insightsRepository.chargeTimes(any(), any()) } returns listOf(ChargeTimeRow(6, 22, 10))
+
+                    val times = service.insights(12).chargeTimes
+                    times.size shouldBe 1
+                    times.single().weekday shouldBe 6
+                    times.single().hour shouldBe 22
+                    times.single().count shouldBe 10
                 }
             }
         }

@@ -48,7 +48,7 @@ interface TeslaInsightsRepository {
         endUtcExclusive: LocalDateTime,
     ): List<ParkDrainMonthRow>
 
-    /** 요일별 주행 합. 요일 번호 규약·KST 변환 근거는 `WeekdayDriveRow` 참조. 행이 온 요일만 온다. */
+    /** 요일별 주행 합. 요일 번호 규약은 `WeekdayDriveRow` 참조. 행이 온 요일만 온다. */
     fun weekdayDrives(
         startUtc: LocalDateTime,
         endUtcExclusive: LocalDateTime,
@@ -59,4 +59,28 @@ interface TeslaInsightsRepository {
         startUtc: LocalDateTime,
         endUtcExclusive: LocalDateTime,
     ): List<WeekdayChargeRow>
+
+    /**
+     * 요일·시각별 충전 시작 건수. **KST로 옮긴 뒤 뽑고 `weekday`는 0이 일요일**이다 —
+     * `TeslaVehicleRepository.driveTimes`와 같은 규약이다. 0인 칸은 행이 오지 않는다.
+     */
+    fun chargeTimes(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<ChargeTimeRow>
+
+    /** 최고 속도 버킷별 주행 건수. 행이 온 버킷만 온다. */
+    fun speedBuckets(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<SpeedBucketRow>
+
+    /**
+     * 평균 속도 버킷별 거리·정격거리 소모. **나눗셈(`distance ÷ (duration_min ÷ 60)`)은 버킷만
+     * 고르고 응답에 나가지 않아** 「나눗셈을 하지 않는다」에 안 걸린다.
+     */
+    fun speedEnergyBuckets(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<SpeedEnergyBucketRow>
 }

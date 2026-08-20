@@ -77,3 +77,32 @@ data class WeekdayChargeRow(
     val weekday: Int,
     val chargingMin: Int,
 )
+
+/**
+ * 요일·시각별 충전 시작 건수. **`weekday`는 0이 일요일**(PostgreSQL `dow`)이다 —
+ * `DriveTimeRow`와 같은 규약이고, 같은 히트맵 짝이라 맞춰야 한다.
+ * (`WeekdayDriveRow`의 1=월요일과는 다르다.)
+ */
+data class ChargeTimeRow(
+    val weekday: Int,
+    val hour: Int,
+    val count: Int,
+)
+
+/** 최고 속도 버킷 하나의 건수. `bucket`은 1..7이고 경계는 `TeslaBuckets.SPEED`가 갖는다. */
+data class SpeedBucketRow(
+    val bucket: Int,
+    val driveCount: Int,
+)
+
+/**
+ * 평균 속도 버킷 하나의 합. `bucket`은 1..5이고 경계는 `TeslaBuckets.SPEED_ENERGY`가 갖는다.
+ *
+ * **건수를 내지 않는다.** 이 배열이 답하는 것은 「빠르게 달릴수록 전비가 어떻게 되나」이고,
+ * 그 답은 거리와 정격거리 소모 둘로 난다. 건수는 `speedBuckets`가 이미 낸다.
+ */
+data class SpeedEnergyBucketRow(
+    val bucket: Int,
+    val distanceKm: BigDecimal,
+    val ratedRangeUsedKm: BigDecimal,
+)
