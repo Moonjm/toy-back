@@ -149,7 +149,7 @@ data class ChargeLevelBucket(
 data class Charger(
     val name: String,
     val chargeCount: Int,
-    val energyAddedKwh: BigDecimal,
+    val energyAddedKwh: BigDecimal?,
     /** **실제로 낸 돈이다.** 그 충전소가 전부 금액 미입력이면 null이다 — 0이 아니다. */
     val cost: BigDecimal?,
     /**

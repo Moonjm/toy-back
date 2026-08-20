@@ -448,13 +448,11 @@ class JdbcTeslaInsightsRepository(
         """
 
         /**
-         * **모집단은 `/tesla/charges/totals`의 `CHARGE_POPULATION`과 같다** — 케이블만 꽂았다
-         * 뺀 축퇴 세션을 뺀다. 두 화면의 충전 건수가 서로 말이 되려면 같아야 한다.
+         * 모집단 근거는 `TeslaInsightsRepository.chargers` 참조.
          *
-         * COALESCE 순서는 `DRIVE_PLACES_SQL`과 같다 — 표시 이름으로 묶어야 재지오코딩으로
-         * 갈린 행이 하나로 합쳐진다. `cost_missing_count`가 없으면 미입력분과 실제 0원을
-         * 구분 못 해 비용 TOP 순위가 뒤집힌다. `ORDER BY` 마지막 열이 이름인 것은
-         * `LIMIT 10` 경계의 tie-breaker다.
+         * **COALESCE 순서는 `DRIVE_PLACES_SQL`과 같다** — 표시 이름으로 묶어야 재지오코딩으로
+         * 갈린 행이 하나로 합쳐진다. `cost_missing_count` 근거는 `Charger.costMissingCount`
+         * 참조. `ORDER BY` 마지막 열이 이름인 것은 `LIMIT 10` 경계의 tie-breaker다.
          */
         private const val CHARGERS_SQL = """
             SELECT COALESCE(g.name, a.name, a.road, a.city, a.display_name) AS name,
@@ -477,11 +475,10 @@ class JdbcTeslaInsightsRepository(
 
         /**
          * 주행 **도착지**의 주소로 센다. 출발지를 함께 세지 않는 이유는 어느 출발지든 직전
-         * 주행의 도착지라 두 번 세게 되기 때문이다.
+         * 주행의 도착지라 두 번 세게 되기 때문이다. 행이 늘 오는 근거는
+         * `TeslaInsightsRepository.regions` 참조.
          *
          * `COUNT(DISTINCT ...)`가 null을 건너뛰므로 주소가 하나도 없으면 셋 다 0이다.
-         * `GROUP BY`가 없어 행은 늘 온다.
-         *
          * 실측(2026-08-20) 최근 12개월 도시 21·주 5·나라 1.
          */
         private const val REGIONS_SQL = """

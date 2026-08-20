@@ -32,14 +32,15 @@ data class InsightsDriveMonthRow(
  * 한 달치 충전 집계. `/tesla/summary`의 `ChargeMonthRow`에 `chargingMin`이 더 있다 —
  * 정지 시간의 뺄셈에 쓴다.
  *
- * `cost`만 nullable이다. 금액 미입력 충전만 있는 달이면 `SUM`이 null이고, 그때 **0이 아니라
- * null이 사실이다**(「0원 냈다」가 아니라 「얼마인지 모른다」).
+ * `chargingMin` 말고는 전부 nullable이다. `cost`는 금액 미입력만 있는 달이면 `SUM`이
+ * null이고, `energyAddedKwh`·`energyUsedKwh`는 에너지를 잃은 채 금액만 남은 세션(`id=15`
+ * 계열, 실측 1건)만 있는 달이면 `SUM`이 null이다 — **0이 아니라 null이 사실이다.**
  */
 data class InsightsChargeMonthRow(
     val month: YearMonth,
     val chargeCount: Int,
-    val energyAddedKwh: BigDecimal,
-    val energyUsedKwh: BigDecimal,
+    val energyAddedKwh: BigDecimal?,
+    val energyUsedKwh: BigDecimal?,
     val cost: BigDecimal?,
     val chargingMin: Int,
 )
@@ -121,19 +122,15 @@ data class ChargeLevelBucketRow(
     val endCount: Int,
 )
 
-/**
- * 충전소 하나의 합. 이름은 지오펜스 → 주소 순으로 떨어진다(`DRIVE_PLACES_SQL`과 같은
- * COALESCE다).
- *
- * `cost`는 nullable이다 — 그 충전소의 충전이 전부 금액 미입력이면 `SUM`이 null이고,
- * 그때 **0이 아니라 null이 사실이다.**
- */
+/** 충전소 하나의 합. 이름 COALESCE 순서 근거는 `CHARGERS_SQL` 참조. */
 data class ChargerRow(
     val name: String,
     val chargeCount: Int,
-    val energyAddedKwh: BigDecimal,
+    /** 에너지를 잃은 채 금액만 남은 세션(실측 1건)만 있는 충전소면 `SUM`이 null이다 — 0이 아니다. */
+    val energyAddedKwh: BigDecimal?,
+    /** 근거는 `Charger.cost` 참조. */
     val cost: BigDecimal?,
-    /** 금액 미입력 건수. **이 값이 없으면 「충전소별 비용 TOP」 순위가 조용히 뒤집힌다.** */
+    /** 근거는 `Charger.costMissingCount` 참조. */
     val costMissingCount: Int,
 )
 
