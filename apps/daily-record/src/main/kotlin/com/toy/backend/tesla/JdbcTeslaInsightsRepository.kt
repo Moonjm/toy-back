@@ -78,6 +78,38 @@ class JdbcTeslaInsightsRepository(
                 )
             }.list()
 
+    override fun weekdayDrives(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<WeekdayDriveRow> =
+        teslaMateJdbcClient
+            .sql(WEEKDAY_DRIVES_SQL)
+            .param("start", startUtc)
+            .param("end", endUtcExclusive)
+            .query { rs, _ ->
+                WeekdayDriveRow(
+                    weekday = rs.getInt("weekday"),
+                    driveCount = rs.getInt("drive_count"),
+                    distanceKm = rs.getBigDecimal("distance_km"),
+                    drivingMin = rs.getInt("driving_min"),
+                )
+            }.list()
+
+    override fun weekdayCharges(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<WeekdayChargeRow> =
+        teslaMateJdbcClient
+            .sql(WEEKDAY_CHARGES_SQL)
+            .param("start", startUtc)
+            .param("end", endUtcExclusive)
+            .query { rs, _ ->
+                WeekdayChargeRow(
+                    weekday = rs.getInt("weekday"),
+                    chargingMin = rs.getInt("charging_min"),
+                )
+            }.list()
+
     private fun ResultSet.nullableInt(column: String): Int? = getObject(column) as Int?
 
     companion object {
@@ -194,6 +226,40 @@ class JdbcTeslaInsightsRepository(
                                   AND c.end_date   > p.from_date)
              GROUP BY month_start
              ORDER BY month_start
+        """
+
+        /**
+         * **`isodow`라 1이 월요일이다.** 같은 응답의 `driveTimes`·`chargeTimes`는 `dow`(0=일)를
+         * 쓴다 — 기존 계약이라 바꿀 수 없다. 한 응답에 두 벌이 나가는 셈이라 응답 타입 쪽에도
+         * 적어 두었다.
+         *
+         * **KST로 옮긴 뒤 뽑는다.** UTC로 뽑으면 월요일 아침 출근이 일요일 밤으로 찍힌다.
+         *
+         * 경계 컬럼이 `start_date`인 것은 월별 집계와 맞춘 것이다 — 자정을 걸친 주행은 출발한
+         * 요일로 친다.
+         */
+        private const val WEEKDAY_DRIVES_SQL = """
+            SELECT EXTRACT(isodow FROM d.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')::int AS weekday,
+                   COUNT(*)                                                                            AS drive_count,
+                   ROUND(SUM(d.distance)::numeric, 1)                                                  AS distance_km,
+                   SUM(d.duration_min)::int                                                            AS driving_min
+              FROM drives d
+             WHERE d.end_date IS NOT NULL
+               AND d.start_date >= :start
+               AND d.start_date <  :end
+             GROUP BY weekday
+             ORDER BY weekday
+        """
+
+        private const val WEEKDAY_CHARGES_SQL = """
+            SELECT EXTRACT(isodow FROM cp.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')::int AS weekday,
+                   COALESCE(SUM(cp.duration_min), 0)::int                                               AS charging_min
+              FROM charging_processes cp
+             WHERE cp.end_date IS NOT NULL
+               AND cp.start_date >= :start
+               AND cp.start_date <  :end
+             GROUP BY weekday
+             ORDER BY weekday
         """
     }
 }

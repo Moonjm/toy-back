@@ -27,6 +27,9 @@ class TeslaInsightsService(
         val drives = insightsRepository.driveMonthly(window.startUtc, window.endUtc).associateBy { it.month }
         val charges = insightsRepository.chargeMonthly(window.startUtc, window.endUtc).associateBy { it.month }
         val parkDrains = insightsRepository.parkDrainMonthly(window.startUtc, window.endUtc).associateBy { it.month }
+        val weekdayDrives = insightsRepository.weekdayDrives(window.startUtc, window.endUtc).associateBy { it.weekday }
+        val weekdayCharges = insightsRepository.weekdayCharges(window.startUtc, window.endUtc).associateBy { it.weekday }
+        val spans = TeslaTime.weekdaySpans(window.startKst, window.endKst)
 
         return TeslaInsightsResponse(
             months = months,
@@ -64,6 +67,20 @@ class TeslaInsightsService(
             maxSpeedKmh = stats.maxSpeedKmh,
             totalDistanceKm = stats.totalDistanceKm,
             recordedMonths = stats.recordedMonths,
+            weekday =
+                (1..7).map { weekday ->
+                    val drive = weekdayDrives[weekday]
+                    val charge = weekdayCharges[weekday]
+                    val span = spans.getValue(weekday)
+                    InsightsWeekday(
+                        weekday = weekday,
+                        driveCount = drive?.driveCount ?: 0,
+                        distanceKm = drive?.distanceKm ?: BigDecimal.ZERO,
+                        drivingMin = drive?.drivingMin ?: 0,
+                        occurrences = span.occurrences,
+                        idleMin = (span.elapsedMin - (drive?.drivingMin ?: 0) - (charge?.chargingMin ?: 0)).coerceAtLeast(0),
+                    )
+                },
         )
     }
 

@@ -59,3 +59,21 @@ data class ParkDrainMonthRow(
     val ratedKm: BigDecimal,
     val samples: Int,
 )
+
+/**
+ * 요일 하나의 주행 합. **`weekday`는 1이 월요일**(ISO)이고, `DriveTimeRow`의 0=일요일과
+ * 다르다 — 저쪽은 기존 계약이라 바꿀 수 없고 이쪽은 앱의 요일 막대가 월요일부터 시작한다.
+ * **두 배열이 한 응답에 함께 나가므로 이 차이를 응답 타입 쪽에도 적어 둔다.**
+ */
+data class WeekdayDriveRow(
+    val weekday: Int,
+    val driveCount: Int,
+    val distanceKm: BigDecimal,
+    val drivingMin: Int,
+)
+
+/** 요일 하나의 충전 시간. 정지 시간의 뺄셈에만 쓴다 — 그래서 건수·전력량이 없다. */
+data class WeekdayChargeRow(
+    val weekday: Int,
+    val chargingMin: Int,
+)

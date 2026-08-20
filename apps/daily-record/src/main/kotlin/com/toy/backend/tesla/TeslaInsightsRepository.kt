@@ -47,4 +47,19 @@ interface TeslaInsightsRepository {
         startUtc: LocalDateTime,
         endUtcExclusive: LocalDateTime,
     ): List<ParkDrainMonthRow>
+
+    /**
+     * 요일별 주행 합. **`weekday`는 1이 월요일**(ISO)이고 **KST로 옮긴 뒤 뽑는다** —
+     * UTC로 뽑으면 월요일 아침 출근이 일요일 밤으로 찍힌다. 행이 온 요일만 온다.
+     */
+    fun weekdayDrives(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<WeekdayDriveRow>
+
+    /** 요일별 충전 시간. 규칙은 `weekdayDrives`와 같다. */
+    fun weekdayCharges(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<WeekdayChargeRow>
 }

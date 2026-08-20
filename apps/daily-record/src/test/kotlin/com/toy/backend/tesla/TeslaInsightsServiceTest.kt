@@ -31,6 +31,8 @@ class TeslaInsightsServiceTest :
             every { insightsRepository.driveMonthly(any(), any()) } returns emptyList()
             every { insightsRepository.chargeMonthly(any(), any()) } returns emptyList()
             every { insightsRepository.parkDrainMonthly(any(), any()) } returns emptyList()
+            every { insightsRepository.weekdayDrives(any(), any()) } returns emptyList()
+            every { insightsRepository.weekdayCharges(any(), any()) } returns emptyList()
         }
 
         Given("insights — 범위 검증") {
@@ -156,6 +158,59 @@ class TeslaInsightsServiceTest :
                         .monthly
                         .single()
                         .idleMin shouldBe 0
+                }
+            }
+        }
+
+        Given("weekday — 요일 축") {
+            When("행이 하나도 없으면") {
+                Then("일곱 요일이 1(월)부터 자리를 지킨다") {
+                    stubEmpty()
+                    val weekday = service.insights(12).weekday
+
+                    weekday.size shouldBe 7
+                    weekday.map { it.weekday } shouldBe (1..7).toList()
+                    weekday.first().driveCount shouldBe 0
+                }
+            }
+
+            When("범위가 정확히 4주면") {
+                Then("occurrences가 요일마다 4다") {
+                    stubEmpty()
+                    // 범위 시작이 달 1일이라 정확한 주 수를 못 박을 수 없다.
+                    // 대신 합이 범위의 날 수와 같은지 본다 — 어느 날도 두 요일에 세어지지 않는다.
+                    val weekday = service.insights(3).weekday
+                    weekday.sumOf { it.occurrences } shouldBe
+                        TeslaTime
+                            .weekdaySpans(
+                                YearMonth
+                                    .from(TeslaTime.nowKst())
+                                    .minusMonths(2)
+                                    .atDay(1)
+                                    .atStartOfDay(),
+                                TeslaTime.nowKst(),
+                            ).values
+                            .sumOf { it.occurrences }
+                }
+            }
+
+            When("주행·충전이 있으면") {
+                Then("idleMin이 그 요일 경과 분에서 뺀 값이다") {
+                    stubEmpty()
+                    every { insightsRepository.weekdayDrives(any(), any()) } returns
+                        listOf(WeekdayDriveRow(1, 5, BigDecimal("80.0"), 200))
+                    every { insightsRepository.weekdayCharges(any(), any()) } returns
+                        listOf(WeekdayChargeRow(1, 100))
+
+                    val monday = service.insights(1).weekday.single { it.weekday == 1 }
+                    val span =
+                        TeslaTime
+                            .weekdaySpans(YearMonth.from(TeslaTime.nowKst()).atDay(1).atStartOfDay(), TeslaTime.nowKst())[1]!!
+
+                    // 서비스와 테스트가 TeslaTime.nowKst()를 따로 읽어 분 경계에서 ±1분 어긋날 수 있다.
+                    val diff = kotlin.math.abs(monday.idleMin - (span.elapsedMin - 300).coerceAtLeast(0))
+                    diff shouldBeLessThanOrEqual 1
+                    monday.occurrences shouldBe span.occurrences
                 }
             }
         }
