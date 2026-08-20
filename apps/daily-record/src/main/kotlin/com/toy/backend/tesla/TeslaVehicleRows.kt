@@ -93,7 +93,7 @@ data class BatteryHealthMonthRow(
  */
 
 /**
- * 온도 버킷 하나의 합. `bucket`은 1..5이고 그 경계는 `TeslaVehicleService.TEMPERATURE_BUCKETS`가
+ * 온도 버킷 하나의 합. `bucket`은 1..5이고 그 경계는 `TeslaBuckets.TEMPERATURE`가
  * 라벨로 갖는다 — **SQL의 `CASE`와 그 목록이 같은 숫자를 써야 한다.**
  *
  * `ratedRangeUsedKm`은 `start_rated_range_km - end_rated_range_km`의 합이다. kWh 환산
@@ -115,7 +115,7 @@ data class DriveTimeRow(
 
 /**
  * 거리 버킷 하나의 합. `bucket`은 1..5이고 경계는
- * `TeslaVehicleService.DISTANCE_BUCKETS`가 갖는다.
+ * `TeslaBuckets.DISTANCE`가 갖는다.
  */
 data class DriveDistanceBucketRow(
     val bucket: Int,

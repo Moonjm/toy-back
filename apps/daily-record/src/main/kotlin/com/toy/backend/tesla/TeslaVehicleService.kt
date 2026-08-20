@@ -112,7 +112,7 @@ class TeslaVehicleService(
             months = months,
             efficiencyKwhPerKm = vehicleRepository.carEfficiency(),
             temperatureBuckets =
-                TEMPERATURE_BUCKETS.map { (bucket, bounds) ->
+                TeslaBuckets.TEMPERATURE.map { (bucket, bounds) ->
                     val row = temperatures[bucket]
                     TemperatureBucket(
                         fromC = bounds.first,
@@ -127,7 +127,7 @@ class TeslaVehicleService(
                     DriveTime(weekday = it.weekday, hour = it.hour, count = it.count)
                 },
             distanceBuckets =
-                DISTANCE_BUCKETS.map { (bucket, bounds) ->
+                TeslaBuckets.DISTANCE.map { (bucket, bounds) ->
                     val row = distances[bucket]
                     DistanceBucket(
                         fromKm = bounds.first,
@@ -286,38 +286,6 @@ class TeslaVehicleService(
         const val MIN_HOURS = 1
         const val MAX_HOURS = 168
 
-        /**
-         * 온도 버킷의 **응답 라벨**이다(℃). `bucket` 번호 → (`fromC`, `toC`).
-         * 하한/상한이 없으면 null이고, 경계는 `from` 포함·`to` 미만이다.
-         *
-         * **`JdbcTeslaVehicleRepository.DRIVE_TEMPERATURE_BUCKETS_SQL`의 `CASE`와 같은 숫자여야
-         * 한다** — 거기는 임계값으로, 여기는 라벨로 쓴다. 한쪽만 고치면 응답의 라벨과 실제
-         * 집계가 어긋난다. 다섯 개인 이유는 계절이 갈리는 최소 단위라서고, 앱이 버킷을 정하면
-         * 서버가 원자료를 통째로 보내야 한다.
-         */
-        private val TEMPERATURE_BUCKETS: List<Pair<Int, Pair<Int?, Int?>>> =
-            listOf(
-                1 to (null to 0),
-                2 to (0 to 10),
-                3 to (10 to 20),
-                4 to (20 to 30),
-                5 to (30 to null),
-            )
-
-        /**
-         * 거리 버킷의 **응답 라벨**이다(km). `bucket` 번호 → (`fromKm`, `toKm`).
-         *
-         * **`JdbcTeslaVehicleRepository.DRIVE_DISTANCE_BUCKETS_SQL`의 `CASE`와 같은 숫자여야
-         * 한다.**
-         */
-        private val DISTANCE_BUCKETS: List<Pair<Int, Pair<Int, Int?>>> =
-            listOf(
-                1 to (0 to 5),
-                2 to (5 to 20),
-                3 to (20 to 50),
-                4 to (50 to 100),
-                5 to (100 to null),
-            )
         private const val EARTH_RADIUS_M = 6_371_000.0
     }
 }

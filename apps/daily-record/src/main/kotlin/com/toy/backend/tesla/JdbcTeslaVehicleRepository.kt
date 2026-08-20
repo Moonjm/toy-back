@@ -330,7 +330,7 @@ class JdbcTeslaVehicleRepository(
         """
 
         /**
-         * **버킷 경계는 `TeslaVehicleService.TEMPERATURE_BUCKETS`와 같은 숫자여야 한다** —
+         * **버킷 경계는 `TeslaBuckets.TEMPERATURE`와 같은 숫자여야 한다** —
          * 여기는 임계값으로, 거기는 응답 라벨(`fromC`·`toC`)로 쓴다. 한쪽만 고치면 응답의
          * 라벨과 실제 집계가 어긋난다.
          *
@@ -409,7 +409,7 @@ class JdbcTeslaVehicleRepository(
         """
 
         /**
-         * **버킷 경계는 `TeslaVehicleService.DISTANCE_BUCKETS`와 같은 숫자여야 한다.**
+         * **버킷 경계는 `TeslaBuckets.DISTANCE`와 같은 숫자여야 한다.**
          *
          * **온도·주행가능거리 조건을 걸지 않는다.** 거리 분포는 둘 다 쓰지 않는다.
          */
