@@ -1,5 +1,5 @@
 /*
- * `/tesla/insights`·`/tesla/battery-window`의 **행 타입**들. 리포지토리가 돌려주고 서비스가
+ * `/tesla/insights`·`/tesla/battery-window`의 행 타입들. 리포지토리가 돌려주고 서비스가
  * 받는다.
  *
  * **여기 있는 시각은 전부 UTC다** — TeslaMate가 타임존 없는 `timestamp` 컬럼에 UTC 값을 넣기
@@ -23,7 +23,7 @@ data class InsightsDriveMonthRow(
     val month: YearMonth,
     val driveCount: Int,
     val distanceKm: BigDecimal,
-    val drivingMin: Int,
+    val drivingMin: Int?,
     /** `start_rated_range_km − end_rated_range_km`의 합. **음수 주행은 0으로 보고 더한다.** */
     val ratedRangeUsedKm: BigDecimal,
 )

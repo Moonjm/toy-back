@@ -3,6 +3,7 @@ package com.toy.backend.tesla
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
+import java.sql.ResultSet
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.YearMonth
@@ -37,7 +38,7 @@ class JdbcTeslaInsightsRepository(
                     month = YearMonth.from(rs.getObject("month_start", LocalDate::class.java)),
                     driveCount = rs.getInt("drive_count"),
                     distanceKm = rs.getBigDecimal("distance_km"),
-                    drivingMin = rs.getInt("driving_min"),
+                    drivingMin = rs.nullableInt("driving_min"),
                     ratedRangeUsedKm = rs.getBigDecimal("rated_range_used_km"),
                 )
             }.list()
@@ -76,6 +77,8 @@ class JdbcTeslaInsightsRepository(
                     samples = rs.getInt("park_drain_samples"),
                 )
             }.list()
+
+    private fun ResultSet.nullableInt(column: String): Int? = getObject(column) as Int?
 
     companion object {
         /**
@@ -123,6 +126,9 @@ class JdbcTeslaInsightsRepository(
          * `/tesla/summary`의 `CHARGE_MONTHLY_SQL`과 같은 모집단이다 — 축퇴 세션을 걸러 내지
          * 않는 것도 그대로다(걸러 내면 두 화면의 충전 건수가 달라진다). `cost`의 `SUM`은
          * null을 건너뛰므로 실제로 낸 돈이 된다.
+         *
+         * `cost`는 `ROUND(..., 0)`으로 낸다 — `/tesla/summary`는 반올림하지 않지만 원화에 소수
+         * 단위가 없고 실측 439건이 전부 정수라 값은 같다(`/tesla/charges/totals`도 같은 꼴이다).
          *
          * **`duration_min`은 `COALESCE`로 0을 채운다** — 정지 시간의 뺄셈에서 null이 전체를
          * null로 만들면 안 되고, 실측으로 최근 6개월에 null이 0건이다.
