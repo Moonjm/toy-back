@@ -13,9 +13,12 @@ import org.springframework.web.bind.annotation.RestController
 import java.time.YearMonth
 
 /**
- * 충전(`/tesla/charges` 하위)과 차량(`/tesla/summary`·`/tesla/status`·`/tesla/battery-health`·
- * `/tesla/drive-insights`·`/tesla/state-timeline`)을 갈라 둔다 —
- * 읽는 테이블도 갱신 주기도 다르다. 한 파일에 여섯 엔드포인트를 두면 그 경계가 안 보인다.
+ * 충전(`/tesla/charges` 하위)·차량(`/tesla/summary`·`/tesla/status`·`/tesla/battery-health`·
+ * `/tesla/drive-insights`·`/tesla/state-timeline`)·통계(`TeslaInsightsController`)를 갈라 둔다 —
+ * 읽는 테이블도 갱신 주기도 다르다. 한 파일에 여덟 엔드포인트를 두면 그 경계가 안 보인다.
+ *
+ * **`/tesla/drive-insights`는 `/tesla/insights`가 흡수했다.** 앱이 넘어간 뒤 지운다 —
+ * 그때까지는 옛 계약을 쓰는 앱 버전이 살아 있다.
  *
  * 인증은 기존 SecurityConfig가 요구한다. `PublicEndpoint`를 두지 않는다 —
  * 주행 거리·위치·차량 상태는 충전 시각보다 더 직접적으로 생활을 드러낸다.
