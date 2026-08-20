@@ -83,52 +83,51 @@ idleMin = 그 달 총 분 − Σ drives.duration_min − Σ charging_processes.d
 
 ---
 
-## 확인이 필요한 전제
+## 실측 (2026-08-20)
 
-**이 설계는 실측 없이 썼다.** 앞선 설계들과 달리 DB를 직접 재지 못했으므로, 구현 전에 파이에서 아래를 돌리고 결과를 이 문서에 표로 남긴다. 값에 따라 설계가 바뀌는 자리를 함께 적는다.
+**이 설계는 처음에 실측 없이 썼고, 구현 직전에 파이에서 재 확인했다.** 아래가 그 결과다.
+값이 설계를 바꾼 자리는 표 밑에 따로 적는다.
 
-```sql
--- 1. 오토파일럿 컬럼이 정말 없는지 (있으면 앱 설계의 「그리지 않는 것」이 바뀐다)
-\d positions
+| # | 잰 것 | 결과 |
+|---|---|---|
+| 1 | `positions` 컬럼 | 오토파일럿 관련 컬럼 **없음**. `battery_level`·`usable_battery_level`·`rated_battery_range_km`은 있다 |
+| 2 | 주행 사이 순수 주차 구간 | 월 **14~99건**, 하락 합 월 75~169km. 표본은 넉넉하다 |
+| 3 | `drives.speed_max` 분포 | 0~140에 다 든다(140 이상 0건). 20km/h 폭이면 **7칸** |
+| 3b | 평균 속도(`distance ÷ duration`) 분포 | 0~100에 다 든다(100 이상 0건). 20km/h 폭이면 **5칸** |
+| 4 | 충전 시작 SoC 분포 | 10~50%에 몰려 있다(0~10% 2건, 90~100% 4건). 10% 폭으로 충분 |
+| 4b | 충전 종료 SoC 분포 | 90~100%가 260건 + **정확히 100%가 71건** |
+| 5 | `geofences` | **0행** — 앞선 설계에서 확인된 그대로다 |
+| 5b | `addresses` | 전 기간 도시 109·주 10·나라 1. 최근 12개월 도착지 기준 **도시 21·주 5·나라 1** |
+| 5c | 충전소별 집계 | 지오펜스가 0행이어도 **주소로 이름이 붙어 12곳이 나온다**(상위 138·126·73건). 금액 미입력이 섞인 곳이 있다 |
+| 6 | 48시간 SOC 창 | **32ms · 12,517행**. 168시간은 102,141행 |
+| 7 | `drives` NULL | 완료 주행 5,058건에 `speed_max`·`duration_min`·`distance`·`start_rated_range_km`·`outside_temp_avg` **전부 NULL 0건** |
+| 8 | 전체 기간 | 2021-09-03 ~ 2026-08-20, 완료 주행 5,058건 = **60개월** |
 
--- 2. 주행 사이 순수 주차 구간이 몇 개나 잡히는지 (팬텀 드레인 표본 수)
-WITH d AS (
-  SELECT end_date, end_rated_range_km,
-         LEAD(start_date)          OVER (ORDER BY start_date) AS next_start,
-         LEAD(start_rated_range_km) OVER (ORDER BY start_date) AS next_range
-  FROM drives WHERE end_date IS NOT NULL
-)
-SELECT date_trunc('month', end_date) AS m, count(*),
-       sum(end_rated_range_km - next_range) AS drop_km
-FROM d
-WHERE next_start IS NOT NULL
-  AND NOT EXISTS (SELECT 1 FROM charging_processes c
-                  WHERE c.start_date BETWEEN d.end_date AND d.next_start)
-GROUP BY 1 ORDER BY 1 DESC LIMIT 24;
+### 실측이 바꾼 것 넷
 
--- 3. speed_max 분포 (버킷 경계를 정한다)
-SELECT width_bucket(speed_max, 0, 160, 8) AS b, count(*)
-FROM drives WHERE speed_max IS NOT NULL GROUP BY 1 ORDER BY 1;
+**1. `battery-window`의 표본을 5분 슬롯으로 솎는다.** 스펙 초안은 「48시간이면 수백 개라
+솎지 않는다」고 썼는데 실측이 **12,517행**이었다(약 750KB). 쿼리는 32ms라 초안이 정한 폴백
+조건(「1초를 넘으면」)에 걸리지 않지만, **그 조건이 막으려던 것은 시간이 아니라 무게다.**
 
--- 4. 충전 시작·종료 배터리 분포 (버킷 폭 10%로 충분한지)
-SELECT width_bucket(start_battery_level, 0, 100, 10) AS b, count(*)
-FROM charging_processes WHERE end_date IS NOT NULL GROUP BY 1 ORDER BY 1;
+5분마다 첫 행 하나만 남기면 48시간 **82개**, 168시간 **423개**다(67ms·298ms). 12,517행이
+82슬롯으로 줄어드는 이유는 표본이 고르게 깔려 있지 않기 때문이다 — TeslaMate는 차가 깨어
+있을 때만 위치를 쌓아서, 12,517행이 48시간 중 주행·충전한 몇 시간에 몰려 있다. 주차 중에는
+애초에 행이 없다. **즉 솎아서 잃는 것은 주행 중의 초 단위 해상도뿐이고, 48시간을 한 화면에
+그리는 차트에서 그 해상도는 픽셀로도 안 보인다.**
 
--- 5. 지오펜스·주소가 있는지 (위치 섹션이 통째로 비는지)
-SELECT count(*) FROM geofences;
-SELECT count(DISTINCT city), count(DISTINCT state), count(DISTINCT country) FROM addresses;
+**2. `usableBatteryLevel`은 대부분 null이다.** 최근 30일 392,054행 중 **11,575행(3.0%)**만
+채워져 있다. 계약에서 빼지는 않는다(있는 3%는 진짜 값이다). **앱이 이 필드로 선을 그리려
+하면 거의 다 끊긴다** — 주 계열은 `batteryLevel`이고 `usableBatteryLevel`은 있을 때만 점을
+찍는 보조 계열이다.
 
--- 6. 48시간 창 SOC 표본 수와 소요 시간
-EXPLAIN ANALYZE
-SELECT date, battery_level, usable_battery_level, rated_battery_range_km
-FROM positions
-WHERE car_id = 1 AND date >= now() - interval '48 hours'
-ORDER BY date;
-```
+**3. `bestEfficiency`에 거리 하한이 있어야 한다.** 하한 없이 `distance ÷ ΔratedRange` 최대를
+뽑으면 **0.2km 주행이 8.2배로 1등**이 된다(정격거리 표시가 안 움직인 짧은 주행이다). 하한
+20km를 걸면 26.7km/15.3km(1.74배)가 1등이고 2·3위도 47.0km·26.5km으로 말이 된다.
 
-**5번이 0이면** 앱의 위치 섹션(도시 수·자주 가는 곳·충전소별 비용)은 통째로 감춰진다 — 앞선 설계에서 이미 `geofences` 0행이 이 차량의 기본 상태로 확인됐다. 그래도 계약에는 필드를 두고 빈 배열을 낸다.
-
-**6번이 1초를 넘으면** 표본을 5분 간격으로 솎아 내리거나 창을 24시간으로 줄인다.
+**4. 팬텀 드레인에 음수 구간이 3,960:628로 섞여 있다.** 충전 기록이 없는 주차인데 정격거리가
+**늘어난** 구간이다(BMS 재보정, 또는 TeslaMate가 세션으로 못 잡은 충전). **0으로 자르지
+않고 부호 그대로 더한다** — 자르면 합이 위로 편향된다. 월별 합은 어차피 전부 양수로
+나온다(75~169km).
 
 ---
 
@@ -207,6 +206,8 @@ GET /tesla/insights?months=12
 - **`chargers[].costMissingCount`를 함께 낸다.** 금액 미입력 충전이 섞이면 「충전소별 비용 TOP」 순위가 뒤집힌다. 앱이 「4건 금액 없음」을 적을 수 있어야 한다. `/tesla/charges/totals`가 같은 이유로 이미 이 필드를 낸다.
 - **`temperatureBuckets`에 `distanceKm`과 `ratedRangeUsedKm`이 둘 다 있다.** 기존 계약 그대로다. 종합 효율(정격 대비 실주행)은 이 배열의 합으로 앱이 낸다 — 별도 필드를 두지 않는다.
 - **`fromC`가 `null`인 첫 버킷**은 「0℃ 미만」을 뜻한다. 기존 계약 그대로다.
+- **진행 중인 달의 `idleMin`은 「지금」까지만 센다.** 달 전체 분에서 빼면 8월 20일에 8월의 정지 시간이 아직 오지 않은 11일치까지 포함한다 — 그 달만 막대가 솟는다. 요일별 `occurrences`도 같다: 아직 오지 않은 그 달의 요일은 세지 않는다.
+- **`parkDrainRatedKm`은 음수 구간을 0으로 자르지 않는다.** 충전 기록 없이 정격거리가 늘어난 구간이 3,960:628로 섞여 있고(실측), 자르면 합이 위로 편향된다. 월 합은 어차피 전부 양수다.
 
 ### 응답 크기
 
@@ -221,6 +222,18 @@ GET /tesla/insights?months=12
 3. **`GROUP BY`로 빈 달이 사라지지 않게** 달 축을 `generate_series`로 만들고 좌측 조인한다. 기존 `trend`가 쓰는 방식과 같다.
 
 `speedEnergyBuckets`의 평균 속도는 `distance / (duration_min / 60.0)`으로 주행마다 구해 버킷을 나눈다. **이 나눗셈은 버킷을 고르기 위한 것이라 응답에 나가지 않으므로** 「나눗셈을 하지 않는다」와 부딪히지 않는다.
+
+**버킷 경계는 실측이 정했다.**
+
+| 배열 | 폭 | 칸 수 | 근거 |
+|---|---|---|---|
+| `speedBuckets`(`speed_max`) | 20 km/h | 7 (`0~20` … `120~`) | 실측 3 — 140 이상 0건 |
+| `speedEnergyBuckets`(평균 속도) | 20 km/h | 5 (`0~20` … `80~`) | 실측 3b — 100 이상 0건 |
+| `chargeStartLevels`·`chargeEndLevels` | 10 %p | 10 (`0~10` … `90~100`) | 실측 4·4b |
+
+**충전 SoC 버킷의 마지막 칸만 양끝이 닫힌다**(`90 이상 100 이하`). 실측 4b에서 정확히 100%로 끝난 충전이 71건인데, 다른 배열처럼 「`to` 미만」으로 두면 그 71건이 어느 칸에도 안 들어간다. `start_battery_level`·`end_battery_level`이 null인 충전이 1건 있어 세지 않는다.
+
+`records.bestEfficiency`에는 **거리 하한 20km**를 건다. 하한이 없으면 정격거리 표시가 움직이지 않은 0.2km 주행이 1등이 된다(실측 3번 아래 「실측이 바꾼 것」 3).
 
 `regions`는 `drives.end_address_id → addresses`를 조인해 `city`/`state`/`country`를 distinct 센다.
 
@@ -239,7 +252,8 @@ GET /tesla/battery-window?hours=48
   "from": "2026-08-18T15:00:00",
   "to":   "2026-08-20T15:00:00",
   "samples": [
-    { "at": "2026-08-18T15:02:00", "batteryLevel": 62, "usableBatteryLevel": 61 }
+    { "at": "2026-08-18T15:02:00", "batteryLevel": 62, "usableBatteryLevel": 61 },
+    { "at": "2026-08-18T15:07:00", "batteryLevel": 61, "usableBatteryLevel": null }
   ],
   // 이 창 안의 충전 구간. 앱이 선 위에 다른 색으로 겹쳐 그린다.
   "charges": [{ "from": "2026-08-19T23:10:00", "to": "2026-08-20T02:40:00" }],
@@ -252,7 +266,9 @@ GET /tesla/battery-window?hours=48
 - **`to`는 요청 시각이다.** 자정에 맞추지 않는다 — 화면의 오른쪽 끝이 「지금」이어야 한다. `/tesla/state-timeline`이 4단계 개정에서 내린 결정과 같다.
 - **`parkDrain`이 창을 안 따르는 이유:** 48시간 안에 순수 주차 구간이 하나도 없는 날이 흔하다. 「최근 7일」로 고정해야 숫자가 늘 나온다. `samples`가 0이면 앱이 그 줄을 감춘다.
 - **`parkDrain`도 나누지 않는다.** 하락 정격거리와 그 시간을 함께 내고, 앱이 `km/시간` 또는 `%/일`로 만든다.
-- **표본을 솎지 않는다.** 48시간이면 수백 개다. `/tesla/charges/{id}/curve`가 완속 1,700개를 줄이지 않는 것과 같은 판단이다. 위 6번 실측이 1초를 넘으면 그때 다시 본다.
+- **표본을 5분 슬롯으로 솎는다.** 초안은 「48시간이면 수백 개라 솎지 않는다」였는데 실측이 12,517행이었다(위 실측 6). 5분마다 첫 행 하나만 남겨 48시간 82개·168시간 423개로 낸다 — 자세한 근거는 「실측이 바꾼 것 넷」의 1번.
+- **`usableBatteryLevel`은 대부분 null이다**(실측 3.0%). 주 계열은 `batteryLevel`이고, 이 값은 있을 때만 찍는 보조 계열이다.
+- **`at`은 그 슬롯의 실제 표본 시각이다.** 슬롯 경계(5분 눈금)로 옮기지 않는다 — 옮기면 없는 시각의 값이 된다.
 
 ---
 
