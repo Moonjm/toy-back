@@ -374,13 +374,36 @@ class JdbcTeslaInsightsRepository(
              ORDER BY weekday
         """
 
+        /**
+         * **시작 요일에 몰지 않고 KST 자정으로 쪼개 넣는다.** 실측으로 전 기간 충전 485건 중
+         * 310건(64%)이 자정을 걸친다 — 토요일 23시에 꽂아 일요일 07시에 빼면 8시간 전부가
+         * 토요일로 잡혀 `idleMin`에서 토요일이 그만큼 줄고 일요일이 그만큼 는다(최근 12개월
+         * 기준 일요일 `idleMin`이 약 12% 과대).
+         *
+         * 모집단은 그대로다 — `cp.start_date >= :start AND < :end`, `end_date IS NOT NULL`도
+         * 안 바뀐다. **어느 충전을 세는지는 그대로고, 그 시간을 어느 요일에 넣는지만 바뀐다.**
+         * `duration_min` 대신 `(end_kst − start_kst)`를 쓰는데, 쪼개려면 시각이 필요해서다 —
+         * 실측 484건 전부 둘의 차이가 1분 이내(최대 0.5분)라 안전하다. `generate_series`의
+         * 끝이 정확히 자정이면 0분짜리 칸이 하나 더 생기지만 합에 0을 더할 뿐이라 무해하다.
+         */
         private const val WEEKDAY_CHARGES_SQL = """
-            SELECT EXTRACT(isodow FROM cp.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')::int AS weekday,
-                   COALESCE(SUM(cp.duration_min), 0)::int                                               AS charging_min
-              FROM charging_processes cp
-             WHERE cp.end_date IS NOT NULL
-               AND cp.start_date >= :start
-               AND cp.start_date <  :end
+            WITH span AS (
+                SELECT (cp.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul') AS from_kst,
+                       (cp.end_date   AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul') AS to_kst
+                  FROM charging_processes cp
+                 WHERE cp.end_date IS NOT NULL
+                   AND cp.start_date >= :start
+                   AND cp.start_date <  :end
+            )
+            SELECT EXTRACT(isodow FROM day)::int AS weekday,
+                   COALESCE(ROUND(SUM(
+                       EXTRACT(epoch FROM (LEAST(span.to_kst, day + interval '1 day')
+                                         - GREATEST(span.from_kst, day))) / 60.0
+                   )), 0)::int AS charging_min
+              FROM span,
+                   generate_series(date_trunc('day', span.from_kst),
+                                   date_trunc('day', span.to_kst),
+                                   interval '1 day') AS day
              GROUP BY weekday
              ORDER BY weekday
         """
