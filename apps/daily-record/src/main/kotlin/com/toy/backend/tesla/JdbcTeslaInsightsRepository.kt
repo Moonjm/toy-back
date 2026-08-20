@@ -149,6 +149,52 @@ class JdbcTeslaInsightsRepository(
                 )
             }.list()
 
+    override fun chargeLevelBuckets(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<ChargeLevelBucketRow> =
+        teslaMateJdbcClient
+            .sql(CHARGE_LEVEL_BUCKETS_SQL)
+            .param("start", startUtc)
+            .param("end", endUtcExclusive)
+            .query { rs, _ ->
+                ChargeLevelBucketRow(
+                    bucket = rs.getInt("bucket"),
+                    startCount = rs.getInt("start_count"),
+                    endCount = rs.getInt("end_count"),
+                )
+            }.list()
+
+    override fun chargers(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<ChargerRow> =
+        teslaMateJdbcClient
+            .sql(CHARGERS_SQL)
+            .param("start", startUtc)
+            .param("end", endUtcExclusive)
+            .query { rs, _ ->
+                ChargerRow(
+                    name = rs.getString("name"),
+                    chargeCount = rs.getInt("charge_count"),
+                    energyAddedKwh = rs.getBigDecimal("energy_added_kwh"),
+                    cost = rs.getBigDecimal("cost"),
+                    costMissingCount = rs.getInt("cost_missing_count"),
+                )
+            }.list()
+
+    override fun regions(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): RegionRow =
+        teslaMateJdbcClient
+            .sql(REGIONS_SQL)
+            .param("start", startUtc)
+            .param("end", endUtcExclusive)
+            .query { rs, _ ->
+                RegionRow(rs.getInt("cities"), rs.getInt("states"), rs.getInt("countries"))
+            }.single()
+
     private fun ResultSet.nullableInt(column: String): Int? = getObject(column) as Int?
 
     companion object {
@@ -296,7 +342,6 @@ class JdbcTeslaInsightsRepository(
              ORDER BY weekday
         """
 
-        /** 규약은 `JdbcTeslaVehicleRepository.DRIVE_TIMES_SQL`과 같다 — `dow`라 0이 일요일이다. */
         private const val CHARGE_TIMES_SQL = """
             SELECT EXTRACT(dow  FROM cp.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')::int AS weekday,
                    EXTRACT(hour FROM cp.start_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Seoul')::int AS hour,
@@ -367,6 +412,88 @@ class JdbcTeslaInsightsRepository(
               FROM d
              GROUP BY bucket
              ORDER BY bucket
+        """
+
+        /**
+         * **`LEAST(level / 10, 9) + 1`이 급소다.** `level / 10 + 1`이면 정확히 100%가 11번
+         * 칸이 되어 `TeslaBuckets.CHARGE_LEVEL`의 어느 라벨에도 안 붙는다 —
+         * 실측(2026-08-20)으로 그런 충전이 71건이고 종료 SoC 중 가장 흔한 값이다.
+         *
+         * 시작과 종료를 `UNION ALL`로 한 번에 뽑는다 — 같은 모집단 위의 두 분포라 쿼리를
+         * 나누면 같은 테이블을 두 번 훑는다. `start_battery_level`·`end_battery_level`이
+         * null인 충전이 실측 1건 있어 각각 자기 쪽에서만 뺀다 — 공통 WHERE로 올리면 한쪽
+         * 지표의 조건이 다른 쪽 표본을 깎는다.
+         */
+        private const val CHARGE_LEVEL_BUCKETS_SQL = """
+            SELECT b.bucket,
+                   COUNT(*) FILTER (WHERE b.kind = 's') AS start_count,
+                   COUNT(*) FILTER (WHERE b.kind = 'e') AS end_count
+              FROM (
+                    SELECT 's' AS kind, LEAST(cp.start_battery_level / 10, 9) + 1 AS bucket
+                      FROM charging_processes cp
+                     WHERE cp.end_date IS NOT NULL
+                       AND cp.start_battery_level IS NOT NULL
+                       AND cp.start_date >= :start
+                       AND cp.start_date <  :end
+                    UNION ALL
+                    SELECT 'e', LEAST(cp.end_battery_level / 10, 9) + 1
+                      FROM charging_processes cp
+                     WHERE cp.end_date IS NOT NULL
+                       AND cp.end_battery_level IS NOT NULL
+                       AND cp.start_date >= :start
+                       AND cp.start_date <  :end
+                   ) b
+             GROUP BY b.bucket
+             ORDER BY b.bucket
+        """
+
+        /**
+         * **모집단은 `/tesla/charges/totals`의 `CHARGE_POPULATION`과 같다** — 케이블만 꽂았다
+         * 뺀 축퇴 세션을 뺀다. 두 화면의 충전 건수가 서로 말이 되려면 같아야 한다.
+         *
+         * COALESCE 순서는 `DRIVE_PLACES_SQL`과 같다 — 표시 이름으로 묶어야 재지오코딩으로
+         * 갈린 행이 하나로 합쳐진다. `cost_missing_count`가 없으면 미입력분과 실제 0원을
+         * 구분 못 해 비용 TOP 순위가 뒤집힌다. `ORDER BY` 마지막 열이 이름인 것은
+         * `LIMIT 10` 경계의 tie-breaker다.
+         */
+        private const val CHARGERS_SQL = """
+            SELECT COALESCE(g.name, a.name, a.road, a.city, a.display_name) AS name,
+                   COUNT(*)                               AS charge_count,
+                   ROUND(SUM(cp.charge_energy_added), 1)  AS energy_added_kwh,
+                   ROUND(SUM(cp.cost), 0)                 AS cost,
+                   COUNT(*) FILTER (WHERE cp.cost IS NULL) AS cost_missing_count
+              FROM charging_processes cp
+              LEFT JOIN geofences g ON g.id = cp.geofence_id
+              LEFT JOIN addresses a ON a.id = cp.address_id
+             WHERE cp.end_date IS NOT NULL
+               AND (cp.charge_energy_added > 0 OR cp.cost IS NOT NULL)
+               AND COALESCE(g.name, a.name, a.road, a.city, a.display_name) IS NOT NULL
+               AND cp.start_date >= :start
+               AND cp.start_date <  :end
+             GROUP BY 1
+             ORDER BY charge_count DESC, energy_added_kwh DESC, name
+             LIMIT 10
+        """
+
+        /**
+         * 주행 **도착지**의 주소로 센다. 출발지를 함께 세지 않는 이유는 어느 출발지든 직전
+         * 주행의 도착지라 두 번 세게 되기 때문이다.
+         *
+         * `COUNT(DISTINCT ...)`가 null을 건너뛰므로 주소가 하나도 없으면 셋 다 0이다.
+         * `GROUP BY`가 없어 행은 늘 온다.
+         *
+         * 실측(2026-08-20) 최근 12개월 도시 21·주 5·나라 1.
+         */
+        private const val REGIONS_SQL = """
+            SELECT COUNT(DISTINCT a.city)    AS cities,
+                   COUNT(DISTINCT a.state)   AS states,
+                   COUNT(DISTINCT a.country) AS countries
+              FROM drives d
+              JOIN addresses a ON a.id = d.end_address_id
+             WHERE d.end_date IS NOT NULL
+               AND d.distance > 0
+               AND d.start_date >= :start
+               AND d.start_date <  :end
         """
     }
 }

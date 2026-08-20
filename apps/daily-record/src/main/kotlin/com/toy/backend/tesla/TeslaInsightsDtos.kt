@@ -45,6 +45,14 @@ data class TeslaInsightsResponse(
     val speedBuckets: List<SpeedBucket>,
     /** 다섯 개가 늘 온다. 주행 한 건의 **평균** 속도별 전비 재료다. */
     val speedEnergyBuckets: List<SpeedEnergyBucket>,
+    /** 열 개가 늘 온다. 충전을 **시작한** SoC 분포다. */
+    val chargeStartLevels: List<ChargeLevelBucket>,
+    /** 열 개가 늘 온다. 충전을 **끝낸** SoC 분포다. */
+    val chargeEndLevels: List<ChargeLevelBucket>,
+    /** 충전소 상위 10곳. 지오펜스가 없으면 주소로 떨어진다. 없으면 빈 배열이다. */
+    val chargers: List<Charger>,
+    /** 다녀온 지역 수. 주소가 없으면 셋 다 0이다 — null이 아니다. */
+    val regions: Regions,
 )
 
 /**
@@ -121,4 +129,40 @@ data class SpeedEnergyBucket(
     val toKmh: Int?,
     val distanceKm: BigDecimal,
     val ratedRangeUsedKm: BigDecimal,
+)
+
+/**
+ * 충전 SoC 버킷. 경계는 `fromPct` 포함, `toPct` 미만인데 **마지막 칸(`90~100`)만
+ * 양끝이 닫힌다** — 정확히 100%로 끝난 충전이 실측 71건이라, 「미만」으로 두면 가장 흔한
+ * 값이 어느 칸에도 안 들어간다.
+ */
+data class ChargeLevelBucket(
+    val fromPct: Int,
+    val toPct: Int,
+    val count: Int,
+)
+
+/**
+ * 충전소 하나. **표시 이름으로 묶여 오므로 이 목록 안에서 `name`은 유일하다** —
+ * 앱이 이름을 행 식별에 써도 안전하다. 좌표는 내지 않는다.
+ */
+data class Charger(
+    val name: String,
+    val chargeCount: Int,
+    val energyAddedKwh: BigDecimal,
+    /** **실제로 낸 돈이다.** 그 충전소가 전부 금액 미입력이면 null이다 — 0이 아니다. */
+    val cost: BigDecimal?,
+    /**
+     * 금액 미입력 건수. 앱이 「4건 금액 없음」을 적을 수 있어야 한다 —
+     * 없으면 「충전소별 비용 TOP」 순위가 조용히 뒤집힌다.
+     * `/tesla/charges/totals`가 같은 이유로 같은 필드를 낸다.
+     */
+    val costMissingCount: Int,
+)
+
+/** 주행 도착지 주소 기준 지역 수. 이 차량은 나라가 1이지만 필드를 둔다 — 앱이 감출지 정한다. */
+data class Regions(
+    val cities: Int,
+    val states: Int,
+    val countries: Int,
 )

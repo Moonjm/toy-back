@@ -36,6 +36,9 @@ class TeslaInsightsServiceTest :
             every { insightsRepository.chargeTimes(any(), any()) } returns emptyList()
             every { insightsRepository.speedBuckets(any(), any()) } returns emptyList()
             every { insightsRepository.speedEnergyBuckets(any(), any()) } returns emptyList()
+            every { insightsRepository.chargeLevelBuckets(any(), any()) } returns emptyList()
+            every { insightsRepository.chargers(any(), any()) } returns emptyList()
+            every { insightsRepository.regions(any(), any()) } returns RegionRow(0, 0, 0)
         }
 
         Given("insights — 범위 검증") {
@@ -258,6 +261,61 @@ class TeslaInsightsServiceTest :
                     times.single().weekday shouldBe 6
                     times.single().hour shouldBe 22
                     times.single().count shouldBe 10
+                }
+            }
+        }
+
+        Given("충전 SoC 버킷") {
+            When("행이 하나도 없으면") {
+                Then("시작·종료 각각 열 칸이 자리를 지킨다") {
+                    stubEmpty()
+                    val response = service.insights(12)
+
+                    response.chargeStartLevels.size shouldBe 10
+                    response.chargeEndLevels.size shouldBe 10
+                    response.chargeEndLevels.last().fromPct shouldBe 90
+                    response.chargeEndLevels.last().toPct shouldBe 100
+                }
+            }
+
+            When("100%로 끝난 충전이 오면") {
+                Then("마지막 칸에 든다 — 열한 번째 칸이 생기지 않는다") {
+                    stubEmpty()
+                    every { insightsRepository.chargeLevelBuckets(any(), any()) } returns
+                        listOf(ChargeLevelBucketRow(bucket = 10, startCount = 4, endCount = 71))
+
+                    val response = service.insights(12)
+                    response.chargeEndLevels.size shouldBe 10
+                    response.chargeEndLevels.last().count shouldBe 71
+                    response.chargeStartLevels.last().count shouldBe 4
+                }
+            }
+        }
+
+        Given("chargers·regions") {
+            When("지오펜스가 0행이면") {
+                Then("chargers가 null이 아니라 빈 배열이다") {
+                    stubEmpty()
+                    service.insights(12).chargers shouldBe emptyList()
+                }
+            }
+
+            When("금액 미입력이 섞여 있으면") {
+                Then("그 개수를 함께 낸다") {
+                    stubEmpty()
+                    every { insightsRepository.chargers(any(), any()) } returns
+                        listOf(ChargerRow("Soraebi-ro", 5, BigDecimal("173.6"), null, 5))
+
+                    val charger = service.insights(12).chargers.single()
+                    charger.cost shouldBe null
+                    charger.costMissingCount shouldBe 5
+                }
+            }
+
+            When("주소가 하나도 없으면") {
+                Then("regions가 전부 0이다 — null이 아니다") {
+                    stubEmpty()
+                    service.insights(12).regions.cities shouldBe 0
                 }
             }
         }

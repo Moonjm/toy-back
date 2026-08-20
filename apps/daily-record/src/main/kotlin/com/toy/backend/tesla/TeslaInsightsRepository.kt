@@ -83,4 +83,26 @@ interface TeslaInsightsRepository {
         startUtc: LocalDateTime,
         endUtcExclusive: LocalDateTime,
     ): List<SpeedEnergyBucketRow>
+
+    /** 충전 시작·종료 SoC 분포. 행이 온 버킷만 온다. */
+    fun chargeLevelBuckets(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<ChargeLevelBucketRow>
+
+    /**
+     * 충전소별 합, 건수 많은 순 상위 10곳. 이름이 끝내 없는 충전은 세지 않는다.
+     *
+     * 모집단은 `/tesla/charges/totals`와 같다 — 케이블만 꽂았다 뺀 축퇴 세션을 뺀다.
+     */
+    fun chargers(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<ChargerRow>
+
+    /** 주행 도착지 기준 지역 수. **행은 늘 온다**(`GROUP BY`가 없다). */
+    fun regions(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): RegionRow
 }

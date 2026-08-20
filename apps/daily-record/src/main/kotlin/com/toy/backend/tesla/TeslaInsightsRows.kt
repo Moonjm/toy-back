@@ -106,3 +106,40 @@ data class SpeedEnergyBucketRow(
     val distanceKm: BigDecimal,
     val ratedRangeUsedKm: BigDecimal,
 )
+
+/**
+ * 충전 SoC 버킷 하나. 시작과 종료를 한 행에 함께 낸다 — 같은 모집단 위의 두 분포라
+ * 쿼리를 나누면 같은 테이블을 두 번 훑는다. `bucket`은 1..10이고 경계는
+ * `TeslaBuckets.CHARGE_LEVEL`이 갖는다.
+ *
+ * **정확히 100%는 10번 칸이다.** `level / 10 + 1`이면 11번이 되어 어느 라벨에도 안 붙는데,
+ * 실측으로 그런 충전이 71건 — 가장 흔한 종료 SoC가 통째로 사라진다.
+ */
+data class ChargeLevelBucketRow(
+    val bucket: Int,
+    val startCount: Int,
+    val endCount: Int,
+)
+
+/**
+ * 충전소 하나의 합. 이름은 지오펜스 → 주소 순으로 떨어진다(`DRIVE_PLACES_SQL`과 같은
+ * COALESCE다).
+ *
+ * `cost`는 nullable이다 — 그 충전소의 충전이 전부 금액 미입력이면 `SUM`이 null이고,
+ * 그때 **0이 아니라 null이 사실이다.**
+ */
+data class ChargerRow(
+    val name: String,
+    val chargeCount: Int,
+    val energyAddedKwh: BigDecimal,
+    val cost: BigDecimal?,
+    /** 금액 미입력 건수. **이 값이 없으면 「충전소별 비용 TOP」 순위가 조용히 뒤집힌다.** */
+    val costMissingCount: Int,
+)
+
+/** 다녀온 지역 수. `GROUP BY`가 없어 주소가 하나도 없어도 0이 든 행이 온다. */
+data class RegionRow(
+    val cities: Int,
+    val states: Int,
+    val countries: Int,
+)

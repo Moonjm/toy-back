@@ -32,6 +32,7 @@ class TeslaInsightsService(
         val spans = TeslaTime.weekdaySpans(window.startKst, window.endKst)
         val speeds = insightsRepository.speedBuckets(window.startUtc, window.endUtc).associateBy { it.bucket }
         val speedEnergies = insightsRepository.speedEnergyBuckets(window.startUtc, window.endUtc).associateBy { it.bucket }
+        val chargeLevels = insightsRepository.chargeLevelBuckets(window.startUtc, window.endUtc).associateBy { it.bucket }
 
         return TeslaInsightsResponse(
             months = months,
@@ -104,6 +105,28 @@ class TeslaInsightsService(
                         distanceKm = row?.distanceKm ?: BigDecimal.ZERO,
                         ratedRangeUsedKm = row?.ratedRangeUsedKm ?: BigDecimal.ZERO,
                     )
+                },
+            chargeStartLevels =
+                TeslaBuckets.CHARGE_LEVEL.map { (bucket, bounds) ->
+                    ChargeLevelBucket(bounds.first, bounds.second, chargeLevels[bucket]?.startCount ?: 0)
+                },
+            chargeEndLevels =
+                TeslaBuckets.CHARGE_LEVEL.map { (bucket, bounds) ->
+                    ChargeLevelBucket(bounds.first, bounds.second, chargeLevels[bucket]?.endCount ?: 0)
+                },
+            chargers =
+                insightsRepository.chargers(window.startUtc, window.endUtc).map {
+                    Charger(
+                        name = it.name,
+                        chargeCount = it.chargeCount,
+                        energyAddedKwh = it.energyAddedKwh,
+                        cost = it.cost,
+                        costMissingCount = it.costMissingCount,
+                    )
+                },
+            regions =
+                insightsRepository.regions(window.startUtc, window.endUtc).let {
+                    Regions(cities = it.cities, states = it.states, countries = it.countries)
                 },
         )
     }
