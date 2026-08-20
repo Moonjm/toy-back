@@ -205,7 +205,7 @@ class JdbcTeslaInsightsRepository(
                     driveId = rs.getLong("drive_id"),
                     startedAtUtc = rs.getObject("started_at", LocalDateTime::class.java),
                     distanceKm = rs.getBigDecimal("distance_km"),
-                    durationMin = rs.getInt("duration_min"),
+                    durationMin = rs.nullableInt("duration_min"),
                     ratedRangeUsedKm = rs.getBigDecimal("rated_range_used_km"),
                 )
             }.list()
@@ -584,8 +584,12 @@ class JdbcTeslaInsightsRepository(
          * 같은 주행(id 3619)이고, 동률이 나올 때 어느 것이 뽑힐지 실행마다 달라지면 안 된다.
          *
          * **급소 3 — PostgreSQL은 `DESC`의 기본이 `NULLS FIRST`라 NULL 행이 1등으로 뽑힌다.**
-         * 실측 NULL은 0건이지만 `SPEED_BUCKETS_SQL`과 같은 이유로 CTE에서 명시로 걷고
-         * `NULLS LAST`도 붙인다.
+         * 실측 NULL은 0건이지만 `SPEED_BUCKETS_SQL`과 같은 이유로 갈래마다 명시로 걷고
+         * `NULLS LAST`도 붙인다(안전벨트라 조건과 겹쳐도 남긴다).
+         *
+         * **급소 4 — `NOT NULL` 조건은 공통 CTE가 아니라 갈래별 `SELECT`에 건다.** CTE에 몰면
+         * 정격거리가 없는 주행이 `distance`·`duration` 갈래에서도 빠져 계약(「주행이 없을 때만
+         * null」, `InsightsRecords` 참조)이 깨진다 — 각 갈래는 자기가 쓰는 값만 있으면 된다.
          *
          * `ROUND`의 자릿수는 다른 집계와 맞춘다 — 거리는 소수 한 자리다.
          */
@@ -595,20 +599,19 @@ class JdbcTeslaInsightsRepository(
                        start_rated_range_km - end_rated_range_km AS rated_used
                   FROM drives
                  WHERE end_date IS NOT NULL
-                   AND distance IS NOT NULL
-                   AND duration_min IS NOT NULL
-                   AND start_rated_range_km - end_rated_range_km IS NOT NULL
             )
             (SELECT 'distance' AS kind, id AS drive_id, start_date AS started_at,
                     ROUND(distance::numeric, 1) AS distance_km, duration_min,
                     ROUND(rated_used, 1)        AS rated_range_used_km
                FROM d
+              WHERE distance IS NOT NULL
               ORDER BY distance DESC NULLS LAST, id
               LIMIT 1)
             UNION ALL
             (SELECT 'duration', id, start_date,
                     ROUND(distance::numeric, 1), duration_min, ROUND(rated_used, 1)
                FROM d
+              WHERE duration_min IS NOT NULL
               ORDER BY duration_min DESC NULLS LAST, id
               LIMIT 1)
             UNION ALL

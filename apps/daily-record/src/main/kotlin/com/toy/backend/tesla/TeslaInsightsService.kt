@@ -131,17 +131,22 @@ class TeslaInsightsService(
                 },
             records =
                 InsightsRecords(
+                    // 행이 왔어도 그 갈래가 쓰는 필드가 null이면(다른 갈래 조건만 만족) 그 기록만 뺀다.
                     longestDistance =
-                        records[RECORD_DISTANCE]?.let {
-                            DistanceRecord(it.driveId, TeslaTime.toKst(it.startedAtUtc), it.distanceKm)
+                        records[RECORD_DISTANCE]?.let { r ->
+                            r.distanceKm?.let { DistanceRecord(r.driveId, TeslaTime.toKst(r.startedAtUtc), it) }
                         },
                     longestDuration =
-                        records[RECORD_DURATION]?.let {
-                            DurationRecord(it.driveId, TeslaTime.toKst(it.startedAtUtc), it.durationMin)
+                        records[RECORD_DURATION]?.let { r ->
+                            r.durationMin?.let { DurationRecord(r.driveId, TeslaTime.toKst(r.startedAtUtc), it) }
                         },
                     bestEfficiency =
-                        records[RECORD_EFFICIENCY]?.let {
-                            EfficiencyRecord(it.driveId, TeslaTime.toKst(it.startedAtUtc), it.distanceKm, it.ratedRangeUsedKm)
+                        records[RECORD_EFFICIENCY]?.let { r ->
+                            if (r.distanceKm != null && r.ratedRangeUsedKm != null) {
+                                EfficiencyRecord(r.driveId, TeslaTime.toKst(r.startedAtUtc), r.distanceKm, r.ratedRangeUsedKm)
+                            } else {
+                                null
+                            }
                         },
                 ),
         )

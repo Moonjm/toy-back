@@ -409,6 +409,22 @@ class TeslaInsightsServiceTest :
                     records.bestEfficiency shouldBe null
                 }
             }
+
+            When("distance 행은 왔는데 그 행의 ratedRangeUsedKm가 null이면") {
+                Then("longestDistance는 정상으로 나오고 bestEfficiency만 영향받는다") {
+                    stubEmpty()
+                    every { insightsRepository.driveRecords() } returns
+                        listOf(
+                            DriveRecordRow("distance", 1, LocalDateTime.of(2024, 1, 1, 0, 0), BigDecimal("10.0"), 20, null),
+                        )
+
+                    val records = service.insights(12).records
+
+                    records.longestDistance shouldNotBe null
+                    records.longestDistance!!.distanceKm shouldBe BigDecimal("10.0")
+                    records.bestEfficiency shouldBe null
+                }
+            }
         }
 
         Given("batteryWindow — 범위 검증") {

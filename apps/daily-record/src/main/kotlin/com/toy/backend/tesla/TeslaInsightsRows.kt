@@ -147,15 +147,16 @@ data class RegionRow(
  * 뽑는 방법이 「`drives` 한 행」으로 같아서다. **`kind` 문자열은 `DRIVE_RECORDS_SQL`과 같아야
  * 하고 번역하지 않는다.**
  *
- * 실측(2026-08-20)으로 `drives`의 다섯 컬럼에 NULL이 0건이라 전부 non-null이다.
+ * 갈래마다 쓰는 필드가 달라 셋(`distanceKm`·`durationMin`·`ratedRangeUsedKm`)이 nullable이다 —
+ * 어느 것이 보장되는지는 `DRIVE_RECORDS_SQL` 참조.
  */
 data class DriveRecordRow(
     val kind: String,
     val driveId: Long,
     val startedAtUtc: LocalDateTime,
-    val distanceKm: BigDecimal,
-    val durationMin: Int,
-    val ratedRangeUsedKm: BigDecimal,
+    val distanceKm: BigDecimal?,
+    val durationMin: Int?,
+    val ratedRangeUsedKm: BigDecimal?,
 )
 
 /**
