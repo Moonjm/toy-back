@@ -165,6 +165,8 @@ GET /tesla/insights?months=12
     "idleMin": 61200
   }],
 
+  // 아래 두 배열의 weekday는 0이 일요일(PostgreSQL dow) — `/tesla/drive-insights`의 기존
+  // 계약을 유지한 것이라 위 weekday[](ISO, 1=월)와 다르다.
   "driveTimes":  [{ "weekday": 1, "hour": 8, "count": 12 }],
   "chargeTimes": [{ "weekday": 1, "hour": 23, "count": 4 }],
 

@@ -200,8 +200,8 @@ class TeslaInsightsServiceTest :
                 }
             }
 
-            When("범위가 정확히 4주면") {
-                Then("occurrences가 요일마다 4다") {
+            When("범위가 여러 달에 걸치면") {
+                Then("occurrences 합이 범위의 날 수와 같다 — 어느 날도 두 요일에 세어지지 않는다") {
                     stubEmpty()
                     // 범위 시작이 달 1일이라 정확한 주 수를 못 박을 수 없다.
                     // 대신 합이 범위의 날 수와 같은지 본다 — 어느 날도 두 요일에 세어지지 않는다.

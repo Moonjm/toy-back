@@ -28,7 +28,10 @@ data class TeslaInsightsResponse(
     val temperatureBuckets: List<TemperatureBucket>,
     /** **0인 칸은 빠진다.** `weekday`는 0이 일요일이다(PostgreSQL `dow` 그대로). */
     val driveTimes: List<DriveTime>,
-    /** 다섯 개가 늘 온다. */
+    /**
+     * 다섯 개가 늘 온다. **`end_date` 기준이다** — `monthly`(= `start_date` 기준)와 합이
+     * 자정을 걸친 주행만큼 다를 수 있다.
+     */
     val distanceBuckets: List<DistanceBucket>,
     /** 도착지 상위 10곳. 지오펜스가 없으면 주소로 떨어진다. 없으면 빈 배열이다. */
     val places: List<DrivePlace>,
