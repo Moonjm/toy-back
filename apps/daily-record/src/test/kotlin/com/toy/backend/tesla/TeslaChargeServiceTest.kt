@@ -4,6 +4,7 @@ import com.toy.backend.common.constant.ErrorCode
 import com.toy.backend.common.exception.CustomException
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
@@ -273,7 +274,7 @@ class TeslaChargeServiceTest :
             // 2단계 리뷰가 「온도 카드와 거리 카드의 총합이 다르다」를 지적했던 계열이다.
             Then("급속 + 완속 = 합계 불변식이 선다") {
                 response.fast.chargeCount + response.slow.chargeCount shouldBe response.chargeCount
-                response.fast.cost!! + response.slow.cost!! shouldBe response.cost
+                response.fast.cost.shouldNotBeNull() + response.slow.cost.shouldNotBeNull() shouldBe response.cost
                 response.fast.costMissingCount + response.slow.costMissingCount shouldBe response.costMissingCount
             }
 

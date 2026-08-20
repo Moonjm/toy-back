@@ -4,6 +4,7 @@ import com.toy.backend.common.exception.CustomException
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.ints.shouldBeLessThanOrEqual
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.every
@@ -231,7 +232,8 @@ class TeslaInsightsServiceTest :
                     val monday = service.insights(1).weekday.single { it.weekday == 1 }
                     val span =
                         TeslaTime
-                            .weekdaySpans(YearMonth.from(TeslaTime.nowKst()).atDay(1).atStartOfDay(), TeslaTime.nowKst())[1]!!
+                            .weekdaySpans(YearMonth.from(TeslaTime.nowKst()).atDay(1).atStartOfDay(), TeslaTime.nowKst())
+                            .getValue(1)
 
                     // 서비스와 테스트가 TeslaTime.nowKst()를 따로 읽어 분 경계에서 ±1분 어긋날 수 있다.
                     val diff = kotlin.math.abs(monday.idleMin - (span.elapsedMin - 300).coerceAtLeast(0))
@@ -385,13 +387,15 @@ class TeslaInsightsServiceTest :
 
                     val records = service.insights(12).records
 
-                    records.longestDistance!!.driveId shouldBe 3619
+                    val longestDistance = records.longestDistance.shouldNotBeNull()
+                    longestDistance.driveId shouldBe 3619
                     // 2024-09-13 00:50 UTC → KST 09:50
-                    records.longestDistance!!.startedAt shouldBe LocalDateTime.of(2024, 9, 13, 9, 50)
-                    records.longestDistance!!.distanceKm shouldBe BigDecimal("293.2")
-                    records.longestDuration!!.durationMin shouldBe 308
-                    records.bestEfficiency!!.driveId shouldBe 3342
-                    records.bestEfficiency!!.ratedRangeUsedKm shouldBe BigDecimal("15.3")
+                    longestDistance.startedAt shouldBe LocalDateTime.of(2024, 9, 13, 9, 50)
+                    longestDistance.distanceKm shouldBe BigDecimal("293.2")
+                    records.longestDuration.shouldNotBeNull().durationMin shouldBe 308
+                    val bestEfficiency = records.bestEfficiency.shouldNotBeNull()
+                    bestEfficiency.driveId shouldBe 3342
+                    bestEfficiency.ratedRangeUsedKm shouldBe BigDecimal("15.3")
                 }
             }
 
@@ -420,8 +424,7 @@ class TeslaInsightsServiceTest :
 
                     val records = service.insights(12).records
 
-                    records.longestDistance shouldNotBe null
-                    records.longestDistance!!.distanceKm shouldBe BigDecimal("10.0")
+                    records.longestDistance.shouldNotBeNull().distanceKm shouldBe BigDecimal("10.0")
                     records.bestEfficiency shouldBe null
                 }
             }

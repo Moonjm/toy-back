@@ -110,9 +110,9 @@ class TeslaTimeTest :
                     )
 
                 Then("오늘도 한 번으로 세되 경과 분은 지금까지다") {
-                    spans[4]!!.occurrences shouldBe 1 // 목요일
-                    spans[4]!!.elapsedMin shouldBe 900 // 15시간
-                    spans[1]!!.elapsedMin shouldBe 1_440 // 월요일은 온전히 지났다
+                    spans.getValue(4).occurrences shouldBe 1 // 목요일
+                    spans.getValue(4).elapsedMin shouldBe 900 // 15시간
+                    spans.getValue(1).elapsedMin shouldBe 1_440 // 월요일은 온전히 지났다
                 }
             }
 

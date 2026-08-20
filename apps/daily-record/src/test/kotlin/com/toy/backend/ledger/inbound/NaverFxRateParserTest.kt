@@ -1,6 +1,7 @@
 package com.toy.backend.ledger.inbound
 
 import io.kotest.core.spec.style.BehaviorSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import tools.jackson.databind.json.JsonMapper
 import java.math.BigDecimal
@@ -62,8 +63,8 @@ class NaverFxRateParserTest :
 
             Then("1단위로 물었다면 저액 통화가 얼마나 뭉개지는지") {
                 // 같은 환율을 1단위로 물었을 때 받게 될 응답(`0.05`)과 100단위(`5.44`)의 차이다.
-                val coarse = parse("""{ "country" : [{ "value" : "1" }, { "value" : "0.05" }] }""", units = 1)!!
-                val fine = parse("""{ "country" : [{ "value" : "100" }, { "value" : "5.44" }] }""")!!
+                val coarse = parse("""{ "country" : [{ "value" : "1" }, { "value" : "0.05" }] }""", units = 1).shouldNotBeNull()
+                val fine = parse("""{ "country" : [{ "value" : "100" }, { "value" : "5.44" }] }""").shouldNotBeNull()
                 ((fine - coarse).abs() / fine > BigDecimal("0.05")) shouldBe true
             }
         }

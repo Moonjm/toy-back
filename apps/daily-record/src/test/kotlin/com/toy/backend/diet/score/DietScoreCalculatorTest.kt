@@ -1,6 +1,7 @@
 package com.toy.backend.diet.score
 
 import io.kotest.core.spec.style.BehaviorSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 
 class DietScoreCalculatorTest :
@@ -15,7 +16,7 @@ class DietScoreCalculatorTest :
                 }
 
                 Then("근거에 항목별 status와 penalty가 실린다") {
-                    val macros = result.basis!!.macros
+                    val macros = result.basis.shouldNotBeNull().macros
                     macros[0].name shouldBe "탄수화물"
                     macros[0].percent shouldBe 75.0
                     macros[0].status shouldBe MacroStatus.OVER
@@ -27,7 +28,11 @@ class DietScoreCalculatorTest :
                 }
 
                 Then("근거의 감점 합이 실제 점수와 일치한다") {
-                    val total = result.basis!!.macros.sumOf { it.penalty }
+                    val total =
+                        result.basis
+                            .shouldNotBeNull()
+                            .macros
+                            .sumOf { it.penalty }
                     result.score shouldBe (100 - total).toInt()
                 }
             }
@@ -38,7 +43,10 @@ class DietScoreCalculatorTest :
 
                 Then("경계는 범위 안이라 100점") {
                     result.score shouldBe 100
-                    result.basis!!.macros.all { it.status == MacroStatus.IN_RANGE } shouldBe true
+                    result.basis
+                        .shouldNotBeNull()
+                        .macros
+                        .all { it.status == MacroStatus.IN_RANGE } shouldBe true
                 }
             }
 
@@ -83,7 +91,7 @@ class DietScoreCalculatorTest :
                 val result = DietScoreCalculator.scoreMeal(carbsG = 100.0, proteinG = 30.0, fatG = 20.0)
 
                 Then("응답에 국가 기준 이름이 실린다") {
-                    result.basis!!.standard shouldBe "2025 한국인 영양소 섭취기준(KDRIs) 에너지적정비율"
+                    result.basis.shouldNotBeNull().standard shouldBe "2025 한국인 영양소 섭취기준(KDRIs) 에너지적정비율"
                 }
             }
         }

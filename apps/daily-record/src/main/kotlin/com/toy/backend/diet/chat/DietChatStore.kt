@@ -117,8 +117,9 @@ class DietChatStore(
     ): DietChatMessageResponse {
         val user = findUser(username)
         messageRepository.save(DietChatMessage(user, date, ChatRole.USER, question))
-        // 방금 저장한 TEXT 행이라 매달린 참조가 있을 수 없다.
-        return messageRepository.save(DietChatMessage(user, date, ChatRole.ASSISTANT, answer)).toResponse()!!
+        return messageRepository.save(DietChatMessage(user, date, ChatRole.ASSISTANT, answer)).toResponse()
+            // 방금 저장한 TEXT 행이라 매달린 참조가 있을 수 없다.
+            ?: error("방금 저장한 TEXT 답이 카드 변환에서 사라졌다 — toResponse가 TEXT를 버리고 있다")
     }
 
     /**

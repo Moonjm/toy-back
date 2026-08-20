@@ -20,6 +20,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.date.shouldBeAfter
 import io.kotest.matchers.date.shouldBeBefore
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
@@ -358,7 +359,11 @@ class DietChatStoreTest :
             every { fileService.getPresignedUrls(any()) } returns emptyMap()
 
             val page = store.page("testuser", null, 10)
-            val card = page.messages.single().meal!!
+            val card =
+                page.messages
+                    .single()
+                    .meal
+                    .shouldNotBeNull()
 
             Then("지금 끼니의 값이 실린다") {
                 card.mealId shouldBe 42L
@@ -409,7 +414,8 @@ class DietChatStoreTest :
                     .page("testuser", null, 10)
                     .messages
                     .single()
-                    .meal!!
+                    .meal
+                    .shouldNotBeNull()
 
             Then("photoUrl에 presigned URL이 실린다") {
                 card.photoUrl shouldBe "https://example.com/21"
@@ -515,7 +521,8 @@ class DietChatStoreTest :
                     .page("testuser", null, 10)
                     .messages
                     .single()
-                    .day!!
+                    .day
+                    .shouldNotBeNull()
 
             Then("지금 총평이 실린다") {
                 card.feedback shouldBe "나트륨이 기준을 넘었어요"
@@ -584,7 +591,8 @@ class DietChatStoreTest :
                     .page("testuser", null, 10)
                     .messages
                     .single()
-                    .day!!
+                    .day
+                    .shouldNotBeNull()
 
             Then("카드는 남고 문장만 null이다") {
                 card.feedback shouldBe null
@@ -624,7 +632,8 @@ class DietChatStoreTest :
                     .page("testuser", null, 10)
                     .messages
                     .single()
-                    .day!!
+                    .day
+                    .shouldNotBeNull()
 
             Then("낡은 문장은 빠지고 앱이 「만들고 있어요」를 띄운다") {
                 card.feedback shouldBe null
@@ -658,7 +667,11 @@ class DietChatStoreTest :
 
             Then("카드 행은 응답에 남고, 문장만 null이다") {
                 page.messages.map { it.id } shouldBe listOf(9L)
-                val card = page.messages.single().day!!
+                val card =
+                    page.messages
+                        .single()
+                        .day
+                        .shouldNotBeNull()
                 card.feedback shouldBe null
                 card.dayScore shouldBe
                     DietScoreCalculator.scoreDay(meal.totalKcal, meal.carbsG, meal.proteinG, meal.fatG, meal.targets()).score
@@ -701,7 +714,8 @@ class DietChatStoreTest :
                     .page("testuser", null, 10)
                     .messages
                     .single()
-                    .day!!
+                    .day
+                    .shouldNotBeNull()
 
             Then("목표는 정렬상 첫 번째로 온 끼니의 값이다") {
                 card.targetKcal shouldBe earlierMeal.targetKcal

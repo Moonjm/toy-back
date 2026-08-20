@@ -9,6 +9,7 @@ import com.toy.backend.user.UserRepository
 import com.toy.backend.user.entity.dummyUser
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.every
@@ -132,8 +133,7 @@ class PairServiceTest :
                 val result = service.getStatus("inviter")
 
                 Then("PairResponse 반환") {
-                    result shouldNotBe null
-                    result!!.partnerName shouldBe "파트너"
+                    result.shouldNotBeNull().partnerName shouldBe "파트너"
                 }
             }
 

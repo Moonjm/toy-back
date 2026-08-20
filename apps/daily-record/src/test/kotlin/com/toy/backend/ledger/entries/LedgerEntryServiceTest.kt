@@ -10,6 +10,7 @@ import com.toy.backend.user.UserRepository
 import com.toy.backend.user.entity.dummyUser
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.justRun
@@ -279,7 +280,7 @@ class LedgerEntryServiceTest :
                 )
 
                 Then("환율 메모가 잘리지 않게 기본 메모를 먼저 줄인다") {
-                    val description = entry.description!!
+                    val description = entry.description.shouldNotBeNull()
                     description.length shouldBe 500
                     description.endsWith("환율 1 JPY ≈ 9.09원 (약 9,091원)") shouldBe true
                     // 메모가 온전해야 다음 수정 때 strip이 인식해 낡은 조각이 남지 않는다.

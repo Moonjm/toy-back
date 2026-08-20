@@ -16,6 +16,7 @@ import com.toy.backend.diet.score.DietScoreCalculator
 import com.toy.backend.user.UserRepository
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
@@ -86,7 +87,7 @@ class DietStatsServiceTest :
                 Then("기록한 날로만 평균을 낸다 — 안 적은 날을 0으로 세면 평균이 무의미해진다") {
                     stats.recordedDays shouldBe 2
                     stats.averageDayScore shouldBe 100
-                    stats.averageIntake!!.kcal shouldBe 2000.0
+                    stats.averageIntake.shouldNotBeNull().kcal shouldBe 2000.0
                 }
 
                 Then("일별 점수가 날짜순으로 온다") {
