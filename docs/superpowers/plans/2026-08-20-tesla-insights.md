@@ -22,6 +22,8 @@
 - `car_id`를 파라미터로도 응답으로도 두지 않는다. 차량이 1대다.
 - 컨트롤러 단위 테스트는 이 저장소 관례대로 쓰지 않는다.
 - **커밋 전 `./gradlew spotlessApply` 필수.** 커밋 메시지는 한국어 현재형(`feat:`/`refactor:`/`docs:`).
+- **Gradle 모듈 경로는 `:daily-record`다** — `:apps:daily-record`가 아니다(`settings.gradle.kts`가 `projectDir`로 옮겨 놨다).
+- **kotest 블록 이름은 대문자 `Given`/`When`/`Then`으로 쓴다.** 저장소의 기존 테스트가 그렇게 쓴다 — 한 파일에 대소문자가 섞이면 안 된다.
 
 ---
 
@@ -86,25 +88,25 @@
 `TeslaTimeTest.kt`의 기존 `BehaviorSpec` 본문 끝에 이어 붙인다:
 
 ```kotlin
-    given("monthElapsedMinutes — 달의 경과 분") {
+    Given("monthElapsedMinutes — 달의 경과 분") {
         val start = LocalDateTime.of(2026, 3, 1, 0, 0)
 
-        `when`("이미 끝난 달이면") {
-            then("그 달 전체 분이다") {
+        When("이미 끝난 달이면") {
+            Then("그 달 전체 분이다") {
                 // 2026-04는 30일 = 43,200분
                 TeslaTime.monthElapsedMinutes(YearMonth.of(2026, 4), start, LocalDateTime.of(2026, 8, 20, 15, 0)) shouldBe 43_200
             }
         }
 
-        `when`("진행 중인 달이면") {
-            then("지금까지만 센다") {
+        When("진행 중인 달이면") {
+            Then("지금까지만 센다") {
                 // 8/1 00:00 ~ 8/20 15:00 = 19일 15시간 = 28,260분
                 TeslaTime.monthElapsedMinutes(YearMonth.of(2026, 8), start, LocalDateTime.of(2026, 8, 20, 15, 0)) shouldBe 28_260
             }
         }
 
-        `when`("창이 달 도중에 시작하면") {
-            then("창 시작부터 센다") {
+        When("창이 달 도중에 시작하면") {
+            Then("창 시작부터 센다") {
                 // 3/1 00:00 시작이 아니라 3/10 12:00 시작이면 3/10 12:00 ~ 3/31 24:00 = 21일 12시간
                 TeslaTime.monthElapsedMinutes(
                     YearMonth.of(2026, 3),
@@ -114,45 +116,45 @@
             }
         }
 
-        `when`("창 밖의 달이면") {
-            then("0이다 — 음수가 나오지 않는다") {
+        When("창 밖의 달이면") {
+            Then("0이다 — 음수가 나오지 않는다") {
                 TeslaTime.monthElapsedMinutes(YearMonth.of(2025, 1), start, LocalDateTime.of(2026, 8, 20, 15, 0)) shouldBe 0
                 TeslaTime.monthElapsedMinutes(YearMonth.of(2027, 1), start, LocalDateTime.of(2026, 8, 20, 15, 0)) shouldBe 0
             }
         }
     }
 
-    given("weekdaySpans — 요일별 등장 수와 경과 분") {
-        `when`("정확히 한 주면") {
+    Given("weekdaySpans — 요일별 등장 수와 경과 분") {
+        When("정확히 한 주면") {
             val spans =
                 TeslaTime.weekdaySpans(
                     LocalDateTime.of(2026, 8, 10, 0, 0), // 월요일
                     LocalDateTime.of(2026, 8, 17, 0, 0), // 다음 월요일 00:00
                 )
 
-            then("일곱 요일이 한 번씩, 하루씩이다") {
+            Then("일곱 요일이 한 번씩, 하루씩이다") {
                 spans.keys shouldBe (1..7).toSet()
                 spans.values.map { it.occurrences }.toSet() shouldBe setOf(1)
                 spans.values.map { it.elapsedMin }.toSet() shouldBe setOf(1_440)
             }
         }
 
-        `when`("오늘이 아직 안 끝났으면") {
+        When("오늘이 아직 안 끝났으면") {
             val spans =
                 TeslaTime.weekdaySpans(
                     LocalDateTime.of(2026, 8, 17, 0, 0), // 월요일 00:00
                     LocalDateTime.of(2026, 8, 20, 15, 0), // 목요일 15:00
                 )
 
-            then("오늘도 한 번으로 세되 경과 분은 지금까지다") {
+            Then("오늘도 한 번으로 세되 경과 분은 지금까지다") {
                 spans[4]!!.occurrences shouldBe 1 // 목요일
                 spans[4]!!.elapsedMin shouldBe 900 // 15시간
                 spans[1]!!.elapsedMin shouldBe 1_440 // 월요일은 온전히 지났다
             }
         }
 
-        `when`("끝이 시작보다 이르면") {
-            then("빈 맵이 아니라 전부 0이다") {
+        When("끝이 시작보다 이르면") {
+            Then("빈 맵이 아니라 전부 0이다") {
                 val spans =
                     TeslaTime.weekdaySpans(
                         LocalDateTime.of(2026, 8, 20, 0, 0),
@@ -169,7 +171,7 @@
 
 - [ ] **Step 2: 실패를 확인한다**
 
-Run: `./gradlew :apps:daily-record:test --tests '*TeslaTimeTest*'`
+Run: `./gradlew :daily-record:test --tests '*TeslaTimeTest*'`
 Expected: FAIL — `Unresolved reference: monthElapsedMinutes`
 
 - [ ] **Step 3: 최소 구현을 쓴다**
@@ -239,7 +241,7 @@ Expected: FAIL — `Unresolved reference: monthElapsedMinutes`
 
 - [ ] **Step 4: 통과를 확인한다**
 
-Run: `./gradlew :apps:daily-record:test --tests '*TeslaTimeTest*'`
+Run: `./gradlew :daily-record:test --tests '*TeslaTimeTest*'`
 Expected: PASS
 
 - [ ] **Step 5: 커밋한다**
@@ -356,7 +358,7 @@ object TeslaBuckets {
 
 - [ ] **Step 3: 기존 테스트가 그대로 통과하는지 본다**
 
-Run: `./gradlew :apps:daily-record:test --tests '*Tesla*'`
+Run: `./gradlew :daily-record:test --tests '*Tesla*'`
 Expected: PASS — 이 태스크는 동작을 바꾸지 않는다. 하나라도 깨지면 상수를 옮기며 숫자가 바뀐 것이다.
 
 - [ ] **Step 4: 커밋한다**
@@ -442,7 +444,7 @@ git commit -m "refactor: 버킷 라벨을 TeslaBuckets 한곳으로 모은다"
 
 - [ ] **Step 4: 통과를 확인한다**
 
-Run: `./gradlew :apps:daily-record:test --tests '*Tesla*'`
+Run: `./gradlew :daily-record:test --tests '*Tesla*'`
 Expected: PASS
 
 - [ ] **Step 5: 커밋한다**
@@ -512,30 +514,30 @@ class TeslaInsightsServiceTest : BehaviorSpec({
         every { vehicleRepository.carEfficiency() } returns BigDecimal("0.168")
     }
 
-    given("insights — 범위 검증") {
-        `when`("months가 61이면") {
-            then("400이다") {
+    Given("insights — 범위 검증") {
+        When("months가 61이면") {
+            Then("400이다") {
                 shouldThrow<CustomException> { service.insights(61) }
             }
         }
 
-        `when`("months가 음수면") {
-            then("400이다") {
+        When("months가 음수면") {
+            Then("400이다") {
                 shouldThrow<CustomException> { service.insights(-1) }
             }
         }
 
-        `when`("months가 0이면") {
-            then("전체 기간으로 해석돼 통과한다") {
+        When("months가 0이면") {
+            Then("전체 기간으로 해석돼 통과한다") {
                 stubEmpty()
                 service.insights(0).months shouldBe 0
             }
         }
     }
 
-    given("insights — 버킷 자리 채움") {
-        `when`("행이 하나도 없으면") {
-            then("온도 다섯 칸·거리 다섯 칸이 0으로 자리를 지킨다") {
+    Given("insights — 버킷 자리 채움") {
+        When("행이 하나도 없으면") {
+            Then("온도 다섯 칸·거리 다섯 칸이 0으로 자리를 지킨다") {
                 stubEmpty()
                 val response = service.insights(12)
 
@@ -547,17 +549,17 @@ class TeslaInsightsServiceTest : BehaviorSpec({
             }
         }
 
-        `when`("지오펜스도 주소도 없으면") {
-            then("places가 null이 아니라 빈 배열이다") {
+        When("지오펜스도 주소도 없으면") {
+            Then("places가 null이 아니라 빈 배열이다") {
                 stubEmpty()
                 service.insights(12).places shouldBe emptyList()
             }
         }
     }
 
-    given("insights — 기존 계약을 그대로 싣는다") {
-        `when`("주행 통계가 오면") {
-            then("이름을 바꾸지 않고 그대로 낸다") {
+    Given("insights — 기존 계약을 그대로 싣는다") {
+        When("주행 통계가 오면") {
+            Then("이름을 바꾸지 않고 그대로 낸다") {
                 stubEmpty()
                 every { vehicleRepository.driveStats() } returns
                     DriveStatsRow(maxSpeedKmh = 138, totalDistanceKm = BigDecimal("107258.4"), recordedMonths = 59)
@@ -576,7 +578,7 @@ class TeslaInsightsServiceTest : BehaviorSpec({
 
 - [ ] **Step 2: 실패를 확인한다**
 
-Run: `./gradlew :apps:daily-record:test --tests '*TeslaInsightsServiceTest*'`
+Run: `./gradlew :daily-record:test --tests '*TeslaInsightsServiceTest*'`
 Expected: FAIL — `Unresolved reference: TeslaInsightsRepository`
 
 - [ ] **Step 3: 행 타입·리포지토리·SQL을 쓴다**
@@ -884,7 +886,7 @@ private const val DEFAULT_MONTHS = "12"
 
 - [ ] **Step 7: 통과를 확인한다**
 
-Run: `./gradlew :apps:daily-record:test --tests '*TeslaInsightsServiceTest*'`
+Run: `./gradlew :daily-record:test --tests '*TeslaInsightsServiceTest*'`
 Expected: PASS
 
 - [ ] **Step 8: 커밋한다**
@@ -932,9 +934,9 @@ git commit -m "feat: 통계 응답의 골격과 기존 주행 인사이트를 �
 그리고 `given` 블록을 더한다:
 
 ```kotlin
-    given("monthly — 달 축") {
-        `when`("기록이 없는 달이 섞여 있으면") {
-            then("자리를 지키고 값이 null이다") {
+    Given("monthly — 달 축") {
+        When("기록이 없는 달이 섞여 있으면") {
+            Then("자리를 지키고 값이 null이다") {
                 stubEmpty()
                 val response = service.insights(3)
 
@@ -945,16 +947,16 @@ git commit -m "feat: 통계 응답의 골격과 기존 주행 인사이트를 �
             }
         }
 
-        `when`("오래된 것부터 오는지") {
-            then("첫 칸이 가장 옛 달이다") {
+        When("오래된 것부터 오는지") {
+            Then("첫 칸이 가장 옛 달이다") {
                 stubEmpty()
                 val response = service.insights(3)
                 response.monthly.map { it.yearMonth } shouldBe response.monthly.map { it.yearMonth }.sorted()
             }
         }
 
-        `when`("팬텀 드레인 표본이 하나도 없으면") {
-            then("null이 아니라 0으로 온다 — 앱이 막대를 안 그린다") {
+        When("팬텀 드레인 표본이 하나도 없으면") {
+            Then("null이 아니라 0으로 온다 — 앱이 막대를 안 그린다") {
                 stubEmpty()
                 service.insights(3).monthly.forEach {
                     it.parkDrainSamples shouldBe 0
@@ -964,9 +966,9 @@ git commit -m "feat: 통계 응답의 골격과 기존 주행 인사이트를 �
         }
     }
 
-    given("monthly — 정지 시간") {
-        `when`("주행과 충전이 있으면") {
-            then("그 달 경과 분에서 뺀 값이다") {
+    Given("monthly — 정지 시간") {
+        When("주행과 충전이 있으면") {
+            Then("그 달 경과 분에서 뺀 값이다") {
                 stubEmpty()
                 val month = YearMonth.from(TeslaTime.nowKst())
                 every { insightsRepository.driveMonthly(any(), any()) } returns
@@ -981,8 +983,8 @@ git commit -m "feat: 통계 응답의 골격과 기존 주행 인사이트를 �
             }
         }
 
-        `when`("주행·충전이 경과 시간보다 길면") {
-            then("음수가 아니라 0이다") {
+        When("주행·충전이 경과 시간보다 길면") {
+            Then("음수가 아니라 0이다") {
                 stubEmpty()
                 val month = YearMonth.from(TeslaTime.nowKst())
                 every { insightsRepository.driveMonthly(any(), any()) } returns
@@ -996,7 +998,7 @@ git commit -m "feat: 통계 응답의 골격과 기존 주행 인사이트를 �
 
 - [ ] **Step 2: 실패를 확인한다**
 
-Run: `./gradlew :apps:daily-record:test --tests '*TeslaInsightsServiceTest*'`
+Run: `./gradlew :daily-record:test --tests '*TeslaInsightsServiceTest*'`
 Expected: FAIL — `Unresolved reference: driveMonthly`
 
 - [ ] **Step 3: 행 타입 파일을 만든다**
@@ -1373,7 +1375,7 @@ data class InsightsMonth(
 
 - [ ] **Step 7: 통과를 확인한다**
 
-Run: `./gradlew :apps:daily-record:test --tests '*TeslaInsightsServiceTest*'`
+Run: `./gradlew :daily-record:test --tests '*TeslaInsightsServiceTest*'`
 Expected: PASS
 
 - [ ] **Step 8: 커밋한다**
@@ -1418,9 +1420,9 @@ git commit -m "feat: 월별 주행·충전·정지 시간·팬텀 드레인을 �
 `given` 블록을 더한다:
 
 ```kotlin
-    given("weekday — 요일 축") {
-        `when`("행이 하나도 없으면") {
-            then("일곱 요일이 1(월)부터 자리를 지킨다") {
+    Given("weekday — 요일 축") {
+        When("행이 하나도 없으면") {
+            Then("일곱 요일이 1(월)부터 자리를 지킨다") {
                 stubEmpty()
                 val weekday = service.insights(12).weekday
 
@@ -1430,8 +1432,8 @@ git commit -m "feat: 월별 주행·충전·정지 시간·팬텀 드레인을 �
             }
         }
 
-        `when`("창이 정확히 4주면") {
-            then("occurrences가 요일마다 4다") {
+        When("창이 정확히 4주면") {
+            Then("occurrences가 요일마다 4다") {
                 stubEmpty()
                 // 창 시작이 달 1일이라 정확한 주 수를 못 박을 수 없다.
                 // 대신 합이 창의 날 수와 같은지 본다 — 어느 날도 두 요일에 세어지지 않는다.
@@ -1446,8 +1448,8 @@ git commit -m "feat: 월별 주행·충전·정지 시간·팬텀 드레인을 �
             }
         }
 
-        `when`("주행·충전이 있으면") {
-            then("idleMin이 그 요일 경과 분에서 뺀 값이다") {
+        When("주행·충전이 있으면") {
+            Then("idleMin이 그 요일 경과 분에서 뺀 값이다") {
                 stubEmpty()
                 every { insightsRepository.weekdayDrives(any(), any()) } returns
                     listOf(WeekdayDriveRow(1, 5, BigDecimal("80.0"), 200))
@@ -1468,7 +1470,7 @@ git commit -m "feat: 월별 주행·충전·정지 시간·팬텀 드레인을 �
 
 - [ ] **Step 2: 실패를 확인한다**
 
-Run: `./gradlew :apps:daily-record:test --tests '*TeslaInsightsServiceTest*'`
+Run: `./gradlew :daily-record:test --tests '*TeslaInsightsServiceTest*'`
 Expected: FAIL — `Unresolved reference: weekdayDrives`
 
 - [ ] **Step 3: 행 타입·리포지토리·SQL을 더한다**
@@ -1658,7 +1660,7 @@ data class InsightsWeekday(
 
 - [ ] **Step 5: 통과를 확인한다**
 
-Run: `./gradlew :apps:daily-record:test --tests '*TeslaInsightsServiceTest*'`
+Run: `./gradlew :daily-record:test --tests '*TeslaInsightsServiceTest*'`
 Expected: PASS
 
 - [ ] **Step 6: 커밋한다**
@@ -1700,9 +1702,9 @@ git commit -m "feat: 요일별 주행과 정지 시간을 낸다"
 ```
 
 ```kotlin
-    given("속도 버킷") {
-        `when`("행이 하나도 없으면") {
-            then("최고속도 일곱 칸·평균속도 다섯 칸이 자리를 지킨다") {
+    Given("속도 버킷") {
+        When("행이 하나도 없으면") {
+            Then("최고속도 일곱 칸·평균속도 다섯 칸이 자리를 지킨다") {
                 stubEmpty()
                 val response = service.insights(12)
 
@@ -1715,8 +1717,8 @@ git commit -m "feat: 요일별 주행과 정지 시간을 낸다"
             }
         }
 
-        `when`("행이 오면") {
-            then("그 칸에 값이 들어간다") {
+        When("행이 오면") {
+            Then("그 칸에 값이 들어간다") {
                 stubEmpty()
                 every { insightsRepository.speedBuckets(any(), any()) } returns listOf(SpeedBucketRow(6, 372))
 
@@ -1725,9 +1727,9 @@ git commit -m "feat: 요일별 주행과 정지 시간을 낸다"
         }
     }
 
-    given("chargeTimes") {
-        `when`("0인 칸이 있으면") {
-            then("행이 온 칸만 낸다 — 168칸을 채우지 않는다") {
+    Given("chargeTimes") {
+        When("0인 칸이 있으면") {
+            Then("행이 온 칸만 낸다 — 168칸을 채우지 않는다") {
                 stubEmpty()
                 every { insightsRepository.chargeTimes(any(), any()) } returns listOf(ChargeTimeRow(6, 22, 10))
 
@@ -1743,7 +1745,7 @@ git commit -m "feat: 요일별 주행과 정지 시간을 낸다"
 
 - [ ] **Step 2: 실패를 확인한다**
 
-Run: `./gradlew :apps:daily-record:test --tests '*TeslaInsightsServiceTest*'`
+Run: `./gradlew :daily-record:test --tests '*TeslaInsightsServiceTest*'`
 Expected: FAIL — `Unresolved reference: chargeTimes`
 
 - [ ] **Step 3: 행 타입을 더한다**
@@ -2004,7 +2006,7 @@ data class SpeedEnergyBucket(
 
 - [ ] **Step 6: 통과를 확인하고 커밋한다**
 
-Run: `./gradlew :apps:daily-record:test --tests '*TeslaInsightsServiceTest*'`
+Run: `./gradlew :daily-record:test --tests '*TeslaInsightsServiceTest*'`
 Expected: PASS
 
 ```bash
@@ -2042,9 +2044,9 @@ git commit -m "feat: 충전 시간대와 속도 버킷 둘을 낸다"
 ```
 
 ```kotlin
-    given("충전 SoC 버킷") {
-        `when`("행이 하나도 없으면") {
-            then("시작·종료 각각 열 칸이 자리를 지킨다") {
+    Given("충전 SoC 버킷") {
+        When("행이 하나도 없으면") {
+            Then("시작·종료 각각 열 칸이 자리를 지킨다") {
                 stubEmpty()
                 val response = service.insights(12)
 
@@ -2055,8 +2057,8 @@ git commit -m "feat: 충전 시간대와 속도 버킷 둘을 낸다"
             }
         }
 
-        `when`("100%로 끝난 충전이 오면") {
-            then("마지막 칸에 든다 — 열한 번째 칸이 생기지 않는다") {
+        When("100%로 끝난 충전이 오면") {
+            Then("마지막 칸에 든다 — 열한 번째 칸이 생기지 않는다") {
                 stubEmpty()
                 every { insightsRepository.chargeLevelBuckets(any(), any()) } returns
                     listOf(ChargeLevelBucketRow(bucket = 10, startCount = 4, endCount = 71))
@@ -2069,16 +2071,16 @@ git commit -m "feat: 충전 시간대와 속도 버킷 둘을 낸다"
         }
     }
 
-    given("chargers·regions") {
-        `when`("지오펜스가 0행이면") {
-            then("chargers가 null이 아니라 빈 배열이다") {
+    Given("chargers·regions") {
+        When("지오펜스가 0행이면") {
+            Then("chargers가 null이 아니라 빈 배열이다") {
                 stubEmpty()
                 service.insights(12).chargers shouldBe emptyList()
             }
         }
 
-        `when`("금액 미입력이 섞여 있으면") {
-            then("그 개수를 함께 낸다") {
+        When("금액 미입력이 섞여 있으면") {
+            Then("그 개수를 함께 낸다") {
                 stubEmpty()
                 every { insightsRepository.chargers(any(), any()) } returns
                     listOf(ChargerRow("Soraebi-ro", 5, BigDecimal("173.6"), null, 5))
@@ -2089,8 +2091,8 @@ git commit -m "feat: 충전 시간대와 속도 버킷 둘을 낸다"
             }
         }
 
-        `when`("주소가 하나도 없으면") {
-            then("regions가 전부 0이다 — null이 아니다") {
+        When("주소가 하나도 없으면") {
+            Then("regions가 전부 0이다 — null이 아니다") {
                 stubEmpty()
                 service.insights(12).regions.cities shouldBe 0
             }
@@ -2100,7 +2102,7 @@ git commit -m "feat: 충전 시간대와 속도 버킷 둘을 낸다"
 
 - [ ] **Step 2: 실패를 확인한다**
 
-Run: `./gradlew :apps:daily-record:test --tests '*TeslaInsightsServiceTest*'`
+Run: `./gradlew :daily-record:test --tests '*TeslaInsightsServiceTest*'`
 Expected: FAIL — `Unresolved reference: chargeLevelBuckets`
 
 - [ ] **Step 3: 행 타입을 더한다**
@@ -2398,7 +2400,7 @@ data class Regions(
 
 - [ ] **Step 6: 통과를 확인하고 커밋한다**
 
-Run: `./gradlew :apps:daily-record:test --tests '*TeslaInsightsServiceTest*'`
+Run: `./gradlew :daily-record:test --tests '*TeslaInsightsServiceTest*'`
 Expected: PASS
 
 ```bash
@@ -2434,9 +2436,9 @@ git commit -m "feat: 충전 SoC 분포와 충전소·지역 수를 낸다"
 ```
 
 ```kotlin
-    given("records") {
-        `when`("주행이 하나도 없으면") {
-            then("셋 다 null이다 — 「역대」라는 값 자체가 없다") {
+    Given("records") {
+        When("주행이 하나도 없으면") {
+            Then("셋 다 null이다 — 「역대」라는 값 자체가 없다") {
                 stubEmpty()
                 val records = service.insights(12).records
 
@@ -2446,8 +2448,8 @@ git commit -m "feat: 충전 SoC 분포와 충전소·지역 수를 낸다"
             }
         }
 
-        `when`("세 기록이 오면") {
-            then("종류별로 갈라 싣고 시각을 KST로 되돌린다") {
+        When("세 기록이 오면") {
+            Then("종류별로 갈라 싣고 시각을 KST로 되돌린다") {
                 stubEmpty()
                 every { insightsRepository.driveRecords() } returns
                     listOf(
@@ -2468,8 +2470,8 @@ git commit -m "feat: 충전 SoC 분포와 충전소·지역 수를 낸다"
             }
         }
 
-        `when`("효율 기록만 없으면") {
-            then("나머지 둘은 그대로 오고 그것만 null이다") {
+        When("효율 기록만 없으면") {
+            Then("나머지 둘은 그대로 오고 그것만 null이다") {
                 stubEmpty()
                 every { insightsRepository.driveRecords() } returns
                     listOf(
@@ -2489,7 +2491,7 @@ git commit -m "feat: 충전 SoC 분포와 충전소·지역 수를 낸다"
 
 - [ ] **Step 2: 실패를 확인한다**
 
-Run: `./gradlew :apps:daily-record:test --tests '*TeslaInsightsServiceTest*'`
+Run: `./gradlew :daily-record:test --tests '*TeslaInsightsServiceTest*'`
 Expected: FAIL — `Unresolved reference: driveRecords`
 
 - [ ] **Step 3: 행 타입·리포지토리·SQL을 더한다**
@@ -2684,7 +2686,7 @@ data class EfficiencyRecord(
 
 - [ ] **Step 5: 통과를 확인하고 커밋한다**
 
-Run: `./gradlew :apps:daily-record:test --tests '*TeslaInsightsServiceTest*'`
+Run: `./gradlew :daily-record:test --tests '*TeslaInsightsServiceTest*'`
 Expected: PASS
 
 ```bash
@@ -2720,24 +2722,24 @@ git commit -m "feat: 역대 기록 셋을 낸다"
 - [ ] **Step 1: 실패하는 테스트를 쓴다**
 
 ```kotlin
-    given("batteryWindow — 범위 검증") {
-        `when`("hours가 0이거나 169면") {
-            then("400이다") {
+    Given("batteryWindow — 범위 검증") {
+        When("hours가 0이거나 169면") {
+            Then("400이다") {
                 shouldThrow<CustomException> { service.batteryWindow(0) }
                 shouldThrow<CustomException> { service.batteryWindow(169) }
             }
         }
     }
 
-    given("batteryWindow — 응답") {
+    Given("batteryWindow — 응답") {
         fun stubWindow() {
             every { insightsRepository.batterySamples(any(), any()) } returns emptyList()
             every { insightsRepository.parkDrainSince(any()) } returns ParkDrainRow(BigDecimal.ZERO, BigDecimal.ZERO, 0)
             every { vehicleRepository.chargeSegments(any(), any()) } returns emptyList()
         }
 
-        `when`("표본이 없으면") {
-            then("null이 아니라 빈 배열이다") {
+        When("표본이 없으면") {
+            Then("null이 아니라 빈 배열이다") {
                 stubWindow()
                 val response = service.batteryWindow(48)
 
@@ -2746,16 +2748,16 @@ git commit -m "feat: 역대 기록 셋을 낸다"
             }
         }
 
-        `when`("끝이 요청 시각인지") {
-            then("from이 to − hours다") {
+        When("끝이 요청 시각인지") {
+            Then("from이 to − hours다") {
                 stubWindow()
                 val response = service.batteryWindow(48)
                 response.from shouldBe response.to.minusHours(48)
             }
         }
 
-        `when`("표본이 오면") {
-            then("시각을 KST로 되돌린다") {
+        When("표본이 오면") {
+            Then("시각을 KST로 되돌린다") {
                 stubWindow()
                 every { insightsRepository.batterySamples(any(), any()) } returns
                     listOf(BatterySampleRow(LocalDateTime.of(2026, 8, 18, 6, 2), 62, null))
@@ -2767,8 +2769,8 @@ git commit -m "feat: 역대 기록 셋을 낸다"
             }
         }
 
-        `when`("팬텀 드레인 표본이 0이면") {
-            then("null이 아니라 samples 0으로 온다 — 앱이 그 줄을 감춘다") {
+        When("팬텀 드레인 표본이 0이면") {
+            Then("null이 아니라 samples 0으로 온다 — 앱이 그 줄을 감춘다") {
                 stubWindow()
                 service.batteryWindow(48).parkDrain.samples shouldBe 0
             }
@@ -2778,7 +2780,7 @@ git commit -m "feat: 역대 기록 셋을 낸다"
 
 - [ ] **Step 2: 실패를 확인한다**
 
-Run: `./gradlew :apps:daily-record:test --tests '*TeslaInsightsServiceTest*'`
+Run: `./gradlew :daily-record:test --tests '*TeslaInsightsServiceTest*'`
 Expected: FAIL — `Unresolved reference: batteryWindow`
 
 - [ ] **Step 3: 행 타입·리포지토리·SQL을 더한다**
@@ -3091,7 +3093,7 @@ private const val DEFAULT_HOURS = "48"
 
 - [ ] **Step 6: 통과를 확인하고 커밋한다**
 
-Run: `./gradlew :apps:daily-record:test --tests '*TeslaInsightsServiceTest*'`
+Run: `./gradlew :daily-record:test --tests '*TeslaInsightsServiceTest*'`
 Expected: PASS
 
 ```bash
@@ -3146,7 +3148,7 @@ comm -13 /tmp/sql-aliases.txt /tmp/kt-columns.txt
 - [ ] **Step 3: 실제 TeslaMate DB로 띄워 호출한다**
 
 ```bash
-./gradlew :apps:daily-record:bootRun
+./gradlew :daily-record:bootRun
 ```
 
 토큰을 받은 뒤 셋을 부른다(범위마다 SQL이 다르게 돈다):
@@ -3201,7 +3203,7 @@ curl -s -H "Authorization: Bearer $TOKEN" 'http://localhost:8080/tesla/battery-w
 
 - [ ] **Step 6: 전체 테스트와 커밋**
 
-Run: `./gradlew :apps:daily-record:test`
+Run: `./gradlew :daily-record:test`
 Expected: PASS — Tesla 밖의 테스트도 포함해 전부.
 
 ```bash
