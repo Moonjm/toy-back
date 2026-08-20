@@ -15,7 +15,7 @@ import java.time.YearMonth
 /**
  * 충전(`/tesla/charges` 하위)·차량(`/tesla/summary`·`/tesla/status`·`/tesla/battery-health`·
  * `/tesla/drive-insights`·`/tesla/state-timeline`)·통계(`TeslaInsightsController`)를 갈라 둔다 —
- * 읽는 테이블도 갱신 주기도 다르다. 한 파일에 여덟 엔드포인트를 두면 그 경계가 안 보인다.
+ * 읽는 테이블도 갱신 주기도 다르다. 한 파일에 다 두면 그 경계가 안 보인다.
  *
  * **`/tesla/drive-insights`는 `/tesla/insights`가 흡수했다.** 앱이 넘어간 뒤 지운다 —
  * 그때까지는 옛 계약을 쓰는 앱 버전이 살아 있다.
