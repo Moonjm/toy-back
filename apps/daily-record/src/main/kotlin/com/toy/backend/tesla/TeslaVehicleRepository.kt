@@ -8,6 +8,10 @@ import java.time.LocalDateTime
  * `TeslaChargeRepository.updateCost` 하나뿐이다.
  *
  * 행 타입의 시각은 전부 UTC다. KST 변환은 서비스가 한다.
+ *
+ * 주행 집계 넷(`driveTemperatureBuckets`·`driveTimes`·`driveDistanceBuckets`·`drivePlaces`)은
+ * 조회 범위를 서비스에서 UTC로 받는다 — 「전체 기간」을 SQL로 표현할 길이 없어서다.
+ * 경계 컬럼은 `end_date`이고, 월별 집계가 쓰는 `start_date`와 자정을 걸친 주행 한 건이 다르다.
  */
 interface TeslaVehicleRepository {
     /**
@@ -68,7 +72,10 @@ interface TeslaVehicleRepository {
      *
      * **행이 온 버킷만 온다.** 빈 버킷의 자리를 채우는 것은 서비스가 한다.
      */
-    fun driveTemperatureBuckets(months: Int): List<DriveTemperatureBucketRow>
+    fun driveTemperatureBuckets(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<DriveTemperatureBucketRow>
 
     /**
      * 요일·시각별 주행 건수. **KST로 옮긴 뒤 뽑는다** — UTC로 뽑으면 아침 8시 출근이
@@ -76,10 +83,18 @@ interface TeslaVehicleRepository {
      *
      * 온도·주행가능거리 조건을 걸지 않는다. 시간대는 둘 다 쓰지 않는다.
      */
-    fun driveTimes(months: Int): List<DriveTimeRow>
+    fun driveTimes(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<DriveTimeRow>
 
-    /** 거리 버킷별 주행 합. 온도·주행가능거리 조건을 걸지 않는다. 행이 온 버킷만 온다. */
-    fun driveDistanceBuckets(months: Int): List<DriveDistanceBucketRow>
+    /**
+     * 거리 버킷별 주행 합. 온도·주행가능거리 조건을 걸지 않는다. 행이 온 버킷만 온다.
+     */
+    fun driveDistanceBuckets(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<DriveDistanceBucketRow>
 
     /**
      * 도착지별 주행 합, 건수 많은 순 상위 10개.
@@ -88,7 +103,10 @@ interface TeslaVehicleRepository {
      * 958건이 전부 도착지 주소를 갖고 있어(실측 2026-08-19) 목록이 채워진다.
      * 이름이 끝내 없는 도착지는 세지 않는다 — 실측으로 0건이다.
      */
-    fun drivePlaces(months: Int): List<DrivePlaceRow>
+    fun drivePlaces(
+        startUtc: LocalDateTime,
+        endUtcExclusive: LocalDateTime,
+    ): List<DrivePlaceRow>
 
     /**
      * 범위에 걸치는 `states` 구간. **범위 경계로 잘라서 준다.**

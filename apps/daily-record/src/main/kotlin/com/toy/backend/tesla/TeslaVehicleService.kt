@@ -104,15 +104,24 @@ class TeslaVehicleService(
             throw CustomException(ErrorCode.INVALID_REQUEST, "months는 $MIN_MONTHS~$MAX_MONTHS 사이여야 합니다")
         }
 
-        val temperatures = vehicleRepository.driveTemperatureBuckets(months).associateBy { it.bucket }
-        val distances = vehicleRepository.driveDistanceBuckets(months).associateBy { it.bucket }
+        // 예전 SQL이 만들던 구르는 범위 그대로다 — 앱 1단계가 이 엔드포인트를 계속 쓴다.
+        //
+        // **월 빼기는 UTC 벽시계에서 한다.** KST로 먼저 빼면 월말에 하루가 어긋난다:
+        // 2026-03-30T16:00 UTC에서 1개월을 빼면 02-28T16:00인데, KST(03-31T01:00)로 빼면
+        // 「2월 31일」이 28일로 잘린 뒤 9시간을 되빼 02-27T16:00이 된다(실측).
+        val nowKst = TeslaTime.nowKst()
+        val endUtc = TeslaTime.toUtc(nowKst)
+        val startUtc = endUtc.minusMonths(months.toLong())
+
+        val temperatures = vehicleRepository.driveTemperatureBuckets(startUtc, endUtc).associateBy { it.bucket }
+        val distances = vehicleRepository.driveDistanceBuckets(startUtc, endUtc).associateBy { it.bucket }
         val stats = vehicleRepository.driveStats()
 
         return TeslaDriveInsightsResponse(
             months = months,
             efficiencyKwhPerKm = vehicleRepository.carEfficiency(),
             temperatureBuckets =
-                TEMPERATURE_BUCKETS.map { (bucket, bounds) ->
+                TeslaBuckets.TEMPERATURE.map { (bucket, bounds) ->
                     val row = temperatures[bucket]
                     TemperatureBucket(
                         fromC = bounds.first,
@@ -123,11 +132,11 @@ class TeslaVehicleService(
                     )
                 },
             driveTimes =
-                vehicleRepository.driveTimes(months).map {
+                vehicleRepository.driveTimes(startUtc, endUtc).map {
                     DriveTime(weekday = it.weekday, hour = it.hour, count = it.count)
                 },
             distanceBuckets =
-                DISTANCE_BUCKETS.map { (bucket, bounds) ->
+                TeslaBuckets.DISTANCE.map { (bucket, bounds) ->
                     val row = distances[bucket]
                     DistanceBucket(
                         fromKm = bounds.first,
@@ -137,7 +146,7 @@ class TeslaVehicleService(
                     )
                 },
             places =
-                vehicleRepository.drivePlaces(months).map {
+                vehicleRepository.drivePlaces(startUtc, endUtc).map {
                     DrivePlace(name = it.name, driveCount = it.driveCount, distanceKm = it.distanceKm)
                 },
             maxSpeedKmh = stats.maxSpeedKmh,
@@ -286,38 +295,6 @@ class TeslaVehicleService(
         const val MIN_HOURS = 1
         const val MAX_HOURS = 168
 
-        /**
-         * 온도 버킷의 **응답 라벨**이다(℃). `bucket` 번호 → (`fromC`, `toC`).
-         * 하한/상한이 없으면 null이고, 경계는 `from` 포함·`to` 미만이다.
-         *
-         * **`JdbcTeslaVehicleRepository.DRIVE_TEMPERATURE_BUCKETS_SQL`의 `CASE`와 같은 숫자여야
-         * 한다** — 거기는 임계값으로, 여기는 라벨로 쓴다. 한쪽만 고치면 응답의 라벨과 실제
-         * 집계가 어긋난다. 다섯 개인 이유는 계절이 갈리는 최소 단위라서고, 앱이 버킷을 정하면
-         * 서버가 원자료를 통째로 보내야 한다.
-         */
-        private val TEMPERATURE_BUCKETS: List<Pair<Int, Pair<Int?, Int?>>> =
-            listOf(
-                1 to (null to 0),
-                2 to (0 to 10),
-                3 to (10 to 20),
-                4 to (20 to 30),
-                5 to (30 to null),
-            )
-
-        /**
-         * 거리 버킷의 **응답 라벨**이다(km). `bucket` 번호 → (`fromKm`, `toKm`).
-         *
-         * **`JdbcTeslaVehicleRepository.DRIVE_DISTANCE_BUCKETS_SQL`의 `CASE`와 같은 숫자여야
-         * 한다.**
-         */
-        private val DISTANCE_BUCKETS: List<Pair<Int, Pair<Int, Int?>>> =
-            listOf(
-                1 to (0 to 5),
-                2 to (5 to 20),
-                3 to (20 to 50),
-                4 to (50 to 100),
-                5 to (100 to null),
-            )
         private const val EARTH_RADIUS_M = 6_371_000.0
     }
 }

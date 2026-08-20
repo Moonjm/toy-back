@@ -1,5 +1,6 @@
 package com.toy.backend.tesla
 
+import java.time.Duration
 import java.time.LocalDateTime
 import java.time.YearMonth
 import java.time.ZoneId
@@ -41,4 +42,54 @@ object TeslaTime {
         hours: Int,
         nowKst: LocalDateTime = nowKst(),
     ): Pair<LocalDateTime, LocalDateTime> = nowKst.minusHours(hours.toLong()) to nowKst
+
+    /**
+     * 범위 안에서 그 달이 실제로 몇 분 지났는가 — 정지 시간의 분모다.
+     *
+     * **달 전체 분으로 잡으면 안 된다.** 8월 20일에 44,640분을 쓰면 아직 오지 않은 11일치가
+     * 정지 시간이 되어 진행 중인 달만 막대가 솟는다. 겹치지 않는 달은 0이다(분모라 음수 금지).
+     */
+    fun monthElapsedMinutes(
+        month: YearMonth,
+        startKst: LocalDateTime,
+        endKst: LocalDateTime,
+    ): Int {
+        val from = maxOf(month.atDay(1).atStartOfDay(), startKst)
+        val to = minOf(month.plusMonths(1).atDay(1).atStartOfDay(), endKst)
+        if (!from.isBefore(to)) return 0
+        return Duration.between(from, to).toMinutes().toInt()
+    }
+
+    /**
+     * 요일별 등장 일수와 실제로 흐른 분. **키는 1이 월요일**(ISO), 일곱 개가 늘 있다.
+     *
+     * 둘을 갈라 내는 이유는 오늘이 반쪽이라서다 — 요일 평균의 분모(`occurrences`)로는 오늘도
+     * 한 번이지만(그날 주행이 이미 분자에 있다), 정지 시간의 분모(`elapsedMin`)는 지금까지뿐이다.
+     */
+    fun weekdaySpans(
+        startKst: LocalDateTime,
+        endKst: LocalDateTime,
+    ): Map<Int, WeekdaySpan> {
+        val occurrences = IntArray(8)
+        val minutes = IntArray(8)
+        var dayStart = startKst.toLocalDate().atStartOfDay()
+        while (dayStart.isBefore(endKst)) {
+            val dayEnd = dayStart.plusDays(1)
+            val from = maxOf(dayStart, startKst)
+            val to = minOf(dayEnd, endKst)
+            if (from.isBefore(to)) {
+                val weekday = dayStart.dayOfWeek.value
+                occurrences[weekday]++
+                minutes[weekday] += Duration.between(from, to).toMinutes().toInt()
+            }
+            dayStart = dayEnd
+        }
+        return (1..7).associateWith { WeekdaySpan(occurrences[it], minutes[it]) }
+    }
+
+    /** 근거는 `weekdaySpans`. */
+    data class WeekdaySpan(
+        val occurrences: Int,
+        val elapsedMin: Int,
+    )
 }
