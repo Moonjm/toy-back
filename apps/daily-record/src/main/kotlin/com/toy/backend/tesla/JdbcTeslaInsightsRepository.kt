@@ -339,6 +339,11 @@ class JdbcTeslaInsightsRepository(
          * `from_date`는 곧 `d.end_date`라 앞이 유령이면 저절로 걸러지고, `to_end_date`는 뒤가
          * 유령인 짝(유령 12건 전부 `start_rated_range_km`가 NULL이라 안 막으면 표본은 세도
          * `SUM`이 그 건을 건너뛴다)을 막으려고 따로 `LEAD`한 값이다.
+         *
+         * **급소 4 — `p.drop_km IS NOT NULL`도 바깥 `WHERE`에 있어야 한다.** `samples`는
+         * 「그 합이 몇 구간에서 나왔나」다(`ParkDrainMonthRow.samples` 참조) — 없으면
+         * `drop_km`이 NULL인 구간도 `COUNT(*)`엔 잡히는데 `SUM(p.drop_km)`은 건너뛰어
+         * 모집단이 어긋난다.
          */
         private const val PARK_DRAIN_MONTHLY_SQL = """
             WITH park AS (
@@ -359,6 +364,7 @@ class JdbcTeslaInsightsRepository(
              WHERE p.from_date    IS NOT NULL
                AND p.to_date      IS NOT NULL
                AND p.to_end_date  IS NOT NULL
+               AND p.drop_km      IS NOT NULL
                AND p.from_date >= :start
                AND p.from_date <  :end
                AND NOT EXISTS (SELECT 1
@@ -533,6 +539,10 @@ class JdbcTeslaInsightsRepository(
          * **COALESCE 순서는 `DRIVE_PLACES_SQL`과 같다** — 표시 이름으로 묶어야 재지오코딩으로
          * 갈린 행이 하나로 합쳐진다. `cost_missing_count` 근거는 `Charger.costMissingCount`
          * 참조. `ORDER BY` 마지막 열이 이름인 것은 `LIMIT 10` 경계의 tie-breaker다.
+         *
+         * `energy_added_kwh DESC`에 `NULLS LAST`가 필요하다 — `SUM`이라 NULL이 나올 수 있고
+         * (`ChargerRow.energyAddedKwh` 참조), PostgreSQL은 `DESC` 기본이 `NULLS FIRST`라
+         * NULL 충전소가 동점에서 앞으로 간다.
          */
         private const val CHARGERS_SQL = """
             SELECT COALESCE(g.name, a.name, a.road, a.city, a.display_name) AS name,
@@ -549,7 +559,7 @@ class JdbcTeslaInsightsRepository(
                AND cp.start_date >= :start
                AND cp.start_date <  :end
              GROUP BY 1
-             ORDER BY charge_count DESC, energy_added_kwh DESC, name
+             ORDER BY charge_count DESC, energy_added_kwh DESC NULLS LAST, name
              LIMIT 10
         """
 
@@ -663,9 +673,9 @@ class JdbcTeslaInsightsRepository(
         /**
          * 최근 팬텀 드레인. `PARK_DRAIN_MONTHLY_SQL`과 **같은 정의**를 쓴다 —
          * `LEAD`를 전체 주행(유령 포함) 위에서 돌리고, 짝의 어느 쪽이든 마감되지 않았으면
-         * 바깥 `WHERE`에서 빼며, 겹침 판정에 `c.end_date IS NOT NULL`을 건다. 급소 근거는
-         * `PARK_DRAIN_MONTHLY_SQL`의 KDoc 참조 — 최근 7일은 유령이 없어 값이 안 바뀐다.
-         * 두 응답의 같은 값이 달라지면 안 된다.
+         * 바깥 `WHERE`에서 빼며, 겹침 판정에 `c.end_date IS NOT NULL`을 건다. `drop_km IS
+         * NOT NULL`을 포함해 급소 근거는 `PARK_DRAIN_MONTHLY_SQL`의 KDoc 참조 — 최근 7일은
+         * 유령도 NULL `drop_km`도 없어 값이 안 바뀐다. 두 응답의 같은 값이 달라지면 안 된다.
          *
          * 집계라 행은 늘 온다. 표본이 없으면 `samples`가 0이고 `SUM`이 null이라
          * 매핑에서 0으로 바꾼다 — 「0km 샜다」가 아니라 「표본이 없다」를 `samples`가 말한다.
@@ -688,6 +698,7 @@ class JdbcTeslaInsightsRepository(
              WHERE p.from_date    IS NOT NULL
                AND p.to_date      IS NOT NULL
                AND p.to_end_date  IS NOT NULL
+               AND p.drop_km      IS NOT NULL
                AND p.from_date >= :since
                AND NOT EXISTS (SELECT 1
                                  FROM charging_processes c
