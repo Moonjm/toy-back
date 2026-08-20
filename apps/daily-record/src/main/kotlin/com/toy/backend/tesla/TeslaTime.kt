@@ -1,5 +1,6 @@
 package com.toy.backend.tesla
 
+import java.time.Duration
 import java.time.LocalDateTime
 import java.time.YearMonth
 import java.time.ZoneId
@@ -41,4 +42,61 @@ object TeslaTime {
         hours: Int,
         nowKst: LocalDateTime = nowKst(),
     ): Pair<LocalDateTime, LocalDateTime> = nowKst.minusHours(hours.toLong()) to nowKst
+
+    /**
+     * 창 안에서 그 달이 실제로 몇 분 지났는가. **정지 시간의 분모다.**
+     *
+     * 「그 달 전체 분」이 아닌 이유: 8월 20일에 8월의 분모를 달 전체(44,640분)로 잡으면 아직
+     * 오지 않은 11일치가 정지 시간으로 들어가 **진행 중인 달만 막대가 솟는다.** 창 시작보다
+     * 앞선 부분도 같은 이유로 뺀다.
+     *
+     * 창과 겹치지 않는 달은 0이다 — 뺄셈의 분모라 음수가 나오면 안 된다.
+     */
+    fun monthElapsedMinutes(
+        month: YearMonth,
+        startKst: LocalDateTime,
+        endKst: LocalDateTime,
+    ): Int {
+        val from = maxOf(month.atDay(1).atStartOfDay(), startKst)
+        val to = minOf(month.plusMonths(1).atDay(1).atStartOfDay(), endKst)
+        if (!from.isBefore(to)) return 0
+        return Duration.between(from, to).toMinutes().toInt()
+    }
+
+    /**
+     * 창 안에서 각 요일이 며칠 나왔고(`occurrences`) 그 요일에 실제로 몇 분이 흘렀는가
+     * (`elapsedMin`). **키는 1이 월요일**(ISO)이고 일곱 개가 늘 있다 — 0인 요일도 자리를 지킨다.
+     *
+     * `occurrences`는 요일 평균의 분모이고 `elapsedMin`은 정지 시간의 분모다. **둘을 함께 내는
+     * 이유는 오늘이 반쪽이기 때문이다** — 오늘은 한 번으로 세지만(그날의 주행이 이미 분자에
+     * 들어 있다) 흐른 시간은 지금까지뿐이다. 한 값으로 합치면 둘 중 하나가 틀린다.
+     *
+     * 하루씩 도는 구현이다. 60개월이 1,800회 남짓이라 잴 필요가 없다.
+     */
+    fun weekdaySpans(
+        startKst: LocalDateTime,
+        endKst: LocalDateTime,
+    ): Map<Int, WeekdaySpan> {
+        val occurrences = IntArray(8)
+        val minutes = IntArray(8)
+        var dayStart = startKst.toLocalDate().atStartOfDay()
+        while (dayStart.isBefore(endKst)) {
+            val dayEnd = dayStart.plusDays(1)
+            val from = maxOf(dayStart, startKst)
+            val to = minOf(dayEnd, endKst)
+            if (from.isBefore(to)) {
+                val weekday = dayStart.dayOfWeek.value
+                occurrences[weekday]++
+                minutes[weekday] += Duration.between(from, to).toMinutes().toInt()
+            }
+            dayStart = dayEnd
+        }
+        return (1..7).associateWith { WeekdaySpan(occurrences[it], minutes[it]) }
+    }
+
+    /** 요일 하나가 창 안에서 며칠 나왔고 몇 분이 흘렀는지. 자세한 뜻은 `weekdaySpans`. */
+    data class WeekdaySpan(
+        val occurrences: Int,
+        val elapsedMin: Int,
+    )
 }
