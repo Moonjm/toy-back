@@ -5,9 +5,11 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.ints.shouldBeLessThanOrEqual
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.mockk.every
 import io.mockk.mockk
 import java.math.BigDecimal
+import java.time.LocalDateTime
 import java.time.YearMonth
 
 /**
@@ -39,6 +41,7 @@ class TeslaInsightsServiceTest :
             every { insightsRepository.chargeLevelBuckets(any(), any()) } returns emptyList()
             every { insightsRepository.chargers(any(), any()) } returns emptyList()
             every { insightsRepository.regions(any(), any()) } returns RegionRow(0, 0, 0)
+            every { insightsRepository.driveRecords() } returns emptyList()
         }
 
         Given("insights — 범위 검증") {
@@ -316,6 +319,77 @@ class TeslaInsightsServiceTest :
                 Then("regions가 전부 0이다 — null이 아니다") {
                     stubEmpty()
                     service.insights(12).regions.cities shouldBe 0
+                }
+            }
+        }
+
+        Given("records") {
+            When("주행이 하나도 없으면") {
+                Then("셋 다 null이다 — 「역대」라는 값 자체가 없다") {
+                    stubEmpty()
+                    val records = service.insights(12).records
+
+                    records.longestDistance shouldBe null
+                    records.longestDuration shouldBe null
+                    records.bestEfficiency shouldBe null
+                }
+            }
+
+            When("세 기록이 오면") {
+                Then("종류별로 갈라 싣고 시각을 KST로 되돌린다") {
+                    stubEmpty()
+                    every { insightsRepository.driveRecords() } returns
+                        listOf(
+                            DriveRecordRow(
+                                "distance",
+                                3619,
+                                LocalDateTime.of(2024, 9, 13, 0, 50),
+                                BigDecimal("293.2"),
+                                308,
+                                BigDecimal("241.4"),
+                            ),
+                            DriveRecordRow(
+                                "duration",
+                                3619,
+                                LocalDateTime.of(2024, 9, 13, 0, 50),
+                                BigDecimal("293.2"),
+                                308,
+                                BigDecimal("241.4"),
+                            ),
+                            DriveRecordRow(
+                                "efficiency",
+                                3342,
+                                LocalDateTime.of(2024, 6, 2, 4, 31),
+                                BigDecimal("26.7"),
+                                30,
+                                BigDecimal("15.3"),
+                            ),
+                        )
+
+                    val records = service.insights(12).records
+
+                    records.longestDistance!!.driveId shouldBe 3619
+                    // 2024-09-13 00:50 UTC → KST 09:50
+                    records.longestDistance!!.startedAt shouldBe LocalDateTime.of(2024, 9, 13, 9, 50)
+                    records.longestDistance!!.distanceKm shouldBe BigDecimal("293.2")
+                    records.longestDuration!!.durationMin shouldBe 308
+                    records.bestEfficiency!!.driveId shouldBe 3342
+                    records.bestEfficiency!!.ratedRangeUsedKm shouldBe BigDecimal("15.3")
+                }
+            }
+
+            When("효율 기록만 없으면") {
+                Then("나머지 둘은 그대로 오고 그것만 null이다") {
+                    stubEmpty()
+                    every { insightsRepository.driveRecords() } returns
+                        listOf(
+                            DriveRecordRow("distance", 1, LocalDateTime.of(2024, 1, 1, 0, 0), BigDecimal("10.0"), 20, BigDecimal("11.0")),
+                            DriveRecordRow("duration", 1, LocalDateTime.of(2024, 1, 1, 0, 0), BigDecimal("10.0"), 20, BigDecimal("11.0")),
+                        )
+
+                    val records = service.insights(12).records
+                    records.longestDistance shouldNotBe null
+                    records.bestEfficiency shouldBe null
                 }
             }
         }

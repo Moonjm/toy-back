@@ -33,6 +33,7 @@ class TeslaInsightsService(
         val speeds = insightsRepository.speedBuckets(window.startUtc, window.endUtc).associateBy { it.bucket }
         val speedEnergies = insightsRepository.speedEnergyBuckets(window.startUtc, window.endUtc).associateBy { it.bucket }
         val chargeLevels = insightsRepository.chargeLevelBuckets(window.startUtc, window.endUtc).associateBy { it.bucket }
+        val records = insightsRepository.driveRecords().associateBy { it.kind }
 
         return TeslaInsightsResponse(
             months = months,
@@ -128,6 +129,21 @@ class TeslaInsightsService(
                 insightsRepository.regions(window.startUtc, window.endUtc).let {
                     Regions(cities = it.cities, states = it.states, countries = it.countries)
                 },
+            records =
+                InsightsRecords(
+                    longestDistance =
+                        records[RECORD_DISTANCE]?.let {
+                            DistanceRecord(it.driveId, TeslaTime.toKst(it.startedAtUtc), it.distanceKm)
+                        },
+                    longestDuration =
+                        records[RECORD_DURATION]?.let {
+                            DurationRecord(it.driveId, TeslaTime.toKst(it.startedAtUtc), it.durationMin)
+                        },
+                    bestEfficiency =
+                        records[RECORD_EFFICIENCY]?.let {
+                            EfficiencyRecord(it.driveId, TeslaTime.toKst(it.startedAtUtc), it.distanceKm, it.ratedRangeUsedKm)
+                        },
+                ),
         )
     }
 
@@ -215,5 +231,10 @@ class TeslaInsightsService(
         /** `months`의 범위. **0은 전체 기간**이고 상한 60은 실측 기록 길이(60개월)에서 왔다. */
         const val ALL_MONTHS = 0
         const val MAX_MONTHS = 60
+
+        /** `DriveRecordRow.kind`의 값. **`DRIVE_RECORDS_SQL`의 문자열과 같아야 한다.** */
+        private const val RECORD_DISTANCE = "distance"
+        private const val RECORD_DURATION = "duration"
+        private const val RECORD_EFFICIENCY = "efficiency"
     }
 }

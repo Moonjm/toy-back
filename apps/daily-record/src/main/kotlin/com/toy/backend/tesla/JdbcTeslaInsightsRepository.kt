@@ -195,6 +195,20 @@ class JdbcTeslaInsightsRepository(
                 RegionRow(rs.getInt("cities"), rs.getInt("states"), rs.getInt("countries"))
             }.single()
 
+    override fun driveRecords(): List<DriveRecordRow> =
+        teslaMateJdbcClient
+            .sql(DRIVE_RECORDS_SQL)
+            .query { rs, _ ->
+                DriveRecordRow(
+                    kind = rs.getString("kind"),
+                    driveId = rs.getLong("drive_id"),
+                    startedAtUtc = rs.getObject("started_at", LocalDateTime::class.java),
+                    distanceKm = rs.getBigDecimal("distance_km"),
+                    durationMin = rs.getInt("duration_min"),
+                    ratedRangeUsedKm = rs.getBigDecimal("rated_range_used_km"),
+                )
+            }.list()
+
     private fun ResultSet.nullableInt(column: String): Int? = getObject(column) as Int?
 
     companion object {
@@ -491,6 +505,47 @@ class JdbcTeslaInsightsRepository(
                AND d.distance > 0
                AND d.start_date >= :start
                AND d.start_date <  :end
+        """
+
+        /**
+         * 역대 기록 셋을 `UNION ALL`로 한 번에 낸다. `months`를 따르지 않는다.
+         *
+         * 급소 1 — 최고 효율에 거리 하한 20km가 있어야 한다. 없으면 실측으로 0.2km 주행이
+         * 8.2배로 1등이 된다 — 정격거리 표시가 움직이지 않을 만큼 짧은 주행이다. 20km면
+         * 1등이 26.7km/15.3km(1.74배)로 말이 된다.
+         *
+         * **급소 2 — `ORDER BY`마다 `id`를 tie-breaker로 둔다.** 실측으로 최장거리와 최장시간이
+         * 같은 주행(id 3619)이고, 동률이 나올 때 어느 것이 뽑힐지 실행마다 달라지면 안 된다.
+         *
+         * `ROUND`의 자릿수는 다른 집계와 맞춘다 — 거리는 소수 한 자리다.
+         */
+        private const val DRIVE_RECORDS_SQL = """
+            WITH d AS (
+                SELECT id, start_date, distance, duration_min,
+                       start_rated_range_km - end_rated_range_km AS rated_used
+                  FROM drives
+                 WHERE end_date IS NOT NULL
+            )
+            (SELECT 'distance' AS kind, id AS drive_id, start_date AS started_at,
+                    ROUND(distance::numeric, 1) AS distance_km, duration_min,
+                    ROUND(rated_used, 1)        AS rated_range_used_km
+               FROM d
+              ORDER BY distance DESC, id
+              LIMIT 1)
+            UNION ALL
+            (SELECT 'duration', id, start_date,
+                    ROUND(distance::numeric, 1), duration_min, ROUND(rated_used, 1)
+               FROM d
+              ORDER BY duration_min DESC, id
+              LIMIT 1)
+            UNION ALL
+            (SELECT 'efficiency', id, start_date,
+                    ROUND(distance::numeric, 1), duration_min, ROUND(rated_used, 1)
+               FROM d
+              WHERE distance >= 20
+                AND rated_used > 0
+              ORDER BY distance / rated_used DESC, id
+              LIMIT 1)
         """
     }
 }

@@ -1,6 +1,7 @@
 package com.toy.backend.tesla
 
 import java.math.BigDecimal
+import java.time.LocalDateTime
 import java.time.YearMonth
 
 /**
@@ -53,6 +54,8 @@ data class TeslaInsightsResponse(
     val chargers: List<Charger>,
     /** 다녀온 지역 수. 주소가 없으면 셋 다 0이다 — null이 아니다. */
     val regions: Regions,
+    /** 역대 기록 셋. 근거는 `TeslaInsightsRepository.driveRecords` 참조. */
+    val records: InsightsRecords,
 )
 
 /**
@@ -165,4 +168,49 @@ data class Regions(
     val cities: Int,
     val states: Int,
     val countries: Int,
+)
+
+/**
+ * 명예의 전당. **셋 다 null일 수 있다** — 주행이 하나도 없거나(전부 null), 20km 넘는 주행이
+ * 없으면(`bestEfficiency`만 null) 「역대」라는 값 자체가 없다.
+ *
+ * 「최다 고도 상승」을 두지 않는다 — `positions.elevation`을 주행마다 훑어야 하는데 범위가
+ * 없는 3,000만 행 스캔이고, 얻는 것이 타일 한 칸이라 값이 비용을 못 넘는다.
+ */
+data class InsightsRecords(
+    val longestDistance: DistanceRecord?,
+    val longestDuration: DurationRecord?,
+    val bestEfficiency: EfficiencyRecord?,
+)
+
+/**
+ * `driveId`를 싣는 이유: 앱이 나중에 그 주행 상세로 보내고 싶어질 자리다. 지금 앱에 주행 상세
+ * 화면이 없어 쓰이지 않지만, 안 실으면 그때 계약을 또 고쳐야 한다. `DurationRecord`·
+ * `EfficiencyRecord`도 같은 이유로 싣는다.
+ */
+data class DistanceRecord(
+    val driveId: Long,
+    /** 출발 시각(KST). */
+    val startedAt: LocalDateTime,
+    val distanceKm: BigDecimal,
+)
+
+data class DurationRecord(
+    val driveId: Long,
+    val startedAt: LocalDateTime,
+    val durationMin: Int,
+)
+
+/**
+ * **거리 하한 20km를 넘은 주행 중** 정격거리 대비 실주행이 가장 좋았던 것 — 없으면 실측으로
+ * 0.2km 주행이 8.2배로 1등이 된다.
+ *
+ * 비율을 내지 않는다 — 분자(`distanceKm`)와 분모(`ratedRangeUsedKm`)를 준다. 앱이
+ * `distanceKm ÷ ratedRangeUsedKm`로 낸다.
+ */
+data class EfficiencyRecord(
+    val driveId: Long,
+    val startedAt: LocalDateTime,
+    val distanceKm: BigDecimal,
+    val ratedRangeUsedKm: BigDecimal,
 )

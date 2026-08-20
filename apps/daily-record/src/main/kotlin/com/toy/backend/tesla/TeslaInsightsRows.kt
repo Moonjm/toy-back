@@ -10,6 +10,7 @@
 package com.toy.backend.tesla
 
 import java.math.BigDecimal
+import java.time.LocalDateTime
 import java.time.YearMonth
 
 /**
@@ -139,4 +140,20 @@ data class RegionRow(
     val cities: Int,
     val states: Int,
     val countries: Int,
+)
+
+/**
+ * 기록 하나. 세 종류(`kind`: `distance`·`duration`·`efficiency`)가 같은 타입으로 오는 이유는
+ * 뽑는 방법이 「`drives` 한 행」으로 같아서다. **`kind` 문자열은 `DRIVE_RECORDS_SQL`과 같아야
+ * 하고 번역하지 않는다.**
+ *
+ * 실측(2026-08-20)으로 `drives`의 다섯 컬럼에 NULL이 0건이라 전부 non-null이다.
+ */
+data class DriveRecordRow(
+    val kind: String,
+    val driveId: Long,
+    val startedAtUtc: LocalDateTime,
+    val distanceKm: BigDecimal,
+    val durationMin: Int,
+    val ratedRangeUsedKm: BigDecimal,
 )

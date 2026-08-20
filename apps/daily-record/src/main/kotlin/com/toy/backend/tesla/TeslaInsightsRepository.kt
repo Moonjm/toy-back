@@ -105,4 +105,14 @@ interface TeslaInsightsRepository {
         startUtc: LocalDateTime,
         endUtcExclusive: LocalDateTime,
     ): RegionRow
+
+    /**
+     * 역대 기록 셋(최장거리·최장시간·최고효율), 종류마다 최대 한 행.
+     *
+     * **파라미터가 없다 — `months` 범위를 따르지 않는다.** 범위가 바뀔 때마다 1등이 바뀌면
+     * 기록이 아니다. `driveStats`의 `maxSpeedKmh`와 같은 규약이다.
+     *
+     * 주행이 하나도 없으면 빈 리스트다. 효율 기록만 없을 수도 있다(거리 하한 20km).
+     */
+    fun driveRecords(): List<DriveRecordRow>
 }
