@@ -109,8 +109,10 @@
 | `due_amount`, `due_date` | 납기내 금액·날짜. 앱 캡처 출처는 `due_date`가 null |
 | `electricity_kwh`, `water_m3`, `hot_water_m3`, `heating_gcal`, `food_kg` | 없는 달은 null |
 
-**동·호·면적을 매 건 저장한다.** 한 집 고정값이라 중복이지만, **옆집 영수증을 잘못 올렸는지
-잡는 유일한 단서**다. 설정값과 다르면 검수 화면이 경고한다.
+**동·호·면적을 매 건 저장하되, 설정값과 대조하지는 않는다.** 영수증에 찍혀 있어 읽는 김에
+같이 오는 값이고 이사하면 바뀌는 기록이니 남겨 둘 값어치가 있다. 그러나 「다른 집 영수증을
+올렸는가」를 판정하는 데 쓰지는 않는다 — 혼자 쓰는 기능이고 매달 자기 집 우편함에서 꺼낸
+종이다. 일어나지 않을 사고를 막으려고 설정 두 개와 판정 코드를 늘리지 않는다.
 
 **사용량은 컬럼으로 둔다.** 5종 고정이고 목적이 추이 그래프다. 별도 테이블로 빼면 추이
 쿼리마다 피벗해야 한다. 여름에는 난방이 없으므로 null을 허용한다.
@@ -160,7 +162,6 @@ GET    /maintenance/trends              항목·사용량 월별 추이 + 전년
 
 - `sumMatched` — Σ항목 == 당월부과액. 실측 16/16 통과라 실패는 드물지만, 실패하면 금액
   오독이 거의 확실하다
-- `addressMatched` — 설정된 동·호와 일치하는지
 - 연·월 범위 검사 결과
 
 **사용량에는 대응하는 플래그가 없다**(함정 1). 없는 것을 있는 척 만들지 않는다.
@@ -169,8 +170,7 @@ GET    /maintenance/trends              항목·사용량 월별 추이 + 전년
 
 ## 설정
 
-`maintenance.*`로 분리한다. 식단이 `2.5-flash`, 배차가 `3.6-flash`, 관리비가 `3.7-flash`로
-셋 다 다르다.
+`maintenance.*`로 분리한다.
 
 ```yaml
 maintenance:
@@ -179,11 +179,19 @@ maintenance:
   vision-model: ${MAINTENANCE_VISION_MODEL:google/gemini-3.7-flash}
   vision-max-tokens: ${MAINTENANCE_VISION_MAX_TOKENS:30000}
   timeout-seconds: 120
-  dong: ${MAINTENANCE_DONG:}
-  ho: ${MAINTENANCE_HO:}
 ```
 
-`dong`·`ho`는 `addressMatched` 판정에만 쓴다.
+**배차와 같은 모델을 쓰게 됐지만 프로퍼티는 합치지 않는다.** 배차는 운영에서 이미
+`3.7-flash`로 돌고 있어 값이 같아졌을 뿐, 두 기능은 각자 자기 도메인 설정을 달고 있고
+(`dispatch.father-name`), 무엇보다 **한쪽만 되돌릴 수 있어야 한다.** 배차표는 빈 칸이
+절반 이상이고 집계 컬럼이 끼어드는 더 어려운 판독이라, 관리비에서 잘 나온 모델이 배차에서도
+잘 나온다는 보장이 없다 — 실제로 배차의 `3.6-flash` 선택에는 별도의 실측 근거가 있었다.
+
+### 배차 기본값 정리
+
+`DispatchVisionProperties`와 `application.yml`의 기본값이 아직 `3.6-flash`인데 운영은
+`3.7-flash`로 돌고 있다. **코드 기본값과 주석을 `3.7-flash`로 맞춘다.**
+2026-08-11 배차 설계·계획 문서는 그때 실제로 잰 값의 기록이므로 고치지 않는다.
 
 재시도는 `dispatch`와 같다 — 파싱 실패는 1회 재시도, `finish_reason == "length"`나 빈
 content는 결정론적이라 재시도하지 않고, 4xx도 바로 포기한다.
