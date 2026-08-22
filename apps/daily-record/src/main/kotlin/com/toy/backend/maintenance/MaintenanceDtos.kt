@@ -160,3 +160,18 @@ fun MaintenanceBill.toResponse(): BillResponse =
         dueAmount = dueAmount,
         dueDate = dueDate,
     )
+
+/**
+ * 한 달치 추이. **없던 항목을 0으로 채우지 않는다** — 「난방을 안 썼다」와 「그 달에 난방
+ * 항목이 아예 없었다」는 다른 사실이고, 여름 넉 달이 실제로 후자다.
+ */
+data class TrendMonth(
+    val yearMonth: String,
+    val chargedAmount: BigDecimal,
+    val items: List<BillItemResponse>,
+    val usage: BillUsage,
+)
+
+data class TrendResponse(
+    val months: List<TrendMonth>,
+)

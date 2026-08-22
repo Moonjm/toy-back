@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RequestPart
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.multipart.MultipartFile
@@ -24,6 +25,7 @@ import java.time.YearMonth
 class MaintenanceController(
     private val recognitionService: MaintenanceRecognitionService,
     private val billService: MaintenanceBillService,
+    private val trendService: MaintenanceTrendService,
 ) {
     /**
      * **무인증으로 열지 않는다.** 응답에 동·호가 들어간다.
@@ -81,4 +83,12 @@ class MaintenanceController(
         billService.delete(yearMonth)
         return ResponseEntity.noContent().build()
     }
+
+    // defaultValue는 애너테이션 인자라 상수 참조를 못 쓴다.
+    // MaintenanceTrendService.DEFAULT_MONTHS와 같은 값이어야 한다.
+    @GetMapping("/trends")
+    @Operation(summary = "항목·사용량 월별 추이 — 기본 13개월(전년 동월이 범위에 들어온다)")
+    fun trend(
+        @RequestParam(required = false, defaultValue = "13") months: Int,
+    ): ResponseEntity<DataResponseBody<TrendResponse>> = ResponseEntity.ok(DataResponseBody(trendService.trend(months)))
 }
