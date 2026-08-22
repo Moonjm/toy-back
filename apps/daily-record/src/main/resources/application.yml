@@ -75,8 +75,9 @@ dispatch:
   api-key: ${OPENROUTER_API_KEY:}
   base-url: https://openrouter.ai/api/v1
   # 표 판독은 식단 인식과 요구가 다르다. gemini-2.5-flash는 같은 사진도 호출마다
-  # 답이 달라져(실측 5회에 5/9~9/9) 쓸 수 없다. 3.6-flash만 6회 연속 정답과 일치했다.
-  vision-model: ${DISPATCH_VISION_MODEL:google/gemini-3.6-flash}
+  # 답이 달라져(실측 5회에 5/9~9/9) 쓸 수 없다. 3.6-flash가 6회 연속 정답과 일치했고,
+  # 같은 계열의 3.7-flash가 절반 값에 나와 운영을 그쪽으로 옮겼다.
+  vision-model: ${DISPATCH_VISION_MODEL:google/gemini-3.7-flash}
   # reasoning 토큰이 이 한도에 함께 잡힌다(조각당 1,300~3,000). 식단용 4,000으로 두면
   # content가 빈 채로 온다.
   vision-max-tokens: ${DISPATCH_VISION_MAX_TOKENS:30000}

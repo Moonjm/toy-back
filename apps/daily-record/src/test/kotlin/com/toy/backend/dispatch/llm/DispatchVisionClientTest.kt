@@ -14,7 +14,7 @@ import reactor.core.publisher.Mono
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * **`max_tokens`를 크게 잡아야 한다.** `gemini-3.6-flash`는 reasoning 토큰을 1,300~3,000
+ * **`max_tokens`를 크게 잡아야 한다.** `gemini-3.7-flash`는 reasoning 토큰을 1,300~3,000
  * 쓰는데 이 값이 `max_tokens`에 함께 잡힌다. 식단용 기본값 4,000으로 두면 `content`가
  * 빈 채로 온다(실측에서 `2.5-pro`로 재현됐다).
  *
@@ -87,7 +87,7 @@ class DispatchVisionClientTest :
             val body = DispatchVisionClient(properties, WebClient.builder().build()).visionBody(slice, "홍길동", null)
 
             Then("모델이 배차 전용 설정을 따른다") {
-                body["model"] shouldBe "google/gemini-3.6-flash"
+                body["model"] shouldBe "google/gemini-3.7-flash"
             }
 
             Then("max_tokens가 들어간다") {
