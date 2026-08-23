@@ -4,6 +4,7 @@ import com.toy.backend.common.response.DataResponseBody
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -46,8 +47,11 @@ class DispatchController(
      *
      * **`YearMonth`로 받아 Spring이 변환하게 둔다.** 본문에서 `YearMonth.parse`를 부르면
      * 오타 하나에 `DateTimeParseException`이 공통 핸들러의 500으로 떨어져 서버 결함처럼 보인다.
+     *
+     * **`consumes`를 명시한다.** 없으면 springdoc이 요청 본문을 `application/json`으로 내보내
+     * API 툴에서 파일 선택 자리가 사라진다.
      */
-    @PostMapping("/recognitions")
+    @PostMapping("/recognitions", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     @Operation(summary = "배차표 사진 인식 — 저장하지 않고 결과만 준다(검수용)")
     fun recognize(
         @RequestPart("file") file: MultipartFile,

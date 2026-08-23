@@ -5,6 +5,7 @@ import com.toy.backend.common.response.DataResponseBody
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -32,8 +33,11 @@ class MaintenanceController(
      *
      * 사진은 저장하지 않는다 — `common/file`의 `FileEntity`에 소유자가 없는 미해결 이슈를
      * 건드리지 않는다(AGENTS.md).
+     *
+     * **`consumes`를 명시한다.** 없으면 springdoc이 요청 본문을 `application/json`으로 내보내
+     * API 툴에서 파일 선택 자리가 사라진다.
      */
-    @PostMapping("/recognitions")
+    @PostMapping("/recognitions", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     @Operation(summary = "고지서 사진 인식 — 저장하지 않고 결과만 준다(검수용)")
     fun recognize(
         @RequestPart("file") file: MultipartFile,
