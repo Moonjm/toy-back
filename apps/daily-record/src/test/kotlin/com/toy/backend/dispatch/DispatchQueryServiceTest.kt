@@ -8,14 +8,14 @@ import java.time.LocalDate
 import java.time.YearMonth
 
 /**
- * 아빠와 엄마는 저장 경로가 다르다 — **아빠는 확정 저장된 날짜만, 엄마는 패턴으로 범위 전체.**
- * 읽는 쪽(웹 달력)은 그 차이를 몰라야 하므로 여기서 같은 모양으로 합친다.
+ * 아빠와 엄마는 값이 들어오는 경로가 다르다(사진 인식 / 손 입력). 읽는 쪽(웹 달력)은 그 차이를
+ * 몰라야 하므로 여기서 같은 모양으로 합친다.
  *
- * 아빠의 「아직 인식하지 않은 날」을 휴무로 채우면 안 된다. 「쉬는 날」과 구분이 사라진다.
+ * **저장되지 않은 날을 채우지 않는다.** 휴무로 채우면 「쉬는 날」과 「아직 모르는 날」의 구분이
+ * 사라진다. 한때 엄마 몫만 3일 주기 패턴으로 달 전체를 채웠으나 근무 형태가 바뀌며 걷어냈다.
  *
- * **조회 단위는 연월 하나다.** 이 엔드포인트는 무인증이고 엄마 몫은 저장 여부와 무관하게
- * 하루씩 만들어 내므로, 임의의 기간을 받으면 요청 한 번으로 수백만 건을 만들어 라즈베리파이
- * 힙이 터진다. 범위를 구조적으로 한 달에 가두면 상한 검사 자체가 필요 없다.
+ * **조회 단위는 연월 하나다.** 이 엔드포인트는 무인증이라 임의의 기간을 받으면 요청 한 번으로
+ * 범위를 무한정 넓힐 수 있다. 한 달에 가두면 상한 검사 자체가 필요 없다.
  */
 class DispatchQueryServiceTest :
     BehaviorSpec({
@@ -26,111 +26,59 @@ class DispatchQueryServiceTest :
         val from = yearMonth.atDay(1)
         val to = yearMonth.atEndOfMonth()
 
-        Given("아빠 확정분 하루와 엄마 패턴이 있을 때") {
+        Given("두 사람의 근무가 저장돼 있을 때") {
             every { shiftRepository.findByWorkDateBetween(from, to) } returns
                 listOf(
+                    DispatchShift(DispatchRole.MOTHER, LocalDate.of(2026, 8, 2), working = true, slotCode = "A"),
                     DispatchShift(DispatchRole.FATHER, LocalDate.of(2026, 8, 1), working = true, slot = 1),
+                    DispatchShift(DispatchRole.MOTHER, LocalDate.of(2026, 8, 1), working = false, note = "연차"),
                 )
 
             val days = service.findMonth(yearMonth).days
 
-            Then("아빠는 확정된 하루만 나온다") {
-                val father = days.filter { it.role == DispatchRole.FATHER }
-                father.size shouldBe 1
-                father[0].date shouldBe LocalDate.of(2026, 8, 1)
-                father[0].working shouldBe true
-                father[0].slot shouldBe 1
+            Then("저장된 것만 나온다 — 없는 날을 만들어 내지 않는다") {
+                days.size shouldBe 3
             }
 
-            Then("엄마는 달 전체가 패턴으로 채워진다") {
-                val mother = days.filter { it.role == DispatchRole.MOTHER }.sortedBy { it.date }
-                mother.size shouldBe 31
-                mother[0].working shouldBe false // 8/1
-                mother[1].working shouldBe true // 8/2
-                mother[2].working shouldBe true // 8/3
+            Then("날짜순으로, 같은 날은 역할순으로 정렬된다") {
+                days.map { it.date to it.role } shouldBe
+                    listOf(
+                        LocalDate.of(2026, 8, 1) to DispatchRole.FATHER,
+                        LocalDate.of(2026, 8, 1) to DispatchRole.MOTHER,
+                        LocalDate.of(2026, 8, 2) to DispatchRole.MOTHER,
+                    )
             }
 
-            Then("엄마 휴무는 1·4·7·10·13·16·19·22·25·28·31 열하루다") {
-                // 기준일 8/1이 오프셋 0(휴무)이고 3일 주기다.
-                val off =
-                    days
-                        .filter { it.role == DispatchRole.MOTHER && !it.working }
-                        .map { it.date.dayOfMonth }
-                off shouldBe listOf(1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31)
+            Then("아빠의 순번이 실린다") {
+                days.first { it.role == DispatchRole.FATHER }.slot shouldBe 1
             }
 
-            Then("엄마는 순번이 아직 없어 slot이 비어 있다") {
-                days.filter { it.role == DispatchRole.MOTHER }.all { it.slot == null } shouldBe true
-            }
-
-            Then("패턴에서 만들어진 엄마 기본값은 slotCode가 비어 있다") {
-                days.filter { it.role == DispatchRole.MOTHER }.all { it.slotCode == null } shouldBe true
-            }
-        }
-
-        Given("엄마 근무조가 저장돼 있을 때") {
-            every { shiftRepository.findByWorkDateBetween(from, to) } returns
-                listOf(
-                    DispatchShift(
-                        DispatchRole.MOTHER,
-                        LocalDate.of(2026, 8, 2),
-                        working = true,
-                        slotCode = "A",
-                    ),
-                )
-
-            val days = service.findMonth(yearMonth).days
-
-            Then("저장된 근무조가 응답에 실린다") {
-                val day = days.first { it.role == DispatchRole.MOTHER && it.date == LocalDate.of(2026, 8, 2) }
-                day.slotCode shouldBe "A"
-            }
-        }
-
-        Given("엄마 예외가 저장돼 있을 때") {
-            every { shiftRepository.findByWorkDateBetween(from, to) } returns
-                listOf(
-                    // 패턴상 8/2는 근무인데 예외로 휴무를 저장했다. **패턴이 휴무라고 하는 날을
-                    // 고르면 예외가 없어도 같은 답이 나와** 덮어쓰기가 되는지 알 수 없다.
-                    DispatchShift(DispatchRole.MOTHER, LocalDate.of(2026, 8, 2), working = false, note = "연차"),
-                )
-
-            val days = service.findMonth(yearMonth).days
-
-            Then("예외가 패턴 계산을 덮어쓴다") {
-                val day = days.first { it.role == DispatchRole.MOTHER && it.date == LocalDate.of(2026, 8, 2) }
-                day.working shouldBe false
-                day.note shouldBe "연차"
-            }
-
-            Then("예외가 없는 날은 그대로 패턴이다") {
-                val day = days.first { it.role == DispatchRole.MOTHER && it.date == LocalDate.of(2026, 8, 3) }
-                day.working shouldBe true
+            Then("엄마의 근무조와 비고가 실린다") {
+                val second = days.first { it.role == DispatchRole.MOTHER && it.date == LocalDate.of(2026, 8, 2) }
+                second.slotCode shouldBe "A"
+                val first = days.first { it.role == DispatchRole.MOTHER && it.date == LocalDate.of(2026, 8, 1) }
+                first.working shouldBe false
+                first.note shouldBe "연차"
             }
         }
 
         Given("아무것도 저장되지 않았을 때") {
             every { shiftRepository.findByWorkDateBetween(from, to) } returns emptyList()
 
-            val days = service.findMonth(yearMonth).days
-
-            Then("엄마는 등록 절차 없이 달 전체가 나온다") {
-                days.filter { it.role == DispatchRole.MOTHER }.size shouldBe 31
-            }
-
-            Then("아빠는 확정분이 없으므로 비어 있다") {
-                days.none { it.role == DispatchRole.FATHER } shouldBe true
+            Then("빈 달이 나온다 — 엄마 몫도 만들어 내지 않는다") {
+                service.findMonth(yearMonth).days shouldBe emptyList()
             }
         }
 
-        Given("30일인 달") {
+        Given("다른 달") {
             val september = YearMonth.of(2026, 9)
-            every {
-                shiftRepository.findByWorkDateBetween(september.atDay(1), september.atEndOfMonth())
-            } returns emptyList()
 
-            Then("그 달의 길이만큼만 나온다 — 범위가 구조적으로 한 달에 갇힌다") {
-                service.findMonth(september).days.size shouldBe 30
+            Then("그 달의 첫날과 마지막 날로만 조회한다") {
+                every {
+                    shiftRepository.findByWorkDateBetween(LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30))
+                } returns emptyList()
+
+                service.findMonth(september).days shouldBe emptyList()
             }
         }
     })
