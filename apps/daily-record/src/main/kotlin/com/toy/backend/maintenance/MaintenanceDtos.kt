@@ -4,7 +4,6 @@ import com.toy.backend.maintenance.llm.RecognizedUsage
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
-import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -100,15 +99,14 @@ data class BillItemRequest(
     @field:Size(max = MaintenanceBillItem.NAME_MAX_LENGTH)
     val name: String,
     /** **음수를 허용한다.** `관리비차감`이 `-13,790`이다. */
-    @field:NotNull
     val amount: BigDecimal,
 )
 
 data class BillSaveRequest(
-    @field:NotNull val yearMonth: YearMonth,
+    val yearMonth: YearMonth,
     @field:NotEmpty val items: List<@Valid BillItemRequest>,
-    @field:NotNull val chargedAmount: BigDecimal,
-    @field:NotNull val dueAmount: BigDecimal,
+    val chargedAmount: BigDecimal,
+    val dueAmount: BigDecimal,
     val dong: String? = null,
     val ho: String? = null,
     val areaM2: BigDecimal? = null,
