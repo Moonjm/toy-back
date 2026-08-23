@@ -25,10 +25,17 @@ class MaintenanceRecognitionService(
     fun recognize(
         bytes: ByteArray,
         contentType: String?,
-    ): RecognitionResponse {
+    ): MaintenanceRecognitionResponse {
         if (bytes.isEmpty()) throw CustomException(MaintenanceErrorCode.IMAGE_REQUIRED)
 
-        val mediaType = contentType?.takeIf { it.startsWith("image/") } ?: DEFAULT_MEDIA_TYPE
+        // contentType이 있는데 image/*가 아니면(PDF 등) 여기서 거부한다. 예전에는 image/jpeg로
+        // 갈아 끼워 그대로 통과시켰는데, 그러면 이미지가 아닌 파일도 유료 OpenRouter 호출(장당
+        // $0.004)로 나간다. contentType이 null인 경우는 일부 클라이언트가 안 보내는 것뿐이라
+        // 지금처럼 image/jpeg로 가정하고 통과시킨다.
+        if (contentType != null && !contentType.startsWith("image/")) {
+            throw CustomException(MaintenanceErrorCode.IMAGE_TYPE_NOT_SUPPORTED, contentType)
+        }
+        val mediaType = contentType ?: DEFAULT_MEDIA_TYPE
         val recognized =
             visionClient.read(Base64.getEncoder().encodeToString(bytes), mediaType)
                 ?: throw CustomException(MaintenanceErrorCode.VISION_UNAVAILABLE)
@@ -69,7 +76,7 @@ class MaintenanceRecognitionService(
                 }
             }
 
-        return RecognitionResponse(
+        return MaintenanceRecognitionResponse(
             yearMonth = yearMonth?.toString(),
             dong = recognized.dong.takeIf { it.isNotBlank() },
             ho = recognized.ho.takeIf { it.isNotBlank() },

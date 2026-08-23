@@ -11,6 +11,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import java.math.BigDecimal
 import java.time.LocalDate
 
@@ -148,6 +149,26 @@ class MaintenanceRecognitionServiceTest :
                 Then("IMAGE_REQUIRED로 거부한다") {
                     val e = shouldThrow<CustomException> { service.recognize(byteArrayOf(), "image/jpeg") }
                     e.errorCode shouldBe MaintenanceErrorCode.IMAGE_REQUIRED
+                }
+            }
+        }
+
+        Given("이미지가 아닌 파일") {
+            When("PDF를 올리면") {
+                Then("IMAGE_TYPE_NOT_SUPPORTED로 거부하고 vision을 호출하지 않는다") {
+                    val e = shouldThrow<CustomException> { service.recognize(byteArrayOf(1), "application/pdf") }
+                    e.errorCode shouldBe MaintenanceErrorCode.IMAGE_TYPE_NOT_SUPPORTED
+                    verify(exactly = 0) { visionClient.read(any(), any()) }
+                }
+            }
+        }
+
+        Given("contentType이 없는 파일") {
+            every { visionClient.read(any(), any()) } returns recognized()
+
+            When("인식하면") {
+                Then("image/jpeg로 가정하고 통과시킨다 — 일부 클라이언트가 안 보낸다") {
+                    service.recognize(byteArrayOf(1), null).yearMonth shouldBe "2026-03"
                 }
             }
         }

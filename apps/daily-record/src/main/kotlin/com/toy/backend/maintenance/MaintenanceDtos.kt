@@ -77,7 +77,7 @@ data class BillItemResponse(
  * `sumMatched`는 금액 오독만 잡는다. **사용량에는 대응하는 플래그가 없다** —
  * 실측에서 사용량만 틀린 실행이 합계 검증을 통과했다. 없는 안전망을 있는 척 만들지 않는다.
  */
-data class RecognitionResponse(
+data class MaintenanceRecognitionResponse(
     /** 사진에서 읽지 못하면 `null`이다. 검수 화면이 채운다. */
     val yearMonth: String?,
     val dong: String?,

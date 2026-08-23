@@ -37,7 +37,7 @@ class MaintenanceController(
     @Operation(summary = "고지서 사진 인식 — 저장하지 않고 결과만 준다(검수용)")
     fun recognize(
         @RequestPart("file") file: MultipartFile,
-    ): ResponseEntity<DataResponseBody<RecognitionResponse>> =
+    ): ResponseEntity<DataResponseBody<MaintenanceRecognitionResponse>> =
         ResponseEntity.ok(DataResponseBody(recognitionService.recognize(file.bytes, file.contentType)))
 
     /**
@@ -84,11 +84,10 @@ class MaintenanceController(
         return ResponseEntity.noContent().build()
     }
 
-    // defaultValue는 애너테이션 인자라 상수 참조를 못 쓴다.
-    // MaintenanceTrendService.DEFAULT_MONTHS와 같은 값이어야 한다.
     @GetMapping("/trends")
     @Operation(summary = "항목·사용량 월별 추이 — 기본 13개월(전년 동월이 범위에 들어온다)")
     fun trend(
-        @RequestParam(required = false, defaultValue = "13") months: Int,
-    ): ResponseEntity<DataResponseBody<TrendResponse>> = ResponseEntity.ok(DataResponseBody(trendService.trend(months)))
+        @RequestParam(required = false) months: Int?,
+    ): ResponseEntity<DataResponseBody<TrendResponse>> =
+        ResponseEntity.ok(DataResponseBody(trendService.trend(months ?: MaintenanceTrendService.DEFAULT_MONTHS)))
 }

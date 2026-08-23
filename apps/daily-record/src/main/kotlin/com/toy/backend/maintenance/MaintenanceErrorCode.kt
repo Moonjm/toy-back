@@ -18,6 +18,10 @@ enum class MaintenanceErrorCode(
     YEAR_MONTH_MISMATCH(HttpStatus.BAD_REQUEST, "주소의 연월(%s)과 본문의 연월(%s)이 다릅니다."),
     VISION_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "고지서 인식에 실패했습니다. 잠시 후 다시 시도해 주세요."),
     IMAGE_REQUIRED(HttpStatus.BAD_REQUEST, "이미지가 비어 있습니다."),
+
+    // contentType이 있는데 image/*가 아니면 OpenRouter 호출(장당 $0.004)까지 갈 이유가 없다.
+    // null인 경우는 일부 클라이언트가 안 보내는 것뿐이라 여기서 걸지 않고 image/jpeg로 가정한다.
+    IMAGE_TYPE_NOT_SUPPORTED(HttpStatus.BAD_REQUEST, "이미지 파일만 올릴 수 있습니다. (전달된 형식: %s)"),
     ;
 
     override fun getHttpStatus(): HttpStatus = httpStatus
