@@ -27,10 +27,12 @@ class MaintenanceTrendService(
         today: LocalDate = LocalDate.now(),
     ): TrendResponse {
         val span = months.coerceIn(1, MAX_MONTHS)
-        val start = YearMonth.from(today).minusMonths(span - 1L)
+        // **이번 달이 상한이다.** 잘못 들어간 미래 달을 여기서 잘라야 「최근 N개월」이 지켜진다.
+        val end = YearMonth.from(today)
+        val start = end.minusMonths(span - 1L)
         return TrendResponse(
             repository
-                .findByYearMonthGreaterThanEqualOrderByYearMonth(start.toString())
+                .findByYearMonthBetweenOrderByYearMonth(start.toString(), end.toString())
                 .map { bill ->
                     TrendMonth(
                         yearMonth = bill.yearMonth,
