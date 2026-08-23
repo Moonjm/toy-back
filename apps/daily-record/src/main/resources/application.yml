@@ -71,16 +71,23 @@ openrouter:
   text-max-tokens: ${OPENROUTER_TEXT_MAX_TOKENS:2000}
   timeout-seconds: 60
 
-dispatch:
+# 사진 판독(배차표·관리비)이 함께 쓰는 OpenRouter 설정. 식단용 openrouter.*와는 분리한다 —
+# 그쪽은 2.5-flash에 텍스트 모델까지 따로 쓴다.
+#
+# 표 판독에서 2.5-flash는 같은 사진도 호출마다 답이 달라진다(배차표 실측 5회에 5/9~9/9).
+# 3.6-flash가 6회 연속 정답과 일치했고, 같은 계열의 3.7-flash가 절반 값에 나와 그쪽으로 옮겼다.
+# 관리비 영수증에서는 8장 x 2회에 합계 검증 16/16, 실행 간 완전일치 8/8이었다.
+vision:
   api-key: ${OPENROUTER_API_KEY:}
   base-url: https://openrouter.ai/api/v1
-  # 표 판독은 식단 인식과 요구가 다르다. gemini-2.5-flash는 같은 사진도 호출마다
-  # 답이 달라져(실측 5회에 5/9~9/9) 쓸 수 없다. 3.6-flash만 6회 연속 정답과 일치했다.
-  vision-model: ${DISPATCH_VISION_MODEL:google/gemini-3.6-flash}
-  # reasoning 토큰이 이 한도에 함께 잡힌다(조각당 1,300~3,000). 식단용 4,000으로 두면
-  # content가 빈 채로 온다.
-  vision-max-tokens: ${DISPATCH_VISION_MAX_TOKENS:30000}
+  vision-model: ${VISION_MODEL:google/gemini-3.7-flash}
+  # reasoning 토큰이 이 한도에 함께 잡힌다(배차 조각당 1,300~3,000, 관리비 1,773~2,333).
+  # 식단용 4,000으로 두면 content가 빈 채로 온다. 아예 안 보내면 OpenRouter가 모델 최대
+  # 출력만큼 잔액을 선점해 잔액이 남았는데도 402가 난다.
+  vision-max-tokens: ${VISION_MAX_TOKENS:30000}
   timeout-seconds: 120
+
+dispatch:
   # 전체본에서 행을 찾을 때만 쓴다. DB에도 API 응답에도 저장하지 않는다.
   father-name: ${DISPATCH_FATHER_NAME:}
 
