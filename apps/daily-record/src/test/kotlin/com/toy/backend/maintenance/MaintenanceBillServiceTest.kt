@@ -33,7 +33,6 @@ class MaintenanceBillServiceTest :
                         BillItemRequest("관리비차감", BigDecimal("-13790")),
                     ),
                 chargedAmount = BigDecimal("20910"),
-                dueAmount = BigDecimal("20910"),
                 usage = BillUsage(electricityKwh = BigDecimal("261")),
             )
 
@@ -80,7 +79,6 @@ class MaintenanceBillServiceTest :
                 MaintenanceBill(
                     yearMonth = "2026-03",
                     chargedAmount = BigDecimal("1"),
-                    dueAmount = BigDecimal("1"),
                 )
             existing.replaceItems(listOf("옛항목" to BigDecimal("1")))
             every { repository.findByYearMonth("2026-03") } returns existing
@@ -92,12 +90,11 @@ class MaintenanceBillServiceTest :
                     existing.items.map { it.name } shouldBe listOf("일반관리비", "관리비차감")
                 }
 
-                // fill이 요청의 모든 필드를 반영한다는 약속을 잠근다. 요약 금액 두 개는 한때
+                // fill이 요청의 모든 필드를 반영한다는 약속을 잠근다. chargedAmount는 한때
                 // fill 바깥에서 손으로 대입했고, 그 시절이라면 여기에 필드를 더하는 사람이
                 // replace 쪽을 빠뜨려도 아무 테스트도 깨지지 않았다.
-                Then("요약 금액이 갱신된다") {
+                Then("부과액이 갱신된다") {
                     existing.chargedAmount shouldBe BigDecimal("20910")
-                    existing.dueAmount shouldBe BigDecimal("20910")
                 }
 
                 Then("사용량도 갱신된다") {
@@ -111,7 +108,6 @@ class MaintenanceBillServiceTest :
                 MaintenanceBill(
                     yearMonth = "2026-02",
                     chargedAmount = BigDecimal("1"),
-                    dueAmount = BigDecimal("1"),
                 )
             existing.replaceItems(listOf("옛항목" to BigDecimal("1")))
             every { repository.findByYearMonth("2026-02") } returns existing

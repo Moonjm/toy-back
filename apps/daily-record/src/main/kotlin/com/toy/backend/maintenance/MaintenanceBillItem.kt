@@ -9,12 +9,7 @@ import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import java.math.BigDecimal
 
-/**
- * 고지서의 항목 한 줄.
- *
- * **금액에 음수 제약을 걸지 않는다.** `관리비차감`이 `-13,790`으로 들어온다.
- * 제약을 걸면 그 달의 저장이 통째로 실패한다.
- */
+/** 고지서의 항목 한 줄. **음수 제약을 걸지 마라** — `관리비차감`이 `-13,790`으로 들어온다. */
 @Entity
 @Table(name = "maintenance_bill_items")
 class MaintenanceBillItem(

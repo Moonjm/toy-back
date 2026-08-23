@@ -13,7 +13,6 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import java.math.BigDecimal
-import java.time.LocalDate
 
 /**
  * **합계 검증은 금액 오독만 잡는다.** 실측에서 `2.5-flash`가 수도 사용량을 10.8→10.6으로
@@ -31,7 +30,7 @@ class MaintenanceRecognitionServiceTest :
             items: List<Pair<String, Int>> = listOf("일반관리비" to 34700, "관리비차감" to -13790),
             usages: List<Triple<String, String, String>> = listOf(Triple("전기", "261", "kwh")),
             chargedAmount: Int = 20910,
-            dueDate: String = "2026-04-30",
+            unpaid: String = "0",
         ) = RecognizedBill(
             year = year,
             month = month,
@@ -42,10 +41,10 @@ class MaintenanceRecognitionServiceTest :
             usages = usages.map { RecognizedUsage(it.first, BigDecimal(it.second), it.third) },
             chargedAmount = BigDecimal(chargedAmount),
             discountTotal = BigDecimal.ZERO,
-            unpaidAmount = BigDecimal.ZERO,
-            unpaidLateFee = BigDecimal.ZERO,
+            unpaidAmount = BigDecimal(unpaid),
+            unpaidLateFee = BigDecimal(unpaid),
             dueAmount = BigDecimal(chargedAmount),
-            dueDate = dueDate,
+            dueDate = "2026-04-30",
         )
 
         Given("정상적으로 읽힌 영수증") {
@@ -65,10 +64,6 @@ class MaintenanceRecognitionServiceTest :
                 Then("사용량을 이름별 자리에 넣는다") {
                     response.usage.electricityKwh shouldBe BigDecimal("261")
                     response.usage.heatingGcal.shouldBeNull()
-                }
-
-                Then("납기일을 해석한다") {
-                    response.dueDate shouldBe LocalDate.of(2026, 4, 30)
                 }
             }
         }
@@ -123,12 +118,26 @@ class MaintenanceRecognitionServiceTest :
             }
         }
 
-        Given("납기일을 못 읽은 영수증") {
-            every { visionClient.read(any(), any()) } returns recognized(dueDate = "")
+        // 미납액은 저장하지 않는다(미납할 일이 없다는 전제로 컬럼을 걷어냈다). 그 전제가
+        // 깨진 달을 조용히 넘기면 아무도 모르므로 검수 화면에 올린다.
+        Given("미납액이 읽힌 영수증") {
+            every { visionClient.read(any(), any()) } returns recognized(unpaid = "5000")
 
             When("인식하면") {
-                Then("납기일이 비고 예외가 나지 않는다") {
-                    service.recognize(byteArrayOf(1), "image/jpeg").dueDate.shouldBeNull()
+                Then("경고로 알린다") {
+                    val response = service.recognize(byteArrayOf(1), "image/jpeg")
+                    response.warnings.any { it.contains("미납액") } shouldBe true
+                }
+            }
+        }
+
+        Given("미납액이 0인 영수증") {
+            every { visionClient.read(any(), any()) } returns recognized()
+
+            When("인식하면") {
+                Then("미납 경고가 붙지 않는다") {
+                    val response = service.recognize(byteArrayOf(1), "image/jpeg")
+                    response.warnings.any { it.contains("미납액") } shouldBe false
                 }
             }
         }

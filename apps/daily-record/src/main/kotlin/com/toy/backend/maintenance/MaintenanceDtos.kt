@@ -6,7 +6,6 @@ import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.Size
 import java.math.BigDecimal
-import java.time.LocalDate
 import java.time.YearMonth
 
 /**
@@ -86,10 +85,6 @@ data class MaintenanceRecognitionResponse(
     val usage: BillUsage,
     val chargedAmount: BigDecimal,
     val discountTotal: BigDecimal,
-    val unpaidAmount: BigDecimal,
-    val unpaidLateFee: BigDecimal,
-    val dueAmount: BigDecimal,
-    val dueDate: LocalDate?,
     val sumMatched: Boolean,
     val warnings: List<String>,
 )
@@ -106,15 +101,11 @@ data class BillSaveRequest(
     val yearMonth: YearMonth,
     @field:NotEmpty val items: List<@Valid BillItemRequest>,
     val chargedAmount: BigDecimal,
-    val dueAmount: BigDecimal,
     val dong: String? = null,
     val ho: String? = null,
     val areaM2: BigDecimal? = null,
     val usage: BillUsage = BillUsage(),
     val discountTotal: BigDecimal = BigDecimal.ZERO,
-    val unpaidAmount: BigDecimal = BigDecimal.ZERO,
-    val unpaidLateFee: BigDecimal = BigDecimal.ZERO,
-    val dueDate: LocalDate? = null,
 )
 
 data class BillResponse(
@@ -126,10 +117,6 @@ data class BillResponse(
     val usage: BillUsage,
     val chargedAmount: BigDecimal,
     val discountTotal: BigDecimal,
-    val unpaidAmount: BigDecimal,
-    val unpaidLateFee: BigDecimal,
-    val dueAmount: BigDecimal,
-    val dueDate: LocalDate?,
 )
 
 data class BillListResponse(
@@ -153,10 +140,6 @@ fun MaintenanceBill.toResponse(): BillResponse =
             ),
         chargedAmount = chargedAmount,
         discountTotal = discountTotal,
-        unpaidAmount = unpaidAmount,
-        unpaidLateFee = unpaidLateFee,
-        dueAmount = dueAmount,
-        dueDate = dueDate,
     )
 
 /**

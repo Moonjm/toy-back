@@ -3,13 +3,9 @@ package com.toy.backend.maintenance.llm
 import java.math.BigDecimal
 
 /**
- * 영수증 한 장에서 읽어 낸 값. **모델이 본 그대로이고 해석은 하지 않는다** —
- * 연월 범위 검사도, 사용량 이름 매핑도, 납기일 파싱도 `MaintenanceRecognitionService`가 한다.
- * 이 계층이 해석까지 하면 「모델이 뭐라고 했는가」와 「우리가 그것을 어떻게 받아들였는가」가
- * 한 타입에 섞여, 인식이 틀렸을 때 어느 쪽 잘못인지 가릴 수 없어진다.
- *
- * 세 타입을 한 파일에 둔다. `RecognizedBill`이 나머지 둘을 담고 있어 **함께 바뀐다** —
- * 영수증 서식이 바뀌면 세 개가 같이 움직인다.
+ * 영수증에서 읽어 낸 값. **모델이 본 그대로이고 해석은 하지 않는다** — 범위 검사도 이름
+ * 매핑도 `MaintenanceRecognitionService`가 한다. 섞으면 인식이 틀렸을 때 어느 쪽 잘못인지
+ * 가릴 수 없다. 세 타입은 함께 바뀌므로 한 파일에 둔다.
  */
 data class RecognizedBill(
     val year: Int,

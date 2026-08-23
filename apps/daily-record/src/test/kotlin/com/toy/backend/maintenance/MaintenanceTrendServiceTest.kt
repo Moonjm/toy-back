@@ -23,7 +23,6 @@ class MaintenanceTrendServiceTest :
         ) = MaintenanceBill(
             yearMonth = yearMonth,
             chargedAmount = BigDecimal(items.sumOf { it.second }),
-            dueAmount = BigDecimal(items.sumOf { it.second }),
             heatingGcal = heating?.let { BigDecimal(it) },
         ).also { it.replaceItems(items.map { (n, a) -> n to BigDecimal(a) }) }
 
