@@ -64,12 +64,18 @@ class MaintenanceRecognitionService(
             warnings.add("항목 합계($itemTotal)가 당월부과액(${recognized.chargedAmount})과 다릅니다. 금액을 확인해 주세요.")
         }
 
-        // **모델은 여전히 미납액·납기 정보를 읽지만 저장할 곳이 없다.** 미납할 일이 없다는
-        // 전제로 컬럼을 걷어냈기 때문이다. 그 전제가 깨진 달을 조용히 넘기면 아무도 모르므로,
-        // 값이 0이 아니면 검수 화면에 올린다. 지어낸 값일 수도 있으니 거부하지는 않는다.
+        // **모델은 미납액·납기내 금액을 읽지만 저장할 곳이 없다.** 「미납할 일이 없고 납기내
+        // 금액은 늘 당월부과액과 같다」를 전제로 컬럼을 걷어냈기 때문이다. 그 전제가 깨진 달을
+        // 조용히 넘기면 아무도 모르므로 검수 화면에 올린다. 지어낸 값일 수도 있어 거부는 안 한다.
         if (recognized.unpaidAmount.signum() != 0 || recognized.unpaidLateFee.signum() != 0) {
             warnings.add(
                 "미납액(${recognized.unpaidAmount})이나 연체료(${recognized.unpaidLateFee})가 읽혔습니다. " +
+                    "저장되지 않으니 영수증을 확인해 주세요.",
+            )
+        }
+        if (recognized.dueAmount.compareTo(recognized.chargedAmount) != 0) {
+            warnings.add(
+                "납기내 금액(${recognized.dueAmount})이 당월부과액(${recognized.chargedAmount})과 다릅니다. " +
                     "저장되지 않으니 영수증을 확인해 주세요.",
             )
         }

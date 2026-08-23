@@ -31,6 +31,7 @@ class MaintenanceRecognitionServiceTest :
             usages: List<Triple<String, String, String>> = listOf(Triple("전기", "261", "kwh")),
             chargedAmount: Int = 20910,
             unpaid: String = "0",
+            due: Int? = null,
         ) = RecognizedBill(
             year = year,
             month = month,
@@ -43,7 +44,7 @@ class MaintenanceRecognitionServiceTest :
             discountTotal = BigDecimal.ZERO,
             unpaidAmount = BigDecimal(unpaid),
             unpaidLateFee = BigDecimal(unpaid),
-            dueAmount = BigDecimal(chargedAmount),
+            dueAmount = BigDecimal(due ?: chargedAmount),
             dueDate = "2026-04-30",
         )
 
@@ -131,13 +132,27 @@ class MaintenanceRecognitionServiceTest :
             }
         }
 
+        // dueAmount == chargedAmount가 dueAmount 컬럼을 없앤 근거다. 그 전제가 깨진 달을
+        // 알아챌 방법이 이 경고뿐이다 - 미납이 0이면 위 가드는 발화하지 않는다.
+        Given("납기내 금액이 부과액과 다른 영수증") {
+            every { visionClient.read(any(), any()) } returns recognized(due = 25000)
+
+            When("인식하면") {
+                Then("경고로 알린다") {
+                    val response = service.recognize(byteArrayOf(1), "image/jpeg")
+                    response.warnings.any { it.contains("납기내 금액") } shouldBe true
+                }
+            }
+        }
+
         Given("미납액이 0인 영수증") {
             every { visionClient.read(any(), any()) } returns recognized()
 
             When("인식하면") {
-                Then("미납 경고가 붙지 않는다") {
+                Then("미납·납기 경고가 붙지 않는다") {
                     val response = service.recognize(byteArrayOf(1), "image/jpeg")
                     response.warnings.any { it.contains("미납액") } shouldBe false
+                    response.warnings.any { it.contains("납기내 금액") } shouldBe false
                 }
             }
         }
