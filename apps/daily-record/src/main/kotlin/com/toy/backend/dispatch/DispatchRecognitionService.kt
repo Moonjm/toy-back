@@ -4,7 +4,6 @@ import com.toy.backend.common.exception.CustomException
 import com.toy.backend.dispatch.image.DispatchImageSlicer
 import com.toy.backend.dispatch.image.ImageSlice
 import com.toy.backend.dispatch.llm.DispatchVisionClient
-import com.toy.backend.dispatch.llm.DispatchVisionProperties
 import com.toy.backend.dispatch.llm.RecognizedSlice
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.stereotype.Service
@@ -24,7 +23,7 @@ private val log = KotlinLogging.logger {}
 class DispatchRecognitionService(
     private val rosterRepository: DispatchRosterRepository,
     private val visionClient: DispatchVisionClient,
-    private val properties: DispatchVisionProperties,
+    private val properties: DispatchProperties,
     private val slicer: DispatchImageSlicer,
     private val rosterUpdater: DispatchRosterUpdater,
 ) {

@@ -1,6 +1,7 @@
 package com.toy.backend.dispatch.llm
 
 import com.toy.backend.dispatch.image.ImageSlice
+import com.toy.backend.vision.VisionProperties
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.WebClientResponseException
@@ -54,7 +55,7 @@ data class RecognizedSlice(
  * 대면 흐름이라 그 한 번은 서버가 삼킨다. 조각당 $0.017이다.
  */
 class DispatchVisionClient(
-    private val properties: DispatchVisionProperties,
+    private val properties: VisionProperties,
     private val webClient: WebClient,
 ) {
     fun read(

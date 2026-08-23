@@ -4,7 +4,6 @@ import com.toy.backend.common.exception.CustomException
 import com.toy.backend.dispatch.image.DispatchImageSlicer
 import com.toy.backend.dispatch.image.ImageSlice
 import com.toy.backend.dispatch.llm.DispatchVisionClient
-import com.toy.backend.dispatch.llm.DispatchVisionProperties
 import com.toy.backend.dispatch.llm.RecognizedCell
 import com.toy.backend.dispatch.llm.RecognizedSlice
 import io.kotest.assertions.throwables.shouldThrow
@@ -40,7 +39,7 @@ class DispatchRecognitionServiceTest :
             DispatchRecognitionService(
                 rosterRepository,
                 visionClient,
-                DispatchVisionProperties(apiKey = "sk-test", fatherName = name),
+                DispatchProperties(fatherName = name),
                 slicer,
                 rosterUpdater,
             )

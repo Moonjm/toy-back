@@ -1,5 +1,6 @@
 package com.toy.backend.maintenance.llm
 
+import com.toy.backend.vision.VisionProperties
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
@@ -16,8 +17,7 @@ class MaintenanceVisionClientTest :
     BehaviorSpec({
         val webClient = mockk<WebClient>()
 
-        fun client(properties: MaintenanceVisionProperties = MaintenanceVisionProperties(apiKey = "sk-test")) =
-            MaintenanceVisionClient(properties, webClient)
+        fun client(properties: VisionProperties = VisionProperties(apiKey = "sk-test")) = MaintenanceVisionClient(properties, webClient)
 
         Given("요청 본문") {
             val body = client().visionBody("QUJD", "image/jpeg")

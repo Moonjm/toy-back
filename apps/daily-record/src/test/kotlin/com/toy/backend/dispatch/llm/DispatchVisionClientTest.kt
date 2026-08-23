@@ -1,6 +1,7 @@
 package com.toy.backend.dispatch.llm
 
 import com.toy.backend.dispatch.image.ImageSlice
+import com.toy.backend.vision.VisionProperties
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -34,7 +35,7 @@ class DispatchVisionClientTest :
 
         fun clientWith(
             vararg responseBodies: String,
-            properties: DispatchVisionProperties = DispatchVisionProperties(apiKey = "sk-test"),
+            properties: VisionProperties = VisionProperties(apiKey = "sk-test"),
         ): Pair<DispatchVisionClient, AtomicInteger> {
             val calls = AtomicInteger(0)
             val exchange =
@@ -77,13 +78,13 @@ class DispatchVisionClientTest :
                     .baseUrl("http://localhost")
                     .exchangeFunction(exchange)
                     .build()
-            return DispatchVisionClient(DispatchVisionProperties(apiKey = "sk-test"), webClient) to calls
+            return DispatchVisionClient(VisionProperties(apiKey = "sk-test"), webClient) to calls
         }
 
         fun wrap(content: String) = """{"choices":[{"finish_reason":"stop","message":{"content":${jsonQuote(content)}}}]}"""
 
         Given("요청 본문") {
-            val properties = DispatchVisionProperties(apiKey = "sk-test")
+            val properties = VisionProperties(apiKey = "sk-test")
             val body = DispatchVisionClient(properties, WebClient.builder().build()).visionBody(slice, "홍길동", null)
 
             Then("모델이 배차 전용 설정을 따른다") {
@@ -129,7 +130,7 @@ class DispatchVisionClientTest :
 
         Given("이름을 준 경우") {
             val body =
-                DispatchVisionClient(DispatchVisionProperties(apiKey = "sk-test"), WebClient.builder().build())
+                DispatchVisionClient(VisionProperties(apiKey = "sk-test"), WebClient.builder().build())
                     .visionBody(slice, "홍길동", null)
 
             Then("이름으로 행을 찾으라고 지시한다") {
@@ -165,7 +166,7 @@ class DispatchVisionClientTest :
 
         Given("이름 없이 행 위치만 준 경우") {
             val body =
-                DispatchVisionClient(DispatchVisionProperties(apiKey = "sk-test"), WebClient.builder().build())
+                DispatchVisionClient(VisionProperties(apiKey = "sk-test"), WebClient.builder().build())
                     .visionBody(slice, null, 2)
 
             Then("위에서 3번째 행을 읽으라고 지시한다") {

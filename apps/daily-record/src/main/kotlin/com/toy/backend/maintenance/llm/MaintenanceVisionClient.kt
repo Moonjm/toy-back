@@ -1,5 +1,6 @@
 package com.toy.backend.maintenance.llm
 
+import com.toy.backend.vision.VisionProperties
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.WebClientResponseException
@@ -64,7 +65,7 @@ data class RecognizedBill(
  * 통과했다** — 사용량 오독은 어떤 자동 검사에도 안 걸린다.
  */
 class MaintenanceVisionClient(
-    private val properties: MaintenanceVisionProperties,
+    private val properties: VisionProperties,
     private val webClient: WebClient,
 ) {
     fun read(
