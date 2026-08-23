@@ -7,7 +7,6 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import org.springframework.web.reactive.function.client.bodyToMono
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
-import java.math.BigDecimal
 
 private val log = KotlinLogging.logger {}
 
@@ -25,36 +24,6 @@ private sealed interface PostOutcome {
 
     data object Retryable : PostOutcome
 }
-
-data class RecognizedItem(
-    val name: String,
-    /** **음수가 온다.** `관리비차감`이 `-13,790`이다. */
-    val amount: BigDecimal,
-)
-
-data class RecognizedUsage(
-    val name: String,
-    val value: BigDecimal,
-    /** 영수증에 보이는 그대로. 표기가 없으면 빈 문자열이다. */
-    val unit: String,
-)
-
-data class RecognizedBill(
-    val year: Int,
-    val month: Int,
-    val dong: String,
-    val ho: String,
-    val areaM2: BigDecimal,
-    val items: List<RecognizedItem>,
-    val usages: List<RecognizedUsage>,
-    val chargedAmount: BigDecimal,
-    val discountTotal: BigDecimal,
-    val unpaidAmount: BigDecimal,
-    val unpaidLateFee: BigDecimal,
-    val dueAmount: BigDecimal,
-    /** 모델이 읽은 그대로의 `YYYY-MM-DD`. 해석은 서비스가 한다 — 못 읽으면 빈 문자열이다. */
-    val dueDate: String,
-)
 
 /**
  * 관리비 영수증 한 장을 읽는다. 실패는 null로 돌려주되 **한 번은 재시도한다** —

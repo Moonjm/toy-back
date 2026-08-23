@@ -14,7 +14,6 @@ class MaintenanceBillTest :
             MaintenanceBill(
                 yearMonth = "2026-03",
                 chargedAmount = BigDecimal("238370"),
-                dueAmount = BigDecimal("238370"),
             )
 
         Given("음수 항목이 섞인 고지서") {

@@ -14,8 +14,6 @@
 -- 2025-12 사이에서 한 번 끊긴다.
 --   세대전기료→전기, 세대급탕비→온수, 세대수도료→수도, 세대난방비→난방
 --
--- 납기일은 캡처에 없어 NULL이다.
---
 -- 실행 전제: `ddl-auto: update`가 테이블을 만든 뒤여야 한다(앱을 한 번 띄운 뒤).
 -- 두 번 돌리면 year_month_value unique 제약에 걸려 통째로 실패한다 — 그게 의도다.
 
@@ -25,14 +23,13 @@ WITH inserted AS (
     INSERT INTO maintenance_bills (
         created_at, updated_at,
         year_month_value, dong, ho, area_m2,
-        charged_amount, discount_total, unpaid_amount, unpaid_late_fee,
-        due_amount, due_date,
+        charged_amount, discount_total,
         electricity_kwh, water_m3, hot_water_m3, heating_gcal, food_kg
     ) VALUES
-        (now(), now(), '2025-08', '5103', '1404', 98.8, 275570, 0, 0, 0, 275570, NULL, 541, 9.3,  3.3, NULL, 2.75),
-        (now(), now(), '2025-09', '5103', '1404', 98.8, 287690, 0, 0, 0, 287690, NULL, 554, 9.3,  3.3, NULL, 4.25),
-        (now(), now(), '2025-10', '5103', '1404', 98.8, 217740, 0, 0, 0, 217740, NULL, 317, 9.2,  3.2, NULL, 3.10),
-        (now(), now(), '2025-11', '5103', '1404', 98.8, 236190, 0, 0, 0, 236190, NULL, 276, 10.7, 4.7, 0.04, 3.05)
+        (now(), now(), '2025-08', '5103', '1404', 98.8, 275570, 0, 541, 9.3,  3.3, NULL, 2.75),
+        (now(), now(), '2025-09', '5103', '1404', 98.8, 287690, 0, 554, 9.3,  3.3, NULL, 4.25),
+        (now(), now(), '2025-10', '5103', '1404', 98.8, 217740, 0, 317, 9.2,  3.2, NULL, 3.10),
+        (now(), now(), '2025-11', '5103', '1404', 98.8, 236190, 0, 276, 10.7, 4.7, 0.04, 3.05)
     RETURNING id, year_month_value
 )
 INSERT INTO maintenance_bill_items (created_at, updated_at, bill_id, name, amount, display_order)

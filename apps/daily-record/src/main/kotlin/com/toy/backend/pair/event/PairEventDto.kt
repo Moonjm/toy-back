@@ -2,7 +2,6 @@ package com.toy.backend.pair.event
 
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
-import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
 import java.time.LocalDate
 
@@ -31,7 +30,6 @@ data class PairEventRequest(
     @field:Size(max = 10)
     val emoji: String,
     @field:Schema(description = "이벤트 날짜", example = "2026-03-14")
-    @field:NotNull
     val eventDate: LocalDate,
     @field:Schema(description = "매년 반복 여부", example = "true")
     val recurring: Boolean = true,

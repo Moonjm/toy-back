@@ -49,8 +49,7 @@ class TeslaChargeService(
         id: Long,
         request: ChargeCostRequest,
     ) {
-        val cost = request.cost ?: throw CustomException(ErrorCode.INVALID_REQUEST, "cost는 필수입니다")
-        if (repository.updateCost(id, cost) == 0) {
+        if (repository.updateCost(id, request.cost) == 0) {
             throw CustomException(ErrorCode.RESOURCE_NOT_FOUND, id)
         }
     }
