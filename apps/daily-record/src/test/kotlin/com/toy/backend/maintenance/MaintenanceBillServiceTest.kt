@@ -92,8 +92,16 @@ class MaintenanceBillServiceTest :
                     existing.items.map { it.name } shouldBe listOf("일반관리비", "관리비차감")
                 }
 
+                // fill이 요청의 모든 필드를 반영한다는 약속을 잠근다. 요약 금액 두 개는 한때
+                // fill 바깥에서 손으로 대입했고, 그 시절이라면 여기에 필드를 더하는 사람이
+                // replace 쪽을 빠뜨려도 아무 테스트도 깨지지 않았다.
                 Then("요약 금액이 갱신된다") {
                     existing.chargedAmount shouldBe BigDecimal("20910")
+                    existing.dueAmount shouldBe BigDecimal("20910")
+                }
+
+                Then("사용량도 갱신된다") {
+                    existing.electricityKwh shouldBe BigDecimal("261")
                 }
             }
         }

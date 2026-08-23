@@ -59,10 +59,7 @@ class MaintenanceBillService(
         if (yearMonth != request.yearMonth) {
             throw CustomException(MaintenanceErrorCode.YEAR_MONTH_MISMATCH, yearMonth.toString(), request.yearMonth.toString())
         }
-        val bill = find(yearMonth)
-        bill.chargedAmount = request.chargedAmount
-        bill.dueAmount = request.dueAmount
-        bill.fill(request)
+        find(yearMonth).fill(request)
     }
 
     fun findOne(yearMonth: YearMonth): BillResponse = find(yearMonth).toResponse()
@@ -84,6 +81,13 @@ class MaintenanceBillService(
      * 적지 않게 모아 둔다 — 한쪽에만 필드를 더하는 사고를 막는다.
      */
     private fun MaintenanceBill.fill(request: BillSaveRequest) {
+        // **요약 금액도 여기서 채운다.** create는 생성자가 요구해 한 번 더 넘기지만 같은 값이라
+        // 무해하고, 그 대신 이 함수가 「요청의 모든 필드를 반영한다」는 약속을 온전히 지킨다.
+        // 두 필드만 밖에 두면 chargedAmount 옆에 필드를 더하는 사람이 replace 쪽을 빠뜨린다.
+        // 아래 합계 경고가 chargedAmount를 읽는다는 점에서도 여기가 맞다 - 밖에서 설정되면
+        // 순서에 따라 옛 값을 보고 판단하게 된다.
+        chargedAmount = request.chargedAmount
+        dueAmount = request.dueAmount
         dong = request.dong
         ho = request.ho
         areaM2 = request.areaM2
