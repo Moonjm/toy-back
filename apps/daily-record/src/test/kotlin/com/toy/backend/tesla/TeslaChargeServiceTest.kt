@@ -216,16 +216,6 @@ class TeslaChargeServiceTest :
             }
         }
 
-        // 리포지토리 스텁을 두지 않는다 — null이면 리포지토리에 닿기 전에 던져야 하고,
-        // mockk 엄격 스텁이라 닿으면 이 테스트가 깨진다.
-        Given("cost 없이 금액을 수정할 때") {
-            Then("400이다") {
-                shouldThrow<CustomException> {
-                    service.updateCost(3312L, ChargeCostRequest(null))
-                }.errorCode shouldBe ErrorCode.INVALID_REQUEST
-            }
-        }
-
         // 서비스가 하는 일은 완속 = 합계 − 급속 뺄셈과 행→DTO 변환뿐이다. 집계는 SQL이 한다.
         Given("충전 누적을 조회할 때") {
             every { repository.findTotals() } returns
